@@ -1,16 +1,36 @@
 import { spawn } from 'node:child_process';
 
 const isWindows = process.platform === 'win32';
-const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+
+function getNpmCommand() {
+  const npmExecPath = process.env.npm_execpath;
+
+  if (npmExecPath) {
+    return {
+      command: process.execPath,
+      args: [npmExecPath, 'run'],
+      useShell: false,
+    };
+  }
+
+  return {
+    command: isWindows ? 'npm.cmd' : 'npm',
+    args: ['run'],
+    // Windows can throw EINVAL when spawning npm without a shell, so allow it.
+    useShell: isWindows,
+  };
+}
+
+const npmCmd = getNpmCommand();
 
 const processes = [];
 let exiting = false;
 let activeProcesses = 0;
 
 function run(args) {
-  const child = spawn(npmCmd, ['run', ...args], {
+  const child = spawn(npmCmd.command, [...npmCmd.args, ...args], {
     stdio: 'inherit',
-    shell: false,
+    shell: npmCmd.useShell,
     env: process.env,
   });
 
