@@ -5,8 +5,8 @@ import webpush from 'web-push'
 import { PushSubscriptionStore } from './push-subscription-store.js'
 
 const PORT = Number.parseInt(process.env.PUSH_SERVER_PORT ?? process.env.PORT ?? '4000', 10)
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
+let vapidPublicKey = process.env.VAPID_PUBLIC_KEY
+let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com'
 const ALLOWED_ORIGIN = process.env.PUSH_ALLOWED_ORIGIN ?? '*'
 const SUBSCRIPTION_FILE = process.env.PUSH_SUBSCRIPTIONS_FILE
@@ -112,7 +112,7 @@ async function handleRequest(req, res, store) {
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`)
 
   if (req.method === 'GET' && url.pathname === '/api/push/public-key') {
-    sendJson(res, 200, { publicKey: VAPID_PUBLIC_KEY })
+    sendJson(res, 200, { publicKey: vapidPublicKey })
     return
   }
 
@@ -213,12 +213,19 @@ async function handleRequest(req, res, store) {
 }
 
 async function start() {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.error('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set before starting the push server.')
-    process.exit(1)
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    const generatedKeys = webpush.generateVAPIDKeys()
+    vapidPublicKey = generatedKeys.publicKey
+    vapidPrivateKey = generatedKeys.privateKey
+
+    console.warn(
+      'VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY were not set. Generated a temporary pair for local development.',
+    )
+    console.warn('Public key (use in your frontend .env):', vapidPublicKey)
+    console.warn('Private key (do not commit):', vapidPrivateKey)
   }
 
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+  webpush.setVapidDetails(VAPID_SUBJECT, vapidPublicKey, vapidPrivateKey)
 
   const store = new PushSubscriptionStore(SUBSCRIPTION_FILE)
   await store.init()

@@ -15,13 +15,13 @@ npm install
 
 ## Generating VAPID keys
 
-Web push notifications require a public/private VAPID key pair. If you do not already have one, generate it with the `web-push` CLI (already installed as a dependency):
+Web push notifications require a public/private VAPID key pair. For local development you can rely on the push server's auto-generated credentials (they are logged the first time you run it). For predictable keys across restarts—or for any production deployment—generate them explicitly with the `web-push` CLI (already installed as a dependency):
 
 ```bash
 npx web-push generate-vapid-keys
 ```
 
-This command prints a `publicKey` and `privateKey`. Store them securely—you will need both to run the push delivery server.
+This command prints a `publicKey` and `privateKey`. Store them securely—you will need both if you want to reuse subscriptions across server restarts or deploy outside your machine.
 
 ## Environment variables
 
@@ -34,7 +34,7 @@ VAPID_PRIVATE_KEY=<your private key from the step above>
 VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
 ```
 
-`VITE_API_BASE_URL` lets the frontend know where to reach the push API. Update it if you deploy the push server elsewhere.
+`VITE_API_BASE_URL` lets the frontend know where to reach the push API. Update it if you deploy the push server elsewhere. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
 
 ## Available scripts
 
