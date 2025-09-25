@@ -143,7 +143,6 @@ export function LineChart({
               </span>
             )}
           </div>
-          <span className="text-xs uppercase tracking-wide text-slate-400">Oscillator</span>
         </div>
         <button
           type="button"
