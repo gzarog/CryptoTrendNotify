@@ -216,6 +216,7 @@ function App() {
   const [customRefresh, setCustomRefresh] = useState('15')
   const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
+  const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -283,11 +284,20 @@ function App() {
     return { difference, percent }
   }, [data, latestCandle])
 
-  const guideLines = useMemo(
+  const rsiGuideLines = useMemo(
     () => [
       { value: 70, label: '70', color: 'rgba(239, 68, 68, 0.7)' },
       { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
       { value: 30, label: '30', color: 'rgba(16, 185, 129, 0.7)' },
+    ],
+    [],
+  )
+
+  const stochasticGuideLines = useMemo(
+    () => [
+      { value: 80, label: '80', color: 'rgba(239, 68, 68, 0.7)' },
+      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
+      { value: 20, label: '20', color: 'rgba(16, 185, 129, 0.7)' },
     ],
     [],
   )
@@ -478,65 +488,93 @@ function App() {
               </div>
             )}
           </div>
-          <div className="flex flex-col justify-between gap-2 rounded-2xl border border-white/5 bg-slate-950/50 p-4 text-sm lg:col-span-2">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</p>
-              <p className="text-lg font-semibold text-white">{lastUpdatedLabel}</p>
-              <p className="text-xs text-slate-400">
-                {refreshInterval
-                  ? `Every ${
-                      refreshSelection === 'custom'
-                        ? `${customRefresh || '—'}m`
-                        : formatIntervalLabel(refreshSelection)
-                    }`
-                  : 'Auto refresh disabled'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Data window</p>
-              <p className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</p>
-              <p className="text-xs text-slate-400">Applied across all charts</p>
-            </div>
-            {latestCandle && (
-              <div>
-                <p className="text-xs uppercase tracking-wider text-slate-400">Last close</p>
-                <p className="text-lg font-semibold text-white">{latestCandle.close.toFixed(5)}</p>
-                {priceChange && (
-                  <p
-                    className={`text-xs font-medium ${
-                      priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    {priceChange.difference >= 0 ? '+' : ''}
-                    {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section className="flex flex-col gap-6">
           {isLoading && (
-            <div className="col-span-full flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
+            <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
               <p>Loading live market data…</p>
             </div>
           )}
           {isError && (
-            <div className="col-span-full rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-sm text-rose-200">
+            <div className="rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-sm text-rose-200">
               <p>{error instanceof Error ? error.message : 'Failed to load data.'}</p>
             </div>
           )}
           {!isLoading && !isError && (
             <>
-              <LineChart title="RSI (14)" data={rsiValues} labels={labels} color="#818cf8" yDomain={{ min: 0, max: 100 }} guideLines={guideLines} />
+              <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <h2 className="text-base font-semibold text-white">Market snapshot</h2>
+                    <p className="text-xs text-slate-400">Applied across all charts</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMarketSummaryCollapsed((previous) => !previous)}
+                    className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
+                    aria-expanded={!isMarketSummaryCollapsed}
+                  >
+                    {isMarketSummaryCollapsed ? 'Expand' : 'Collapse'}
+                    <span aria-hidden="true">{isMarketSummaryCollapsed ? '▾' : '▴'}</span>
+                  </button>
+                </div>
+                {!isMarketSummaryCollapsed && (
+                  <div className="grid gap-6 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</span>
+                      <span className="text-lg font-semibold text-white">{lastUpdatedLabel}</span>
+                      <span className="text-xs text-slate-400">
+                        {refreshInterval
+                          ? `Every ${
+                              refreshSelection === 'custom'
+                                ? `${customRefresh || '—'}m`
+                                : formatIntervalLabel(refreshSelection)
+                            }`
+                          : 'Auto refresh disabled'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Data window</span>
+                      <span className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</span>
+                      <span className="text-xs text-slate-400">Refresh applies to RSI and Stochastic RSI panels</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Last close</span>
+                      <span className="text-lg font-semibold text-white">
+                        {latestCandle ? latestCandle.close.toFixed(5) : '—'}
+                      </span>
+                      {latestCandle && priceChange ? (
+                        <span
+                          className={`text-xs font-medium ${
+                            priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {priceChange.difference >= 0 ? '+' : ''}
+                          {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500">Waiting for additional price data…</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <LineChart
+                title="RSI (14)"
+                data={rsiValues}
+                labels={labels}
+                color="#818cf8"
+                yDomain={{ min: 0, max: 100 }}
+                guideLines={rsiGuideLines}
+              />
               <LineChart
                 title="Stochastic RSI (14)"
                 data={stochasticValues}
                 labels={labels}
                 color="#34d399"
                 yDomain={{ min: 0, max: 100 }}
-                guideLines={guideLines}
+                guideLines={stochasticGuideLines}
               />
             </>
           )}
