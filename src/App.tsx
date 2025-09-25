@@ -117,12 +117,15 @@ const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
 }
 
 const REFRESH_OPTIONS: RefreshOption[] = [
+  { value: '1', label: '1m' },
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
   { value: '30', label: '30m' },
   { value: '60', label: '60m' },
   { value: 'custom', label: 'Custom' },
 ]
+
+const DEFAULT_REFRESH_SELECTION = '5'
 
 const BAR_COUNT_OPTIONS: BarCountOption[] = [
   { value: '500', label: '500' },
@@ -278,7 +281,7 @@ function App() {
 
   const [symbol, setSymbol] = useState(CRYPTO_OPTIONS[0])
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
-  const [refreshSelection, setRefreshSelection] = useState(REFRESH_OPTIONS[0].value)
+  const [refreshSelection, setRefreshSelection] = useState(DEFAULT_REFRESH_SELECTION)
   const [customRefresh, setCustomRefresh] = useState('15')
   const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
@@ -836,23 +839,21 @@ function App() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Refresh interval</span>
-            <div className="flex flex-wrap gap-2">
+            <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Refresh interval
+            </label>
+            <select
+              id="refresh-interval"
+              value={refreshSelection}
+              onChange={(event) => setRefreshSelection(event.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+            >
               {REFRESH_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setRefreshSelection(option.value)}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
-                    refreshSelection === option.value
-                      ? 'bg-indigo-500 text-white shadow'
-                      : 'border border-white/10 text-slate-300 hover:border-indigo-400 hover:text-white'
-                  }`}
-                >
+                <option key={option.value} value={option.value}>
                   {option.label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
             {refreshSelection === 'custom' && (
               <div className="flex items-center gap-2">
                 <input
