@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "node scripts/run-dev-stack.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "push:server": "node server/index.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.2",
