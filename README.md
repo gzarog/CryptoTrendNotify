@@ -60,6 +60,16 @@ Run the Vite development server (in a separate terminal):
 npm run dev
 ```
 
+### Run both dev servers together
+
+Use the helper script to run the push backend and Vite frontend in one terminal session:
+
+```bash
+npm run dev:full
+```
+
+The script spawns both `npm run push:server` and `npm run dev`, forwarding all logs to your console. Stop the stack with `Ctrl+C`—the script will shut down both processes.
+
 ### Build for production
 
 ```bash
