@@ -316,6 +316,27 @@ function App() {
   const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
 
   const handleEnableNotifications = async () => {
+    if (!supportsNotifications) {
+      return
+    }
+
+    if (notificationPermission === 'denied') {
+      window.alert(
+        'Browser notifications are currently blocked for this site. Update the permission to "Allow" if you would like to receive alerts.',
+      )
+      return
+    }
+
+    if (notificationPermission === 'default') {
+      const shouldRequestPermission = window.confirm(
+        'Momentum notifications are currently disabled. Select "OK" to open the browser prompt where you can accept or reject notifications for this site.',
+      )
+
+      if (!shouldRequestPermission) {
+        return
+      }
+    }
+
     const permission = await requestNotificationPermission()
     setNotificationPermission(permission)
   }
