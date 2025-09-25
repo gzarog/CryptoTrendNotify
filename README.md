@@ -1,73 +1,82 @@
-# React + TypeScript + Vite
+# CryptoTrendNotify
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+CryptoTrendNotify is a progressive web app (PWA) that surfaces crypto momentum insights with offline caching and install support. The application now ships with end-to-end push notifications so momentum alerts can be delivered even when the app is closed.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node.js 18+
+- npm 9+
 
-## React Compiler
+## Installation
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Generating VAPID keys
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Web push notifications require a public/private VAPID key pair. If you do not already have one, generate it with the `web-push` CLI (already installed as a dependency):
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx web-push generate-vapid-keys
 ```
+
+This command prints a `publicKey` and `privateKey`. Store them securely—you will need both to run the push delivery server.
+
+## Environment variables
+
+Create a `.env.local` (or export shell variables) with the following values:
+
+```
+VITE_API_BASE_URL=http://localhost:4000
+VAPID_PUBLIC_KEY=<your public key from the step above>
+VAPID_PRIVATE_KEY=<your private key from the step above>
+VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
+```
+
+`VITE_API_BASE_URL` lets the frontend know where to reach the push API. Update it if you deploy the push server elsewhere.
+
+## Available scripts
+
+### Start the push server
+
+The push server persists subscriptions and uses `web-push` to fan out notifications to every registered device.
+
+```bash
+npm run push:server
+```
+
+By default the server listens on port `4000`. You can customize it with environment variables:
+
+- `PUSH_SERVER_PORT`: override the port (falls back to `PORT`).
+- `PUSH_SUBSCRIPTIONS_FILE`: path to the JSON file that stores subscriptions (defaults to `server/data/push-subscriptions.json`).
+- `PUSH_ALLOWED_ORIGIN`: value for the `Access-Control-Allow-Origin` header.
+
+### Start the frontend
+
+Run the Vite development server (in a separate terminal):
+
+```bash
+npm run dev
+```
+
+### Build for production
+
+```bash
+npm run build
+```
+
+## Push delivery flow
+
+1. When users grant notification permission, the app calls the Push API to create a subscription and sends it to the backend.
+2. The subscription is stored in `server/data/push-subscriptions.json` so pushes survive server restarts.
+3. When a momentum alert fires, the client asks the backend to broadcast the notification. The backend sends the payload to every stored subscription via `web-push`. The service worker displays the alert even if the app is closed.
+
+The service worker lives in `src/sw.ts` and handles precaching, runtime caching, `push`, and `notificationclick` events.
+
+## Testing notifications locally
+
+1. Start the push server and Vite dev server.
+2. Load the app, enable notifications, and accept the browser permission prompt.
+3. Watch the terminal logs for "Push notification server listening" to confirm the backend is running.
+4. Trigger a momentum alert (or craft a `curl` request to `POST /api/push/notifications`) to verify the PWA receives pushes even while the tab is closed.

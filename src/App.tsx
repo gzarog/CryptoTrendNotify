@@ -4,7 +4,12 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { LineChart } from './components/LineChart'
 import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
-import { isNotificationSupported, requestNotificationPermission, showAppNotification } from './lib/notifications'
+import {
+  ensurePushSubscription,
+  isNotificationSupported,
+  requestNotificationPermission,
+  showAppNotification,
+} from './lib/notifications'
 
 type Candle = {
   openTime: number
@@ -315,6 +320,14 @@ function App() {
 
   const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
 
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      return
+    }
+
+    void ensurePushSubscription()
+  }, [notificationsEnabled])
+
   const handleEnableNotifications = async () => {
     if (!supportsNotifications) {
       return
@@ -339,6 +352,10 @@ function App() {
 
     const permission = await requestNotificationPermission()
     setNotificationPermission(permission)
+
+    if (permission === 'granted') {
+      await ensurePushSubscription()
+    }
   }
 
   const handleToggleNotificationTimeframe = (value: string) => {
