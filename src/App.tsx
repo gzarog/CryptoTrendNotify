@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { LineChart } from './components/LineChart'
 import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
 import {
+  checkPushServerConnection,
   ensurePushSubscription,
   isNotificationSupported,
   requestNotificationPermission,
@@ -80,6 +81,8 @@ const TIMEFRAMES: TimeframeOption[] = [
 const NOTIFICATION_TIMEFRAME_OPTIONS = TIMEFRAMES.filter((option) =>
   ['5', '15', '30'].includes(option.value),
 )
+
+const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '5'
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -284,11 +287,26 @@ function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
     supportsNotifications ? Notification.permission : 'denied',
   )
-  const [notificationTimeframes, setNotificationTimeframes] = useState<string[]>(() =>
-    NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => option.value),
+  const [selectedNotificationTimeframe, setSelectedNotificationTimeframe] = useState<string>(
+    DEFAULT_NOTIFICATION_TIMEFRAME,
   )
-  const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({})
+  const notificationTimeframes = useMemo(
+    () => (selectedNotificationTimeframe ? [selectedNotificationTimeframe] : []),
+    [selectedNotificationTimeframe],
+  )
+  const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({
+    [DEFAULT_NOTIFICATION_TIMEFRAME]: null,
+  })
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
+  const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
+
+  const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
+
+  const updatePushServerStatus = useCallback(async () => {
+    const connected = await fetchPushServerStatus()
+    setPushServerConnected(connected)
+    return connected
+  }, [fetchPushServerStatus])
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -321,12 +339,50 @@ function App() {
   const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
 
   useEffect(() => {
+    let cancelled = false
+
+    const checkStatus = async () => {
+      const connected = await fetchPushServerStatus()
+
+      if (!cancelled) {
+        setPushServerConnected(connected)
+      }
+    }
+
+    void checkStatus()
+
+    return () => {
+      cancelled = true
+    }
+  }, [fetchPushServerStatus])
+
+  useEffect(() => {
     if (!notificationsEnabled) {
       return
     }
 
-    void ensurePushSubscription()
-  }, [notificationsEnabled])
+    let cancelled = false
+
+    const initializeSubscription = async () => {
+      const subscriptionEstablished = await ensurePushSubscription()
+
+      if (cancelled) {
+        return
+      }
+
+      setPushServerConnected(subscriptionEstablished)
+
+      if (subscriptionEstablished) {
+        await updatePushServerStatus()
+      }
+    }
+
+    void initializeSubscription()
+
+    return () => {
+      cancelled = true
+    }
+  }, [notificationsEnabled, updatePushServerStatus])
 
   const handleEnableNotifications = async () => {
     if (!supportsNotifications) {
@@ -354,22 +410,25 @@ function App() {
     setNotificationPermission(permission)
 
     if (permission === 'granted') {
-      await ensurePushSubscription()
+      const subscriptionEstablished = await ensurePushSubscription()
+      setPushServerConnected(subscriptionEstablished)
+
+      if (!subscriptionEstablished) {
+        void updatePushServerStatus()
+        return
+      }
     }
+
+    void updatePushServerStatus()
   }
 
-  const handleToggleNotificationTimeframe = (value: string) => {
-    setNotificationTimeframes((previous) => {
-      if (previous.includes(value)) {
-        const next = previous.filter((entry) => entry !== value)
-        delete lastNotificationByTimeframeRef.current[value]
-        return next
+  const handleSelectNotificationTimeframe = (value: string) => {
+    setSelectedNotificationTimeframe((previous) => {
+      if (previous === value) {
+        return previous
       }
 
-      const next = [...previous, value]
-      next.sort((a, b) => Number(a) - Number(b))
-      lastNotificationByTimeframeRef.current[value] = null
-      return next
+      return value
     })
   }
 
@@ -414,15 +473,17 @@ function App() {
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
 
   useEffect(() => {
-    lastNotificationByTimeframeRef.current = {}
+    lastNotificationByTimeframeRef.current = {
+      [selectedNotificationTimeframe]: null,
+    }
     setMomentumNotifications([])
-  }, [symbol])
+  }, [selectedNotificationTimeframe, symbol])
 
   useEffect(() => {
     setMomentumNotifications((previous) =>
-      previous.filter((entry) => notificationTimeframes.includes(entry.timeframe)),
+      previous.filter((entry) => entry.timeframe === selectedNotificationTimeframe),
     )
-  }, [notificationTimeframes])
+  }, [selectedNotificationTimeframe])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -807,6 +868,27 @@ function App() {
           </div>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Push server
+              </span>
+              {pushServerConnected === null ? (
+                <span className="text-[11px] text-slate-500">Checking…</span>
+              ) : pushServerConnected ? (
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">
+                  Connected
+                </span>
+              ) : (
+                <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">
+                  Offline
+                </span>
+              )}
+            </div>
+            {pushServerConnected === false && (
+              <span className="text-[11px] text-rose-300">
+                Unable to reach the push server. Start the backend service to deliver notifications.
+              </span>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Notifications
               </span>
@@ -829,11 +911,11 @@ function App() {
               )}
             </div>
             <p className="text-[11px] leading-5 text-slate-500">
-              Receive browser and PWA alerts whenever momentum conditions trigger for the selected timeframes.
+              Receive browser and PWA alerts whenever momentum conditions trigger for the selected timeframe.
             </p>
             <div className="flex flex-wrap gap-2">
               {NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => {
-                const isSelected = notificationTimeframes.includes(option.value)
+                const isSelected = selectedNotificationTimeframe === option.value
                 return (
                   <label
                     key={option.value}
@@ -844,10 +926,11 @@ function App() {
                     } ${notificationsEnabled ? '' : 'opacity-50'}`}
                   >
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="notification-timeframe"
                       className="sr-only"
                       checked={isSelected}
-                      onChange={() => handleToggleNotificationTimeframe(option.value)}
+                      onChange={() => handleSelectNotificationTimeframe(option.value)}
                       disabled={!notificationsEnabled}
                     />
                     {option.label}
@@ -858,11 +941,6 @@ function App() {
             {notificationPermission === 'denied' && supportsNotifications && (
               <span className="text-[11px] text-rose-300">
                 Notifications are blocked. Update your browser settings to enable alerts.
-              </span>
-            )}
-            {notificationsEnabled && notificationTimeframes.length === 0 && (
-              <span className="text-[11px] text-amber-300">
-                Select at least one timeframe to receive notifications.
               </span>
             )}
           </div>

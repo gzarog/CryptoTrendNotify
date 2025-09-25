@@ -73,6 +73,16 @@ async function requestVapidPublicKey(): Promise<string | null> {
   }
 }
 
+export async function checkPushServerConnection(): Promise<boolean> {
+  try {
+    const data = await fetchJson<{ publicKey?: string }>('/api/push/public-key')
+    return typeof data.publicKey === 'string' && data.publicKey.length > 0
+  } catch (error) {
+    console.error('Push server connectivity check failed', error)
+    return false
+  }
+}
+
 export async function ensurePushSubscription(): Promise<boolean> {
   if (typeof window === 'undefined') {
     return false
