@@ -47,9 +47,23 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '30', label: '30m' },
   { value: '60', label: '60m' },
   { value: '120', label: '120m' },
-  { value: '240', label: '240m' },
-  { value: '360', label: '360m' },
+  { value: '240', label: '240m (4h)' },
+  { value: '360', label: '360m (6h)' },
+  { value: '420', label: '420m (7h)' },
 ]
+
+const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
+  '5': { period: 8, label: '7–9' },
+  '15': { period: 11, label: '9–12' },
+  '30': { period: 13, label: '12–14' },
+  '60': { period: 15, label: '14–16' },
+  '120': { period: 17, label: '16–18' },
+  '240': { period: 20, label: '18–21' },
+  '360': { period: 23, label: '21–24' },
+  '420': { period: 26, label: '24–28' },
+}
+
+const DEFAULT_RSI_SETTING = { period: 14, label: '14' }
 
 const REFRESH_OPTIONS: RefreshOption[] = [
   { value: '5', label: '5m' },
@@ -265,8 +279,26 @@ function App() {
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
 
-  const rsiValues = useMemo(() => calculateRSI(closes), [closes])
-  const stochasticValues = useMemo(() => calculateStochasticRSI(rsiValues), [rsiValues])
+  const rsiSetting = useMemo(
+    () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
+    [timeframe],
+  )
+
+  const rsiLengthDescription = useMemo(() => {
+    if (rsiSetting.label === String(rsiSetting.period)) {
+      return `${rsiSetting.period}`
+    }
+    return `${rsiSetting.period} • range ${rsiSetting.label}`
+  }, [rsiSetting.label, rsiSetting.period])
+
+  const rsiValues = useMemo(
+    () => calculateRSI(closes, rsiSetting.period),
+    [closes, rsiSetting.period],
+  )
+  const stochasticValues = useMemo(
+    () => calculateStochasticRSI(rsiValues, rsiSetting.period),
+    [rsiValues, rsiSetting.period],
+  )
 
   const labels = useMemo(
     () => (data ? data.map((candle) => formatTimestamp(candle.openTime, timeframe)) : []),
@@ -561,7 +593,7 @@ function App() {
                 )}
               </div>
               <LineChart
-                title="RSI (14)"
+                title={`RSI (${rsiLengthDescription})`}
                 data={rsiValues}
                 labels={labels}
                 color="#818cf8"
@@ -569,7 +601,7 @@ function App() {
                 guideLines={rsiGuideLines}
               />
               <LineChart
-                title="Stochastic RSI (14)"
+                title={`Stochastic RSI (${rsiLengthDescription})`}
                 data={stochasticValues}
                 labels={labels}
                 color="#34d399"
