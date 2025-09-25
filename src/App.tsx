@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { LineChart } from './components/LineChart'
 import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
+import { isNotificationSupported, requestNotificationPermission, showAppNotification } from './lib/notifications'
 
 type Candle = {
   openTime: number
@@ -47,6 +48,17 @@ type StochasticSetting = {
   label: string
 }
 
+type MomentumNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  direction: 'long' | 'short'
+  rsi: number
+  stochasticD: number
+  triggeredAt: number
+}
+
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
 const TIMEFRAMES: TimeframeOption[] = [
@@ -59,6 +71,10 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '360', label: '360m (6h)' },
   { value: '420', label: '420m (7h)' },
 ]
+
+const NOTIFICATION_TIMEFRAME_OPTIONS = TIMEFRAMES.filter((option) =>
+  ['5', '15', '30'].includes(option.value),
+)
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -135,6 +151,7 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 const DEFAULT_BAR_LIMIT = 1000
 const MAX_BAR_LIMIT = 5000
+const MAX_MOMENTUM_NOTIFICATIONS = 6
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
 // issues batched requests when callers ask for a larger window.
 const BYBIT_REQUEST_LIMIT = 200
@@ -258,6 +275,15 @@ function App() {
   const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
   const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
+  const supportsNotifications = isNotificationSupported()
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
+    supportsNotifications ? Notification.permission : 'denied',
+  )
+  const [notificationTimeframes, setNotificationTimeframes] = useState<string[]>(() =>
+    NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => option.value),
+  )
+  const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({})
+  const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -279,6 +305,58 @@ function App() {
   })
 
   useEffect(() => {
+    if (!supportsNotifications) {
+      setNotificationPermission('denied')
+      return
+    }
+
+    setNotificationPermission(Notification.permission)
+  }, [supportsNotifications])
+
+  const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
+
+  const handleEnableNotifications = async () => {
+    if (!supportsNotifications) {
+      return
+    }
+
+    if (notificationPermission === 'denied') {
+      window.alert(
+        'Browser notifications are currently blocked for this site. Update the permission to "Allow" if you would like to receive alerts.',
+      )
+      return
+    }
+
+    if (notificationPermission === 'default') {
+      const shouldRequestPermission = window.confirm(
+        'Momentum notifications are currently disabled. Select "OK" to open the browser prompt where you can accept or reject notifications for this site.',
+      )
+
+      if (!shouldRequestPermission) {
+        return
+      }
+    }
+
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+  }
+
+  const handleToggleNotificationTimeframe = (value: string) => {
+    setNotificationTimeframes((previous) => {
+      if (previous.includes(value)) {
+        const next = previous.filter((entry) => entry !== value)
+        delete lastNotificationByTimeframeRef.current[value]
+        return next
+      }
+
+      const next = [...previous, value]
+      next.sort((a, b) => Number(a) - Number(b))
+      lastNotificationByTimeframeRef.current[value] = null
+      return next
+    })
+  }
+
+  useEffect(() => {
     const handler = (event: BeforeInstallPromptEvent) => {
       event.preventDefault()
       setInstallPromptEvent(event)
@@ -297,6 +375,18 @@ function App() {
     placeholderData: (previousData) => previousData,
   })
 
+  const notificationQueries = useQueries({
+    queries: notificationTimeframes.map((value) => ({
+      queryKey: ['notification-kline', symbol, value, resolvedBarLimit],
+      queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
+      enabled: notificationsEnabled,
+      refetchInterval: Number(value) * 60_000,
+      refetchIntervalInBackground: true,
+      retry: 1,
+      placeholderData: (previousData: Candle[] | undefined) => previousData,
+    })),
+  })
+
   const lastUpdatedLabel = useMemo(() => {
     if (!dataUpdatedAt) {
       return '—'
@@ -305,6 +395,17 @@ function App() {
   }, [dataUpdatedAt])
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
+
+  useEffect(() => {
+    lastNotificationByTimeframeRef.current = {}
+    setMomentumNotifications([])
+  }, [symbol])
+
+  useEffect(() => {
+    setMomentumNotifications((previous) =>
+      previous.filter((entry) => notificationTimeframes.includes(entry.timeframe)),
+    )
+  }, [notificationTimeframes])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -385,6 +486,110 @@ function App() {
     [],
   )
 
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      return
+    }
+
+    notificationTimeframes.forEach((timeframeValue, index) => {
+      const query = notificationQueries[index]
+      const candles = query?.data
+
+      if (!candles || candles.length === 0) {
+        return
+      }
+
+      const latest = candles[candles.length - 1]
+
+      if (!latest) {
+        return
+      }
+
+      const lastProcessed = lastNotificationByTimeframeRef.current[timeframeValue]
+
+      if (lastProcessed === latest.openTime) {
+        return
+      }
+
+      const closesForTimeframe = candles.map((candle) => candle.close)
+      const timeframeRsiSetting = RSI_SETTINGS[timeframeValue] ?? DEFAULT_RSI_SETTING
+      const timeframeStochasticSetting =
+        STOCHASTIC_SETTINGS[timeframeValue] ?? DEFAULT_STOCHASTIC_SETTING
+
+      const timeframeRsiValues = calculateRSI(closesForTimeframe, timeframeRsiSetting.period)
+      const timeframeStochasticRsiValues = calculateRSI(
+        closesForTimeframe,
+        timeframeStochasticSetting.rsiLength,
+      )
+
+      const timeframeStochasticSeries = calculateStochasticRSI(timeframeStochasticRsiValues, {
+        stochLength: timeframeStochasticSetting.stochLength,
+        kSmoothing: timeframeStochasticSetting.kSmoothing,
+        dSmoothing: timeframeStochasticSetting.dSmoothing,
+      })
+
+      const latestRsi = timeframeRsiValues[timeframeRsiValues.length - 1]
+      const latestStochasticD =
+        timeframeStochasticSeries.dValues[timeframeStochasticSeries.dValues.length - 1]
+      const timeframeLabel = formatIntervalLabel(timeframeValue)
+
+      if (typeof latestRsi === 'number' && typeof latestStochasticD === 'number') {
+        if (latestRsi <= 30 && latestStochasticD <= 20) {
+          setMomentumNotifications((previous) => {
+            const entry: MomentumNotification = {
+              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+              symbol,
+              timeframe: timeframeValue,
+              timeframeLabel,
+              direction: 'long',
+              rsi: latestRsi,
+              stochasticD: latestStochasticD,
+              triggeredAt: latest.openTime,
+            }
+
+            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+          })
+          void showAppNotification({
+            title: `🟢 Long momentum ${timeframeLabel}`,
+            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+            tag: `long-${symbol}-${timeframeValue}`,
+            data: { symbol, timeframe: timeframeValue, direction: 'long' },
+          })
+        } else if (latestRsi >= 70 && latestStochasticD < 80) {
+          setMomentumNotifications((previous) => {
+            const entry: MomentumNotification = {
+              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+              symbol,
+              timeframe: timeframeValue,
+              timeframeLabel,
+              direction: 'short',
+              rsi: latestRsi,
+              stochasticD: latestStochasticD,
+              triggeredAt: latest.openTime,
+            }
+
+            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+          })
+          void showAppNotification({
+            title: `🔴 Short momentum ${timeframeLabel}`,
+            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+            tag: `short-${symbol}-${timeframeValue}`,
+            data: { symbol, timeframe: timeframeValue, direction: 'short' },
+          })
+        }
+      }
+
+      lastNotificationByTimeframeRef.current[timeframeValue] = latest.openTime
+    })
+  }, [
+    notificationQueries,
+    notificationTimeframes,
+    notificationsEnabled,
+    symbol,
+  ])
+
   const canInstall = useMemo(() => !!installPromptEvent, [installPromptEvent])
 
   const handleInstall = async () => {
@@ -404,6 +609,18 @@ function App() {
     setShowUpdateBanner(false)
   }
 
+  const handleManualRefresh = async () => {
+    await refetch()
+
+    if (notificationsEnabled) {
+      await Promise.all(
+        notificationQueries.map((query) =>
+          query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
+        ),
+      )
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
       <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
@@ -415,7 +632,7 @@ function App() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => refetch()}
+              onClick={handleManualRefresh}
               disabled={isFetching}
               className="rounded-full border border-indigo-400/60 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -571,6 +788,67 @@ function App() {
               </div>
             )}
           </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Notifications
+              </span>
+              {supportsNotifications ? (
+                notificationPermission === 'granted' ? (
+                  <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                    Enabled
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEnableNotifications}
+                    className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                  >
+                    Enable alerts
+                  </button>
+                )
+              ) : (
+                <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+              )}
+            </div>
+            <p className="text-[11px] leading-5 text-slate-500">
+              Receive browser and PWA alerts whenever momentum conditions trigger for the selected timeframes.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => {
+                const isSelected = notificationTimeframes.includes(option.value)
+                return (
+                  <label
+                    key={option.value}
+                    className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold transition ${
+                      isSelected
+                        ? 'bg-emerald-500/20 text-emerald-200 shadow'
+                        : 'border border-white/10 text-slate-300 hover:border-indigo-400 hover:text-white'
+                    } ${notificationsEnabled ? '' : 'opacity-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={isSelected}
+                      onChange={() => handleToggleNotificationTimeframe(option.value)}
+                      disabled={!notificationsEnabled}
+                    />
+                    {option.label}
+                  </label>
+                )
+              })}
+            </div>
+            {notificationPermission === 'denied' && supportsNotifications && (
+              <span className="text-[11px] text-rose-300">
+                Notifications are blocked. Update your browser settings to enable alerts.
+              </span>
+            )}
+            {notificationsEnabled && notificationTimeframes.length === 0 && (
+              <span className="text-[11px] text-amber-300">
+                Select at least one timeframe to receive notifications.
+              </span>
+            )}
+          </div>
         </section>
 
         <section className="flex flex-col gap-6">
@@ -586,6 +864,49 @@ function App() {
           )}
           {!isLoading && !isError && (
             <>
+              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Momentum notifications
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Latest alerts for {symbol}
+                  </span>
+                </div>
+                {momentumNotifications.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    No momentum notifications have been triggered yet. Alerts will surface here once the
+                    RSI and Stochastic RSI conditions are met.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
+                    {momentumNotifications.map((entry) => {
+                      const isLong = entry.direction === 'long'
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${
+                            isLong
+                              ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
+                              : 'border-rose-400/40 bg-rose-500/10 text-rose-100'
+                          }`}
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-wide">
+                            {isLong ? 'Long momentum' : 'Short momentum'} • {entry.timeframeLabel}
+                          </span>
+                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                          <span className="text-[11px] text-white/80">
+                            RSI {entry.rsi.toFixed(2)} • Stoch RSI %D {entry.stochasticD.toFixed(2)}
+                          </span>
+                          <span className="text-[10px] text-white/60">
+                            {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex flex-col gap-1">
