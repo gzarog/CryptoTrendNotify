@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { LineChart } from './components/LineChart'
 import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
+import { isNotificationSupported, requestNotificationPermission, showAppNotification } from './lib/notifications'
 
 type Candle = {
   openTime: number
@@ -59,6 +60,10 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '360', label: '360m (6h)' },
   { value: '420', label: '420m (7h)' },
 ]
+
+const NOTIFICATION_TIMEFRAME_OPTIONS = TIMEFRAMES.filter((option) =>
+  ['5', '15', '30'].includes(option.value),
+)
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -258,6 +263,14 @@ function App() {
   const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
   const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
+  const supportsNotifications = isNotificationSupported()
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
+    supportsNotifications ? Notification.permission : 'denied',
+  )
+  const [notificationTimeframes, setNotificationTimeframes] = useState<string[]>(() =>
+    NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => option.value),
+  )
+  const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({})
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -279,6 +292,37 @@ function App() {
   })
 
   useEffect(() => {
+    if (!supportsNotifications) {
+      setNotificationPermission('denied')
+      return
+    }
+
+    setNotificationPermission(Notification.permission)
+  }, [supportsNotifications])
+
+  const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
+
+  const handleEnableNotifications = async () => {
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+  }
+
+  const handleToggleNotificationTimeframe = (value: string) => {
+    setNotificationTimeframes((previous) => {
+      if (previous.includes(value)) {
+        const next = previous.filter((entry) => entry !== value)
+        delete lastNotificationByTimeframeRef.current[value]
+        return next
+      }
+
+      const next = [...previous, value]
+      next.sort((a, b) => Number(a) - Number(b))
+      lastNotificationByTimeframeRef.current[value] = null
+      return next
+    })
+  }
+
+  useEffect(() => {
     const handler = (event: BeforeInstallPromptEvent) => {
       event.preventDefault()
       setInstallPromptEvent(event)
@@ -297,6 +341,18 @@ function App() {
     placeholderData: (previousData) => previousData,
   })
 
+  const notificationQueries = useQueries({
+    queries: notificationTimeframes.map((value) => ({
+      queryKey: ['notification-kline', symbol, value, resolvedBarLimit],
+      queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
+      enabled: notificationsEnabled,
+      refetchInterval: Number(value) * 60_000,
+      refetchIntervalInBackground: true,
+      retry: 1,
+      placeholderData: (previousData: Candle[] | undefined) => previousData,
+    })),
+  })
+
   const lastUpdatedLabel = useMemo(() => {
     if (!dataUpdatedAt) {
       return '—'
@@ -305,6 +361,10 @@ function App() {
   }, [dataUpdatedAt])
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
+
+  useEffect(() => {
+    lastNotificationByTimeframeRef.current = {}
+  }, [symbol])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -385,6 +445,80 @@ function App() {
     [],
   )
 
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      return
+    }
+
+    notificationTimeframes.forEach((timeframeValue, index) => {
+      const query = notificationQueries[index]
+      const candles = query?.data
+
+      if (!candles || candles.length === 0) {
+        return
+      }
+
+      const latest = candles[candles.length - 1]
+
+      if (!latest) {
+        return
+      }
+
+      const lastProcessed = lastNotificationByTimeframeRef.current[timeframeValue]
+
+      if (lastProcessed === latest.openTime) {
+        return
+      }
+
+      const closesForTimeframe = candles.map((candle) => candle.close)
+      const timeframeRsiSetting = RSI_SETTINGS[timeframeValue] ?? DEFAULT_RSI_SETTING
+      const timeframeStochasticSetting =
+        STOCHASTIC_SETTINGS[timeframeValue] ?? DEFAULT_STOCHASTIC_SETTING
+
+      const timeframeRsiValues = calculateRSI(closesForTimeframe, timeframeRsiSetting.period)
+      const timeframeStochasticRsiValues = calculateRSI(
+        closesForTimeframe,
+        timeframeStochasticSetting.rsiLength,
+      )
+
+      const timeframeStochasticSeries = calculateStochasticRSI(timeframeStochasticRsiValues, {
+        stochLength: timeframeStochasticSetting.stochLength,
+        kSmoothing: timeframeStochasticSetting.kSmoothing,
+        dSmoothing: timeframeStochasticSetting.dSmoothing,
+      })
+
+      const latestRsi = timeframeRsiValues[timeframeRsiValues.length - 1]
+      const latestStochasticD =
+        timeframeStochasticSeries.dValues[timeframeStochasticSeries.dValues.length - 1]
+      const timeframeLabel = formatIntervalLabel(timeframeValue)
+
+      if (typeof latestRsi === 'number' && typeof latestStochasticD === 'number') {
+        if (latestRsi <= 30 && latestStochasticD <= 20) {
+          void showAppNotification({
+            title: `🟢 Long momentum ${timeframeLabel}`,
+            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+            tag: `long-${symbol}-${timeframeValue}`,
+            data: { symbol, timeframe: timeframeValue, direction: 'long' },
+          })
+        } else if (latestRsi >= 70 && latestStochasticD >= 80) {
+          void showAppNotification({
+            title: `🔴 Short momentum ${timeframeLabel}`,
+            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+            tag: `short-${symbol}-${timeframeValue}`,
+            data: { symbol, timeframe: timeframeValue, direction: 'short' },
+          })
+        }
+      }
+
+      lastNotificationByTimeframeRef.current[timeframeValue] = latest.openTime
+    })
+  }, [
+    notificationQueries,
+    notificationTimeframes,
+    notificationsEnabled,
+    symbol,
+  ])
+
   const canInstall = useMemo(() => !!installPromptEvent, [installPromptEvent])
 
   const handleInstall = async () => {
@@ -404,6 +538,18 @@ function App() {
     setShowUpdateBanner(false)
   }
 
+  const handleManualRefresh = async () => {
+    await refetch()
+
+    if (notificationsEnabled) {
+      await Promise.all(
+        notificationQueries.map((query) =>
+          query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
+        ),
+      )
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
       <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
@@ -415,7 +561,7 @@ function App() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => refetch()}
+              onClick={handleManualRefresh}
               disabled={isFetching}
               className="rounded-full border border-indigo-400/60 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -569,6 +715,67 @@ function App() {
                 />
                 <span className="text-xs text-slate-400">minutes</span>
               </div>
+            )}
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Notifications
+              </span>
+              {supportsNotifications ? (
+                notificationPermission === 'granted' ? (
+                  <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                    Enabled
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEnableNotifications}
+                    className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                  >
+                    Enable alerts
+                  </button>
+                )
+              ) : (
+                <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+              )}
+            </div>
+            <p className="text-[11px] leading-5 text-slate-500">
+              Receive browser and PWA alerts whenever momentum conditions trigger for the selected timeframes.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => {
+                const isSelected = notificationTimeframes.includes(option.value)
+                return (
+                  <label
+                    key={option.value}
+                    className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold transition ${
+                      isSelected
+                        ? 'bg-emerald-500/20 text-emerald-200 shadow'
+                        : 'border border-white/10 text-slate-300 hover:border-indigo-400 hover:text-white'
+                    } ${notificationsEnabled ? '' : 'opacity-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={isSelected}
+                      onChange={() => handleToggleNotificationTimeframe(option.value)}
+                      disabled={!notificationsEnabled}
+                    />
+                    {option.label}
+                  </label>
+                )
+              })}
+            </div>
+            {notificationPermission === 'denied' && supportsNotifications && (
+              <span className="text-[11px] text-rose-300">
+                Notifications are blocked. Update your browser settings to enable alerts.
+              </span>
+            )}
+            {notificationsEnabled && notificationTimeframes.length === 0 && (
+              <span className="text-[11px] text-amber-300">
+                Select at least one timeframe to receive notifications.
+              </span>
             )}
           </div>
         </section>
