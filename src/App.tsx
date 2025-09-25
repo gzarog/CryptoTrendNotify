@@ -64,6 +64,8 @@ const BAR_COUNT_OPTIONS: BarCountOption[] = [
   { value: '50', label: '50' },
   { value: '100', label: '100' },
   { value: '200', label: '200' },
+  { value: '500', label: '500' },
+  { value: '1000', label: '1000' },
   { value: 'custom', label: 'Custom' },
 ]
 
@@ -87,34 +89,46 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
 })
 
 const DEFAULT_BAR_LIMIT = 200
-const MAX_BAR_LIMIT = 200
+const MAX_BAR_LIMIT = 1000
+// Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
+// issues batched requests when callers ask for a larger window.
+const BYBIT_REQUEST_LIMIT = 200
 
 async function fetchBybitOHLCV(symbol: string, interval: string, limit: number): Promise<Candle[]> {
-  const url = new URL('https://api.bybit.com/v5/market/kline')
-  url.searchParams.set('category', 'linear')
-  url.searchParams.set('symbol', symbol)
-  url.searchParams.set('interval', interval)
   const sanitizedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_BAR_LIMIT)
-  url.searchParams.set('limit', sanitizedLimit.toString())
+  const collected: Candle[] = []
+  let nextEndTime: number | undefined
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: 'application/json',
-    },
-  })
+  while (collected.length < sanitizedLimit) {
+    const url = new URL('https://api.bybit.com/v5/market/kline')
+    url.searchParams.set('category', 'linear')
+    url.searchParams.set('symbol', symbol)
+    url.searchParams.set('interval', interval)
 
-  if (!response.ok) {
-    throw new Error(`Unable to load data (status ${response.status})`)
-  }
+    const batchLimit = Math.min(sanitizedLimit - collected.length, BYBIT_REQUEST_LIMIT)
+    url.searchParams.set('limit', batchLimit.toString())
 
-  const payload = (await response.json()) as BybitKlineResponse
+    if (nextEndTime !== undefined) {
+      url.searchParams.set('end', nextEndTime.toString())
+    }
 
-  if (payload.retCode !== 0 || !payload.result?.list) {
-    throw new Error(payload.retMsg || 'Bybit API returned an error')
-  }
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
 
-  return payload.result.list
-    .map((entry) => ({
+    if (!response.ok) {
+      throw new Error(`Unable to load data (status ${response.status})`)
+    }
+
+    const payload = (await response.json()) as BybitKlineResponse
+
+    if (payload.retCode !== 0 || !payload.result?.list) {
+      throw new Error(payload.retMsg || 'Bybit API returned an error')
+    }
+
+    const candles = payload.result.list.map((entry) => ({
       openTime: Number(entry[0]),
       open: Number(entry[1]),
       high: Number(entry[2]),
@@ -124,7 +138,31 @@ async function fetchBybitOHLCV(symbol: string, interval: string, limit: number):
       turnover: Number(entry[6] ?? 0),
       closeTime: Number(entry[0]) + 1,
     }))
-    .sort((a, b) => a.openTime - b.openTime)
+
+    if (candles.length === 0) {
+      break
+    }
+
+    collected.push(...candles)
+
+    if (candles.length < batchLimit) {
+      break
+    }
+
+    const oldestCandle = candles.reduce((oldest, candle) =>
+      candle.openTime < oldest.openTime ? candle : oldest,
+    candles[0])
+
+    nextEndTime = oldestCandle.openTime - 1
+  }
+
+  const deduped = Array.from(
+    collected
+      .reduce((acc, candle) => acc.set(candle.openTime, candle), new Map<number, Candle>())
+      .values(),
+  )
+
+  return deduped.sort((a, b) => a.openTime - b.openTime).slice(-sanitizedLimit)
 }
 
 function resolveRefreshInterval(selection: string, customValue: string): number | false {
@@ -172,7 +210,7 @@ function App() {
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
   const [refreshSelection, setRefreshSelection] = useState(REFRESH_OPTIONS[0].value)
   const [customRefresh, setCustomRefresh] = useState('15')
-  const [barSelection, setBarSelection] = useState(BAR_COUNT_OPTIONS[3].value)
+  const [barSelection, setBarSelection] = useState('200')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
 
   const refreshInterval = useMemo(
