@@ -281,7 +281,7 @@ export function LineChart({
               d={buildPath(points)}
               fill="none"
               stroke={resolvedSeries[index]?.color ?? DEFAULT_COLOR}
-              strokeWidth={1.25}
+              strokeWidth={0.625}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
