@@ -556,7 +556,7 @@ function App() {
             tag: `long-${symbol}-${timeframeValue}`,
             data: { symbol, timeframe: timeframeValue, direction: 'long' },
           })
-        } else if (latestRsi >= 70 && latestStochasticD >= 80) {
+        } else if (latestRsi >= 70 && latestStochasticD < 80) {
           setMomentumNotifications((previous) => {
             const entry: MomentumNotification = {
               id: `${symbol}-${timeframeValue}-${latest.openTime}`,
