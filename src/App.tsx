@@ -167,7 +167,7 @@ function App() {
   const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['bybit-kline', symbol, timeframe],
     queryFn: () => fetchBybitOHLCV(symbol, timeframe),
-    refetchInterval,
+    refetchInterval: refreshInterval,
     refetchIntervalInBackground: true,
     retry: 1,
     keepPreviousData: true,
