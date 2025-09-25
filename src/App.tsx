@@ -656,7 +656,7 @@ function App() {
                 labels={labels}
                 series={[
                   { name: '%K', data: stochasticSeries.kValues, color: '#34d399' },
-                  { name: '%D', data: stochasticSeries.dValues, color: '#38bdf8' },
+                  { name: '%D', data: stochasticSeries.dValues, color: '#f87171' },
                 ]}
                 yDomain={{ min: 0, max: 100 }}
                 guideLines={stochasticGuideLines}
