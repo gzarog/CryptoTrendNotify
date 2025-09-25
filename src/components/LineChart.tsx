@@ -192,7 +192,7 @@ export function LineChart({
             </g>
           )
         })}
-        <path d={buildPath(points)} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={buildPath(points)} fill="none" stroke={color} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
         {ticks.map((value) => {
           const y =
             PADDING + (DEFAULT_HEIGHT - PADDING * 2) -
