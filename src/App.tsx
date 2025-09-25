@@ -39,6 +39,14 @@ type BarCountOption = {
   label: string
 }
 
+type StochasticSetting = {
+  rsiLength: number
+  stochLength: number
+  kSmoothing: number
+  dSmoothing: number
+  label: string
+}
+
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
 const TIMEFRAMES: TimeframeOption[] = [
@@ -64,6 +72,25 @@ const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
 }
 
 const DEFAULT_RSI_SETTING = { period: 14, label: '14' }
+
+const STOCHASTIC_SETTINGS: Record<string, StochasticSetting> = {
+  '5': { rsiLength: 7, stochLength: 7, kSmoothing: 2, dSmoothing: 2, label: 'RSI 7 • Stoch 7 • %K 2 • %D 2' },
+  '15': { rsiLength: 9, stochLength: 9, kSmoothing: 3, dSmoothing: 3, label: 'RSI 9 • Stoch 9 • %K 3 (2–3) • %D 3' },
+  '30': { rsiLength: 12, stochLength: 12, kSmoothing: 3, dSmoothing: 3, label: 'RSI 12 • Stoch 12 • %K 3 • %D 3' },
+  '60': { rsiLength: 14, stochLength: 14, kSmoothing: 3, dSmoothing: 3, label: 'RSI 14 • Stoch 14 • %K 3 • %D 3' },
+  '120': { rsiLength: 16, stochLength: 16, kSmoothing: 3, dSmoothing: 3, label: 'RSI 16 • Stoch 16 • %K 3 • %D 3' },
+  '240': { rsiLength: 21, stochLength: 21, kSmoothing: 4, dSmoothing: 4, label: 'RSI 21 • Stoch 21 • %K 4 (3–4) • %D 4 (3–4)' },
+  '360': { rsiLength: 24, stochLength: 24, kSmoothing: 4, dSmoothing: 4, label: 'RSI 24 • Stoch 24 • %K 4 • %D 4' },
+  '420': { rsiLength: 28, stochLength: 28, kSmoothing: 4, dSmoothing: 4, label: 'RSI 28 • Stoch 28 • %K 4 • %D 4' },
+}
+
+const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
+  rsiLength: 14,
+  stochLength: 14,
+  kSmoothing: 3,
+  dSmoothing: 3,
+  label: 'RSI 14 • Stoch 14 • %K 3 • %D 3',
+}
 
 const REFRESH_OPTIONS: RefreshOption[] = [
   { value: '5', label: '5m' },
@@ -284,6 +311,11 @@ function App() {
     [timeframe],
   )
 
+  const stochasticSetting = useMemo(
+    () => STOCHASTIC_SETTINGS[timeframe] ?? DEFAULT_STOCHASTIC_SETTING,
+    [timeframe],
+  )
+
   const rsiLengthDescription = useMemo(() => {
     if (rsiSetting.label === String(rsiSetting.period)) {
       return `${rsiSetting.period}`
@@ -295,9 +327,28 @@ function App() {
     () => calculateRSI(closes, rsiSetting.period),
     [closes, rsiSetting.period],
   )
-  const stochasticValues = useMemo(
-    () => calculateStochasticRSI(rsiValues, rsiSetting.period),
-    [rsiValues, rsiSetting.period],
+  const stochasticRsiValues = useMemo(
+    () => calculateRSI(closes, stochasticSetting.rsiLength),
+    [closes, stochasticSetting.rsiLength],
+  )
+  const stochasticSeries = useMemo(
+    () =>
+      calculateStochasticRSI(stochasticRsiValues, {
+        stochLength: stochasticSetting.stochLength,
+        kSmoothing: stochasticSetting.kSmoothing,
+        dSmoothing: stochasticSetting.dSmoothing,
+      }),
+    [
+      stochasticRsiValues,
+      stochasticSetting.dSmoothing,
+      stochasticSetting.kSmoothing,
+      stochasticSetting.stochLength,
+    ],
+  )
+
+  const stochasticLengthDescription = useMemo(
+    () => stochasticSetting.label,
+    [stochasticSetting.label],
   )
 
   const labels = useMemo(
@@ -601,10 +652,12 @@ function App() {
                 guideLines={rsiGuideLines}
               />
               <LineChart
-                title={`Stochastic RSI (${rsiLengthDescription})`}
-                data={stochasticValues}
+                title={`Stochastic RSI (${stochasticLengthDescription})`}
                 labels={labels}
-                color="#34d399"
+                series={[
+                  { name: '%K', data: stochasticSeries.kValues, color: '#34d399' },
+                  { name: '%D', data: stochasticSeries.dValues, color: '#38bdf8' },
+                ]}
                 yDomain={{ min: 0, max: 100 }}
                 guideLines={stochasticGuideLines}
               />

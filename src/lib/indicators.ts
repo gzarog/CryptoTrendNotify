@@ -38,11 +38,32 @@ export function calculateRSI(values: number[], period = DEFAULT_PERIOD): Array<n
   return result
 }
 
+type StochasticRSIOptions = {
+  stochLength?: number
+  kSmoothing?: number
+  dSmoothing?: number
+}
+
+type StochasticRSIResult = {
+  kValues: Array<number | null>
+  dValues: Array<number | null>
+}
+
 export function calculateStochasticRSI(
   rsiValues: Array<number | null>,
-  period = DEFAULT_PERIOD,
-): Array<number | null> {
-  const result: Array<number | null> = new Array(rsiValues.length).fill(null)
+  options: StochasticRSIOptions = {},
+): StochasticRSIResult {
+  const {
+    stochLength = DEFAULT_PERIOD,
+    kSmoothing = 3,
+    dSmoothing = 3,
+  } = options
+
+  const normalizedStochLength = Math.max(1, Math.floor(stochLength))
+  const normalizedKSmoothing = Math.max(1, Math.floor(kSmoothing))
+  const normalizedDSmoothing = Math.max(1, Math.floor(dSmoothing))
+
+  const rawValues: Array<number | null> = new Array(rsiValues.length).fill(null)
 
   for (let i = 0; i < rsiValues.length; i += 1) {
     const currentRSI = rsiValues[i]
@@ -50,21 +71,69 @@ export function calculateStochasticRSI(
       continue
     }
 
-    const start = Math.max(0, i - period + 1)
-    const window = rsiValues.slice(start, i + 1).filter((value): value is number => value != null)
+    const start = Math.max(0, i - normalizedStochLength + 1)
+    let lowest = Infinity
+    let highest = -Infinity
+    let count = 0
+
+    for (let j = start; j <= i; j += 1) {
+      const value = rsiValues[j]
+      if (value == null) {
+        continue
+      }
+
+      lowest = Math.min(lowest, value)
+      highest = Math.max(highest, value)
+      count += 1
+    }
+
+    if (count < normalizedStochLength) {
+      continue
+    }
+
+    if (highest === lowest) {
+      rawValues[i] = 0
+    } else {
+      rawValues[i] = ((currentRSI - lowest) / (highest - lowest)) * 100
+    }
+  }
+
+  const kValues = applySimpleMovingAverage(rawValues, normalizedKSmoothing)
+  const dValues = applySimpleMovingAverage(kValues, normalizedDSmoothing)
+
+  return {
+    kValues,
+    dValues,
+  }
+}
+
+function applySimpleMovingAverage(values: Array<number | null>, period: number): Array<number | null> {
+  if (period <= 1) {
+    return values.slice()
+  }
+
+  const result: Array<number | null> = new Array(values.length).fill(null)
+  const window: number[] = []
+
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i]
+    if (value == null) {
+      window.length = 0
+      continue
+    }
+
+    window.push(value)
 
     if (window.length < period) {
       continue
     }
 
-    const lowest = Math.min(...window)
-    const highest = Math.max(...window)
-
-    if (highest === lowest) {
-      result[i] = 0
-    } else {
-      result[i] = ((currentRSI - lowest) / (highest - lowest)) * 100
+    if (window.length > period) {
+      window.shift()
     }
+
+    const sum = window.reduce((accumulator, entry) => accumulator + entry, 0)
+    result[i] = sum / period
   }
 
   return result
