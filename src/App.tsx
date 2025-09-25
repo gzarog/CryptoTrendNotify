@@ -283,11 +283,20 @@ function App() {
     return { difference, percent }
   }, [data, latestCandle])
 
-  const guideLines = useMemo(
+  const rsiGuideLines = useMemo(
     () => [
       { value: 70, label: '70', color: 'rgba(239, 68, 68, 0.7)' },
       { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
       { value: 30, label: '30', color: 'rgba(16, 185, 129, 0.7)' },
+    ],
+    [],
+  )
+
+  const stochasticGuideLines = useMemo(
+    () => [
+      { value: 80, label: '80', color: 'rgba(239, 68, 68, 0.7)' },
+      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
+      { value: 20, label: '20', color: 'rgba(16, 185, 129, 0.7)' },
     ],
     [],
   )
@@ -529,14 +538,21 @@ function App() {
           )}
           {!isLoading && !isError && (
             <>
-              <LineChart title="RSI (14)" data={rsiValues} labels={labels} color="#818cf8" yDomain={{ min: 0, max: 100 }} guideLines={guideLines} />
+              <LineChart
+                title="RSI (14)"
+                data={rsiValues}
+                labels={labels}
+                color="#818cf8"
+                yDomain={{ min: 0, max: 100 }}
+                guideLines={rsiGuideLines}
+              />
               <LineChart
                 title="Stochastic RSI (14)"
                 data={stochasticValues}
                 labels={labels}
                 color="#34d399"
                 yDomain={{ min: 0, max: 100 }}
-                guideLines={guideLines}
+                guideLines={stochasticGuideLines}
               />
             </>
           )}
