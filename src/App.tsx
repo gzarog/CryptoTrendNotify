@@ -516,14 +516,14 @@ function App() {
           </div>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section className="flex flex-col gap-6">
           {isLoading && (
-            <div className="col-span-full flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
+            <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
               <p>Loading live market data…</p>
             </div>
           )}
           {isError && (
-            <div className="col-span-full rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-sm text-rose-200">
+            <div className="rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-sm text-rose-200">
               <p>{error instanceof Error ? error.message : 'Failed to load data.'}</p>
             </div>
           )}
