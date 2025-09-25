@@ -48,6 +48,17 @@ type StochasticSetting = {
   label: string
 }
 
+type MomentumNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  direction: 'long' | 'short'
+  rsi: number
+  stochasticD: number
+  triggeredAt: number
+}
+
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
 const TIMEFRAMES: TimeframeOption[] = [
@@ -140,6 +151,7 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 const DEFAULT_BAR_LIMIT = 1000
 const MAX_BAR_LIMIT = 5000
+const MAX_MOMENTUM_NOTIFICATIONS = 6
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
 // issues batched requests when callers ask for a larger window.
 const BYBIT_REQUEST_LIMIT = 200
@@ -271,6 +283,7 @@ function App() {
     NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => option.value),
   )
   const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({})
+  const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -364,7 +377,14 @@ function App() {
 
   useEffect(() => {
     lastNotificationByTimeframeRef.current = {}
+    setMomentumNotifications([])
   }, [symbol])
+
+  useEffect(() => {
+    setMomentumNotifications((previous) =>
+      previous.filter((entry) => notificationTimeframes.includes(entry.timeframe)),
+    )
+  }, [notificationTimeframes])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -494,6 +514,21 @@ function App() {
 
       if (typeof latestRsi === 'number' && typeof latestStochasticD === 'number') {
         if (latestRsi <= 30 && latestStochasticD <= 20) {
+          setMomentumNotifications((previous) => {
+            const entry: MomentumNotification = {
+              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+              symbol,
+              timeframe: timeframeValue,
+              timeframeLabel,
+              direction: 'long',
+              rsi: latestRsi,
+              stochasticD: latestStochasticD,
+              triggeredAt: latest.openTime,
+            }
+
+            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+          })
           void showAppNotification({
             title: `🟢 Long momentum ${timeframeLabel}`,
             body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
@@ -501,6 +536,21 @@ function App() {
             data: { symbol, timeframe: timeframeValue, direction: 'long' },
           })
         } else if (latestRsi >= 70 && latestStochasticD >= 80) {
+          setMomentumNotifications((previous) => {
+            const entry: MomentumNotification = {
+              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+              symbol,
+              timeframe: timeframeValue,
+              timeframeLabel,
+              direction: 'short',
+              rsi: latestRsi,
+              stochasticD: latestStochasticD,
+              triggeredAt: latest.openTime,
+            }
+
+            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+          })
           void showAppNotification({
             title: `🔴 Short momentum ${timeframeLabel}`,
             body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
@@ -793,6 +843,49 @@ function App() {
           )}
           {!isLoading && !isError && (
             <>
+              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Momentum notifications
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Latest alerts for {symbol}
+                  </span>
+                </div>
+                {momentumNotifications.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    No momentum notifications have been triggered yet. Alerts will surface here once the
+                    RSI and Stochastic RSI conditions are met.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
+                    {momentumNotifications.map((entry) => {
+                      const isLong = entry.direction === 'long'
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${
+                            isLong
+                              ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
+                              : 'border-rose-400/40 bg-rose-500/10 text-rose-100'
+                          }`}
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-wide">
+                            {isLong ? 'Long momentum' : 'Short momentum'} • {entry.timeframeLabel}
+                          </span>
+                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                          <span className="text-[11px] text-white/80">
+                            RSI {entry.rsi.toFixed(2)} • Stoch RSI %D {entry.stochasticD.toFixed(2)}
+                          </span>
+                          <span className="text-[10px] text-white/60">
+                            {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex flex-col gap-1">
