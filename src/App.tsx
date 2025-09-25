@@ -216,6 +216,7 @@ function App() {
   const [customRefresh, setCustomRefresh] = useState('15')
   const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
+  const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -487,42 +488,6 @@ function App() {
               </div>
             )}
           </div>
-          <div className="flex flex-col justify-between gap-2 rounded-2xl border border-white/5 bg-slate-950/50 p-4 text-sm lg:col-span-2">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</p>
-              <p className="text-lg font-semibold text-white">{lastUpdatedLabel}</p>
-              <p className="text-xs text-slate-400">
-                {refreshInterval
-                  ? `Every ${
-                      refreshSelection === 'custom'
-                        ? `${customRefresh || '—'}m`
-                        : formatIntervalLabel(refreshSelection)
-                    }`
-                  : 'Auto refresh disabled'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Data window</p>
-              <p className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</p>
-              <p className="text-xs text-slate-400">Applied across all charts</p>
-            </div>
-            {latestCandle && (
-              <div>
-                <p className="text-xs uppercase tracking-wider text-slate-400">Last close</p>
-                <p className="text-lg font-semibold text-white">{latestCandle.close.toFixed(5)}</p>
-                {priceChange && (
-                  <p
-                    className={`text-xs font-medium ${
-                      priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    {priceChange.difference >= 0 ? '+' : ''}
-                    {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
         </section>
 
         <section className="flex flex-col gap-6">
@@ -538,6 +503,63 @@ function App() {
           )}
           {!isLoading && !isError && (
             <>
+              <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <h2 className="text-base font-semibold text-white">Market snapshot</h2>
+                    <p className="text-xs text-slate-400">Applied across all charts</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMarketSummaryCollapsed((previous) => !previous)}
+                    className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
+                    aria-expanded={!isMarketSummaryCollapsed}
+                  >
+                    {isMarketSummaryCollapsed ? 'Expand' : 'Collapse'}
+                    <span aria-hidden="true">{isMarketSummaryCollapsed ? '▾' : '▴'}</span>
+                  </button>
+                </div>
+                {!isMarketSummaryCollapsed && (
+                  <div className="grid gap-6 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</span>
+                      <span className="text-lg font-semibold text-white">{lastUpdatedLabel}</span>
+                      <span className="text-xs text-slate-400">
+                        {refreshInterval
+                          ? `Every ${
+                              refreshSelection === 'custom'
+                                ? `${customRefresh || '—'}m`
+                                : formatIntervalLabel(refreshSelection)
+                            }`
+                          : 'Auto refresh disabled'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Data window</span>
+                      <span className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</span>
+                      <span className="text-xs text-slate-400">Refresh applies to RSI and Stochastic RSI panels</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Last close</span>
+                      <span className="text-lg font-semibold text-white">
+                        {latestCandle ? latestCandle.close.toFixed(5) : '—'}
+                      </span>
+                      {latestCandle && priceChange ? (
+                        <span
+                          className={`text-xs font-medium ${
+                            priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {priceChange.difference >= 0 ? '+' : ''}
+                          {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500">Waiting for additional price data…</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <LineChart
                 title="RSI (14)"
                 data={rsiValues}
