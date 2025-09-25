@@ -60,12 +60,16 @@ const REFRESH_OPTIONS: RefreshOption[] = [
 ]
 
 const BAR_COUNT_OPTIONS: BarCountOption[] = [
-  { value: '25', label: '25' },
-  { value: '50', label: '50' },
-  { value: '100', label: '100' },
-  { value: '200', label: '200' },
   { value: '500', label: '500' },
   { value: '1000', label: '1000' },
+  { value: '1500', label: '1500' },
+  { value: '2000', label: '2000' },
+  { value: '2500', label: '2500' },
+  { value: '3000', label: '3000' },
+  { value: '3500', label: '3500' },
+  { value: '4000', label: '4000' },
+  { value: '4500', label: '4500' },
+  { value: '5000', label: '5000' },
   { value: 'custom', label: 'Custom' },
 ]
 
@@ -88,8 +92,8 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
   second: '2-digit',
 })
 
-const DEFAULT_BAR_LIMIT = 200
-const MAX_BAR_LIMIT = 1000
+const DEFAULT_BAR_LIMIT = 1000
+const MAX_BAR_LIMIT = 5000
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
 // issues batched requests when callers ask for a larger window.
 const BYBIT_REQUEST_LIMIT = 200
@@ -210,7 +214,7 @@ function App() {
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
   const [refreshSelection, setRefreshSelection] = useState(REFRESH_OPTIONS[0].value)
   const [customRefresh, setCustomRefresh] = useState('15')
-  const [barSelection, setBarSelection] = useState('200')
+  const [barSelection, setBarSelection] = useState('1000')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
 
   const refreshInterval = useMemo(
