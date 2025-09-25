@@ -34,6 +34,11 @@ type RefreshOption = {
   label: string
 }
 
+type BarCountOption = {
+  value: string
+  label: string
+}
+
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
 const TIMEFRAMES: TimeframeOption[] = [
@@ -51,6 +56,20 @@ const REFRESH_OPTIONS: RefreshOption[] = [
   { value: '15', label: '15m' },
   { value: '30', label: '30m' },
   { value: '60', label: '60m' },
+  { value: 'custom', label: 'Custom' },
+]
+
+const BAR_COUNT_OPTIONS: BarCountOption[] = [
+  { value: '500', label: '500' },
+  { value: '1000', label: '1000' },
+  { value: '1500', label: '1500' },
+  { value: '2000', label: '2000' },
+  { value: '2500', label: '2500' },
+  { value: '3000', label: '3000' },
+  { value: '3500', label: '3500' },
+  { value: '4000', label: '4000' },
+  { value: '4500', label: '4500' },
+  { value: '5000', label: '5000' },
   { value: 'custom', label: 'Custom' },
 ]
 
@@ -73,31 +92,47 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
   second: '2-digit',
 })
 
-async function fetchBybitOHLCV(symbol: string, interval: string): Promise<Candle[]> {
-  const url = new URL('https://api.bybit.com/v5/market/kline')
-  url.searchParams.set('category', 'linear')
-  url.searchParams.set('symbol', symbol)
-  url.searchParams.set('interval', interval)
-  url.searchParams.set('limit', '200')
+const DEFAULT_BAR_LIMIT = 1000
+const MAX_BAR_LIMIT = 5000
+// Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
+// issues batched requests when callers ask for a larger window.
+const BYBIT_REQUEST_LIMIT = 200
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: 'application/json',
-    },
-  })
+async function fetchBybitOHLCV(symbol: string, interval: string, limit: number): Promise<Candle[]> {
+  const sanitizedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_BAR_LIMIT)
+  const collected: Candle[] = []
+  let nextEndTime: number | undefined
 
-  if (!response.ok) {
-    throw new Error(`Unable to load data (status ${response.status})`)
-  }
+  while (collected.length < sanitizedLimit) {
+    const url = new URL('https://api.bybit.com/v5/market/kline')
+    url.searchParams.set('category', 'linear')
+    url.searchParams.set('symbol', symbol)
+    url.searchParams.set('interval', interval)
 
-  const payload = (await response.json()) as BybitKlineResponse
+    const batchLimit = Math.min(sanitizedLimit - collected.length, BYBIT_REQUEST_LIMIT)
+    url.searchParams.set('limit', batchLimit.toString())
 
-  if (payload.retCode !== 0 || !payload.result?.list) {
-    throw new Error(payload.retMsg || 'Bybit API returned an error')
-  }
+    if (nextEndTime !== undefined) {
+      url.searchParams.set('end', nextEndTime.toString())
+    }
 
-  return payload.result.list
-    .map((entry) => ({
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Unable to load data (status ${response.status})`)
+    }
+
+    const payload = (await response.json()) as BybitKlineResponse
+
+    if (payload.retCode !== 0 || !payload.result?.list) {
+      throw new Error(payload.retMsg || 'Bybit API returned an error')
+    }
+
+    const candles = payload.result.list.map((entry) => ({
       openTime: Number(entry[0]),
       open: Number(entry[1]),
       high: Number(entry[2]),
@@ -107,7 +142,31 @@ async function fetchBybitOHLCV(symbol: string, interval: string): Promise<Candle
       turnover: Number(entry[6] ?? 0),
       closeTime: Number(entry[0]) + 1,
     }))
-    .sort((a, b) => a.openTime - b.openTime)
+
+    if (candles.length === 0) {
+      break
+    }
+
+    collected.push(...candles)
+
+    if (candles.length < batchLimit) {
+      break
+    }
+
+    const oldestCandle = candles.reduce((oldest, candle) =>
+      candle.openTime < oldest.openTime ? candle : oldest,
+    candles[0])
+
+    nextEndTime = oldestCandle.openTime - 1
+  }
+
+  const deduped = Array.from(
+    collected
+      .reduce((acc, candle) => acc.set(candle.openTime, candle), new Map<number, Candle>())
+      .values(),
+  )
+
+  return deduped.sort((a, b) => a.openTime - b.openTime).slice(-sanitizedLimit)
 }
 
 function resolveRefreshInterval(selection: string, customValue: string): number | false {
@@ -130,6 +189,22 @@ function formatTimestamp(timestamp: number, timeframe: string): string {
   return formatter.format(new Date(timestamp))
 }
 
+function resolveBarLimit(selection: string, customValue: string): number | null {
+  const parseValue = (value: string) => {
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null
+    }
+    return Math.min(parsed, MAX_BAR_LIMIT)
+  }
+
+  if (selection === 'custom') {
+    return parseValue(customValue)
+  }
+
+  return parseValue(selection)
+}
+
 function App() {
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
@@ -139,10 +214,17 @@ function App() {
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
   const [refreshSelection, setRefreshSelection] = useState(REFRESH_OPTIONS[0].value)
   const [customRefresh, setCustomRefresh] = useState('15')
+  const [barSelection, setBarSelection] = useState('1000')
+  const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
     [refreshSelection, customRefresh],
+  )
+
+  const resolvedBarLimit = useMemo(
+    () => resolveBarLimit(barSelection, customBarCount) ?? DEFAULT_BAR_LIMIT,
+    [barSelection, customBarCount],
   )
 
   const { updateServiceWorker } = useRegisterSW({
@@ -164,13 +246,13 @@ function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
-  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
-    queryKey: ['bybit-kline', symbol, timeframe],
-    queryFn: () => fetchBybitOHLCV(symbol, timeframe),
+  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<Candle[]>({
+    queryKey: ['bybit-kline', symbol, timeframe, resolvedBarLimit],
+    queryFn: () => fetchBybitOHLCV(symbol, timeframe, resolvedBarLimit),
     refetchInterval: refreshInterval,
     refetchIntervalInBackground: true,
     retry: 1,
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData,
   })
 
   const lastUpdatedLabel = useMemo(() => {
@@ -297,7 +379,7 @@ function App() {
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-8">
-        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-5">
           <div className="flex flex-col gap-2">
             <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Crypto
@@ -333,6 +415,39 @@ function App() {
             </select>
           </div>
           <div className="flex flex-col gap-2">
+            <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Bars
+            </label>
+            <select
+              id="bar-count"
+              value={barSelection}
+              onChange={(event) => setBarSelection(event.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+            >
+              {BAR_COUNT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {barSelection === 'custom' && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_BAR_LIMIT}
+                    value={customBarCount}
+                    onChange={(event) => setCustomBarCount(event.target.value)}
+                    className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                  />
+                  <span className="text-xs text-slate-400">bars</span>
+                </div>
+                <span className="text-[10px] text-slate-500">Max {MAX_BAR_LIMIT} bars</span>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Refresh interval</span>
             <div className="flex flex-wrap gap-2">
               {REFRESH_OPTIONS.map((option) => (
@@ -363,7 +478,7 @@ function App() {
               </div>
             )}
           </div>
-          <div className="flex flex-col justify-between gap-2 rounded-2xl border border-white/5 bg-slate-950/50 p-4 text-sm">
+          <div className="flex flex-col justify-between gap-2 rounded-2xl border border-white/5 bg-slate-950/50 p-4 text-sm lg:col-span-2">
             <div>
               <p className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</p>
               <p className="text-lg font-semibold text-white">{lastUpdatedLabel}</p>
@@ -376,6 +491,11 @@ function App() {
                     }`
                   : 'Auto refresh disabled'}
               </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-slate-400">Data window</p>
+              <p className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</p>
+              <p className="text-xs text-slate-400">Applied across all charts</p>
             </div>
             {latestCandle && (
               <div>
