@@ -54,16 +54,26 @@ type StochasticSetting = {
   label: string
 }
 
+type MomentumIntensity = 'green' | 'yellow' | 'orange' | 'red'
+
+type MomentumReading = {
+  timeframe: string
+  timeframeLabel: string
+  rsi: number
+  stochasticD: number
+  openTime: number
+}
+
 type MomentumNotification = {
   id: string
   symbol: string
-  timeframe: string
-  timeframeLabel: string
   direction: 'long' | 'short'
-  rsi: number
-  stochasticD: number
+  intensity: MomentumIntensity
+  readings: MomentumReading[]
   triggeredAt: number
 }
+
+type MomentumComputation = MomentumReading & { direction: 'long' | 'short' | null }
 
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
@@ -78,12 +88,35 @@ const TIMEFRAMES: TimeframeOption[] = [
 ]
 
 const NOTIFICATION_TIMEFRAME_OPTIONS: TimeframeOption[] = [
-  { value: '1', label: '1m' },
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
+  { value: '30', label: '30m' },
+  { value: '60', label: '60m' },
 ]
 
-const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '1'
+const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '5'
+
+const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60'] as const
+const MOMENTUM_INTENSITY_BY_LEVEL: Record<number, MomentumIntensity> = {
+  1: 'green',
+  2: 'yellow',
+  3: 'orange',
+  4: 'red',
+}
+
+const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
+  green: '🟢',
+  yellow: '🟡',
+  orange: '🟠',
+  red: '🔴',
+}
+
+const MOMENTUM_CARD_CLASSES: Record<MomentumIntensity, string> = {
+  green: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+  yellow: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
+  orange: 'border-orange-400/40 bg-orange-500/10 text-orange-100',
+  red: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+}
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -292,13 +325,8 @@ function App() {
   const [selectedNotificationTimeframe, setSelectedNotificationTimeframe] = useState<string>(
     DEFAULT_NOTIFICATION_TIMEFRAME,
   )
-  const notificationTimeframes = useMemo(
-    () => (selectedNotificationTimeframe ? [selectedNotificationTimeframe] : []),
-    [selectedNotificationTimeframe],
-  )
-  const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({
-    [DEFAULT_NOTIFICATION_TIMEFRAME]: null,
-  })
+  const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
+  const lastMomentumTriggerRef = useRef<string | null>(null)
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
@@ -475,17 +503,15 @@ function App() {
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
 
   useEffect(() => {
-    lastNotificationByTimeframeRef.current = {
-      [selectedNotificationTimeframe]: null,
-    }
+    lastMomentumTriggerRef.current = null
     setMomentumNotifications([])
-  }, [selectedNotificationTimeframe, symbol])
+  }, [symbol])
 
   useEffect(() => {
-    setMomentumNotifications((previous) =>
-      previous.filter((entry) => entry.timeframe === selectedNotificationTimeframe),
-    )
-  }, [selectedNotificationTimeframe])
+    if (!notificationsEnabled) {
+      lastMomentumTriggerRef.current = null
+    }
+  }, [notificationsEnabled])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -566,29 +592,31 @@ function App() {
     [],
   )
 
+  const visibleMomentumNotifications = useMemo(
+    () =>
+      momentumNotifications.filter((entry) =>
+        entry.readings.some((reading) => reading.timeframe === selectedNotificationTimeframe),
+      ),
+    [momentumNotifications, selectedNotificationTimeframe],
+  )
+
   useEffect(() => {
     if (!notificationsEnabled) {
       return
     }
 
-    notificationTimeframes.forEach((timeframeValue, index) => {
+    const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
 
       if (!candles || candles.length === 0) {
-        return
+        return null
       }
 
       const latest = candles[candles.length - 1]
 
       if (!latest) {
-        return
-      }
-
-      const lastProcessed = lastNotificationByTimeframeRef.current[timeframeValue]
-
-      if (lastProcessed === latest.openTime) {
-        return
+        return null
       }
 
       const closesForTimeframe = candles.map((candle) => candle.close)
@@ -613,55 +641,103 @@ function App() {
         timeframeStochasticSeries.dValues[timeframeStochasticSeries.dValues.length - 1]
       const timeframeLabel = formatIntervalLabel(timeframeValue)
 
-      if (typeof latestRsi === 'number' && typeof latestStochasticD === 'number') {
-        if (latestRsi <= 30 && latestStochasticD <= 20) {
-          setMomentumNotifications((previous) => {
-            const entry: MomentumNotification = {
-              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
-              symbol,
-              timeframe: timeframeValue,
-              timeframeLabel,
-              direction: 'long',
-              rsi: latestRsi,
-              stochasticD: latestStochasticD,
-              triggeredAt: latest.openTime,
-            }
-
-            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
-          })
-          void showAppNotification({
-            title: `🟢 Long momentum ${timeframeLabel}`,
-            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
-            tag: `long-${symbol}-${timeframeValue}`,
-            data: { symbol, timeframe: timeframeValue, direction: 'long' },
-          })
-        } else if (latestRsi >= 70 && latestStochasticD < 80) {
-          setMomentumNotifications((previous) => {
-            const entry: MomentumNotification = {
-              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
-              symbol,
-              timeframe: timeframeValue,
-              timeframeLabel,
-              direction: 'short',
-              rsi: latestRsi,
-              stochasticD: latestStochasticD,
-              triggeredAt: latest.openTime,
-            }
-
-            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
-          })
-          void showAppNotification({
-            title: `🔴 Short momentum ${timeframeLabel}`,
-            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
-            tag: `short-${symbol}-${timeframeValue}`,
-            data: { symbol, timeframe: timeframeValue, direction: 'short' },
-          })
-        }
+      if (typeof latestRsi !== 'number' || typeof latestStochasticD !== 'number') {
+        return null
       }
 
-      lastNotificationByTimeframeRef.current[timeframeValue] = latest.openTime
+      let direction: 'long' | 'short' | null = null
+
+      if (latestRsi < 20 && latestStochasticD < 20) {
+        direction = 'long'
+      } else if (latestRsi > 80 && latestStochasticD > 80) {
+        direction = 'short'
+      }
+
+      return {
+        timeframe: timeframeValue,
+        timeframeLabel,
+        rsi: latestRsi,
+        stochasticD: latestStochasticD,
+        openTime: latest.openTime,
+        direction,
+      }
+    })
+
+    const primary = timeframeResults[0]
+
+    if (!primary || !primary.direction) {
+      return
+    }
+
+    const matchingReadings: MomentumComputation[] = []
+
+    for (const result of timeframeResults) {
+      if (!result || result.direction !== primary.direction) {
+        break
+      }
+      matchingReadings.push(result)
+    }
+
+    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[matchingReadings.length]
+
+    if (!intensity) {
+      return
+    }
+
+    const signatureParts = matchingReadings.map(
+      (reading) => `${reading.timeframe}:${reading.openTime ?? '0'}`,
+    )
+    const signature = `${symbol}-${primary.direction}-${signatureParts.join('|')}`
+
+    if (lastMomentumTriggerRef.current === signature) {
+      return
+    }
+
+    lastMomentumTriggerRef.current = signature
+
+    const readings: MomentumReading[] = matchingReadings.map(
+      ({ timeframe, timeframeLabel, rsi, stochasticD, openTime }) => ({
+        timeframe,
+        timeframeLabel,
+        rsi,
+        stochasticD,
+        openTime,
+      }),
+    )
+
+    const entry: MomentumNotification = {
+      id: signature,
+      symbol,
+      direction: primary.direction,
+      intensity,
+      readings,
+      triggeredAt: readings[0]?.openTime ?? Date.now(),
+    }
+
+    setMomentumNotifications((previous) => {
+      const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+      return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+    })
+
+    const timeframeLabel = readings.map((reading) => reading.timeframeLabel).join(' • ')
+    const emoji = MOMENTUM_EMOJI_BY_INTENSITY[intensity]
+    const directionLabel = primary.direction === 'long' ? 'Long' : 'Short'
+    const rsiBody = readings
+      .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
+      .join(', ')
+    const stochasticBody = readings
+      .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
+      .join(', ')
+
+    void showAppNotification({
+      title: `${emoji} ${directionLabel} momentum ${timeframeLabel}`,
+      body: `${symbol} RSI ${rsiBody} • Stoch RSI %D ${stochasticBody}`,
+      tag: signature,
+      data: {
+        symbol,
+        direction: primary.direction,
+        timeframes: readings.map((reading) => reading.timeframe),
+      },
     })
   }, [
     notificationQueries,
@@ -968,31 +1044,39 @@ function App() {
                     Latest alerts for {symbol}
                   </span>
                 </div>
-                {momentumNotifications.length === 0 ? (
+                {visibleMomentumNotifications.length === 0 ? (
                   <p className="text-xs text-slate-500">
                     No momentum notifications have been triggered yet. Alerts will surface here once the
                     RSI and Stochastic RSI conditions are met.
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
-                    {momentumNotifications.map((entry) => {
-                      const isLong = entry.direction === 'long'
+                    {visibleMomentumNotifications.map((entry) => {
+                      const directionLabel = entry.direction === 'long' ? 'Long' : 'Short'
+                      const timeframeLabel = entry.readings
+                        .map((reading) => reading.timeframeLabel)
+                        .join(' • ')
+                      const rsiLabel = entry.readings
+                        .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
+                        .join(' • ')
+                      const stochasticLabel = entry.readings
+                        .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
+                        .join(' • ')
+                      const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                      const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
                       return (
                         <div
                           key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${
-                            isLong
-                              ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
-                              : 'border-rose-400/40 bg-rose-500/10 text-rose-100'
-                          }`}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
                         >
                           <span className="text-[11px] font-semibold uppercase tracking-wide">
-                            {isLong ? 'Long momentum' : 'Short momentum'} • {entry.timeframeLabel}
+                            {emoji} {directionLabel} momentum • {timeframeLabel}
                           </span>
                           <span className="text-sm font-semibold text-white">{entry.symbol}</span>
                           <span className="text-[11px] text-white/80">
-                            RSI {entry.rsi.toFixed(2)} • Stoch RSI %D {entry.stochasticD.toFixed(2)}
+                            RSI {rsiLabel}
                           </span>
+                          <span className="text-[11px] text-white/80">Stoch RSI %D {stochasticLabel}</span>
                           <span className="text-[10px] text-white/60">
                             {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
                           </span>
