@@ -202,6 +202,46 @@ const DEFAULT_MOMENTUM_BOUNDS = {
   stochasticLower: 20,
   stochasticUpper: 80,
 }
+
+const STORAGE_KEYS = {
+  symbol: 'ctn:symbol',
+  timeframe: 'ctn:timeframe',
+  refreshSelection: 'ctn:refreshSelection',
+  customRefresh: 'ctn:customRefresh',
+  barSelection: 'ctn:barSelection',
+  customBarCount: 'ctn:customBarCount',
+  marketSummaryCollapsed: 'ctn:marketSummaryCollapsed',
+  rsiLowerBound: 'ctn:rsiLowerBound',
+  rsiUpperBound: 'ctn:rsiUpperBound',
+  stochasticLowerBound: 'ctn:stochasticLowerBound',
+  stochasticUpperBound: 'ctn:stochasticUpperBound',
+} as const
+
+const isBrowser = typeof window !== 'undefined'
+
+function readLocalStorage(key: string): string | null {
+  if (!isBrowser) {
+    return null
+  }
+
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeLocalStorage(key: string, value: string) {
+  if (!isBrowser) {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // Ignore write errors (e.g., storage full or disabled)
+  }
+}
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
 // issues batched requests when callers ask for a larger window.
 const BYBIT_REQUEST_LIMIT = 200
@@ -322,33 +362,113 @@ function App() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const [showOfflineReadyBanner, setShowOfflineReadyBanner] = useState(false)
 
-  const [symbol, setSymbol] = useState(CRYPTO_OPTIONS[0])
-  const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
-  const [refreshSelection, setRefreshSelection] = useState(DEFAULT_REFRESH_SELECTION)
-  const [customRefresh, setCustomRefresh] = useState('1')
-  const [barSelection, setBarSelection] = useState('200')
-  const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
-  const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
+  const [symbol, setSymbol] = useState(() => {
+    const stored = readLocalStorage(STORAGE_KEYS.symbol)
+    return stored && CRYPTO_OPTIONS.includes(stored) ? stored : CRYPTO_OPTIONS[0]
+  })
+  const [timeframe, setTimeframe] = useState(() => {
+    const stored = readLocalStorage(STORAGE_KEYS.timeframe)
+    return stored && TIMEFRAMES.some((option) => option.value === stored)
+      ? stored
+      : TIMEFRAMES[0].value
+  })
+  const [refreshSelection, setRefreshSelection] = useState(() => {
+    const stored = readLocalStorage(STORAGE_KEYS.refreshSelection)
+    return stored && REFRESH_OPTIONS.some((option) => option.value === stored)
+      ? stored
+      : DEFAULT_REFRESH_SELECTION
+  })
+  const [customRefresh, setCustomRefresh] = useState(
+    () => readLocalStorage(STORAGE_KEYS.customRefresh) ?? '1',
+  )
+  const [barSelection, setBarSelection] = useState(() => {
+    const stored = readLocalStorage(STORAGE_KEYS.barSelection)
+    return stored && BAR_COUNT_OPTIONS.some((option) => option.value === stored)
+      ? stored
+      : '200'
+  })
+  const [customBarCount, setCustomBarCount] = useState(
+    () => readLocalStorage(STORAGE_KEYS.customBarCount) ?? DEFAULT_BAR_LIMIT.toString(),
+  )
+  const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(() => {
+    const stored = readLocalStorage(STORAGE_KEYS.marketSummaryCollapsed)
+    return stored === 'true' ? true : stored === 'false' ? false : false
+  })
   const supportsNotifications = isNotificationSupported()
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
     supportsNotifications ? Notification.permission : 'denied',
   )
   const [rsiLowerBoundInput, setRsiLowerBoundInput] = useState(
-    DEFAULT_MOMENTUM_BOUNDS.rsiLower.toString(),
+    () =>
+      readLocalStorage(STORAGE_KEYS.rsiLowerBound) ??
+      DEFAULT_MOMENTUM_BOUNDS.rsiLower.toString(),
   )
   const [rsiUpperBoundInput, setRsiUpperBoundInput] = useState(
-    DEFAULT_MOMENTUM_BOUNDS.rsiUpper.toString(),
+    () =>
+      readLocalStorage(STORAGE_KEYS.rsiUpperBound) ??
+      DEFAULT_MOMENTUM_BOUNDS.rsiUpper.toString(),
   )
   const [stochasticLowerBoundInput, setStochasticLowerBoundInput] = useState(
-    DEFAULT_MOMENTUM_BOUNDS.stochasticLower.toString(),
+    () =>
+      readLocalStorage(STORAGE_KEYS.stochasticLowerBound) ??
+      DEFAULT_MOMENTUM_BOUNDS.stochasticLower.toString(),
   )
   const [stochasticUpperBoundInput, setStochasticUpperBoundInput] = useState(
-    DEFAULT_MOMENTUM_BOUNDS.stochasticUpper.toString(),
+    () =>
+      readLocalStorage(STORAGE_KEYS.stochasticUpperBound) ??
+      DEFAULT_MOMENTUM_BOUNDS.stochasticUpper.toString(),
   )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.symbol, symbol)
+  }, [symbol])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.timeframe, timeframe)
+  }, [timeframe])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.refreshSelection, refreshSelection)
+  }, [refreshSelection])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.customRefresh, customRefresh)
+  }, [customRefresh])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.barSelection, barSelection)
+  }, [barSelection])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.customBarCount, customBarCount)
+  }, [customBarCount])
+
+  useEffect(() => {
+    writeLocalStorage(
+      STORAGE_KEYS.marketSummaryCollapsed,
+      isMarketSummaryCollapsed ? 'true' : 'false',
+    )
+  }, [isMarketSummaryCollapsed])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.rsiLowerBound, rsiLowerBoundInput)
+  }, [rsiLowerBoundInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.rsiUpperBound, rsiUpperBoundInput)
+  }, [rsiUpperBoundInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.stochasticLowerBound, stochasticLowerBoundInput)
+  }, [stochasticLowerBoundInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.stochasticUpperBound, stochasticUpperBoundInput)
+  }, [stochasticUpperBoundInput])
 
   const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
 
