@@ -91,15 +91,6 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '360', label: '360m (6h)' },
 ]
 
-const NOTIFICATION_TIMEFRAME_OPTIONS: TimeframeOption[] = [
-  { value: '5', label: '5m' },
-  { value: '15', label: '15m' },
-  { value: '30', label: '30m' },
-  { value: '60', label: '60m' },
-]
-
-const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '5'
-
 const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60'] as const
 const MOMENTUM_INTENSITY_BY_LEVEL: Record<number, MomentumIntensity> = {
   1: 'green',
@@ -326,9 +317,6 @@ function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
     supportsNotifications ? Notification.permission : 'denied',
   )
-  const [selectedNotificationTimeframe, setSelectedNotificationTimeframe] = useState<string>(
-    DEFAULT_NOTIFICATION_TIMEFRAME,
-  )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
@@ -454,16 +442,6 @@ function App() {
     }
 
     void updatePushServerStatus()
-  }
-
-  const handleSelectNotificationTimeframe = (value: string) => {
-    setSelectedNotificationTimeframe((previous) => {
-      if (previous === value) {
-        return previous
-      }
-
-      return value
-    })
   }
 
   useEffect(() => {
@@ -596,13 +574,7 @@ function App() {
     [],
   )
 
-  const visibleMomentumNotifications = useMemo(
-    () =>
-      momentumNotifications.filter((entry) =>
-        entry.readings.some((reading) => reading.timeframe === selectedNotificationTimeframe),
-      ),
-    [momentumNotifications, selectedNotificationTimeframe],
-  )
+  const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
 
   useEffect(() => {
     if (!notificationsEnabled) {
@@ -996,33 +968,8 @@ function App() {
               )}
             </div>
             <p className="text-[11px] leading-5 text-slate-500">
-              Receive browser and PWA alerts whenever momentum conditions trigger for the selected timeframe.
+              Receive browser and PWA alerts whenever momentum conditions trigger across tracked timeframes.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {NOTIFICATION_TIMEFRAME_OPTIONS.map((option) => {
-                const isSelected = selectedNotificationTimeframe === option.value
-                return (
-                  <label
-                    key={option.value}
-                    className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold transition ${
-                      isSelected
-                        ? 'bg-emerald-500/20 text-emerald-200 shadow'
-                        : 'border border-white/10 text-slate-300 hover:border-indigo-400 hover:text-white'
-                    } ${notificationsEnabled ? '' : 'opacity-50'}`}
-                  >
-                    <input
-                      type="radio"
-                      name="notification-timeframe"
-                      className="sr-only"
-                      checked={isSelected}
-                      onChange={() => handleSelectNotificationTimeframe(option.value)}
-                      disabled={!notificationsEnabled}
-                    />
-                    {option.label}
-                  </label>
-                )
-              })}
-            </div>
             {notificationPermission === 'denied' && supportsNotifications && (
               <span className="text-[11px] text-rose-300">
                 Notifications are blocked. Update your browser settings to enable alerts.
