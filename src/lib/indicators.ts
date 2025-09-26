@@ -38,6 +38,58 @@ export function calculateRSI(values: number[], period = DEFAULT_PERIOD): Array<n
   return result
 }
 
+export function calculateEMA(values: number[], period: number): Array<number | null> {
+  const normalizedPeriod = Math.max(1, Math.floor(period))
+  const result: Array<number | null> = new Array(values.length).fill(null)
+
+  if (values.length < normalizedPeriod) {
+    return result
+  }
+
+  let sum = 0
+  for (let i = 0; i < normalizedPeriod; i += 1) {
+    sum += values[i]
+  }
+
+  let previousEma = sum / normalizedPeriod
+  result[normalizedPeriod - 1] = previousEma
+
+  const multiplier = 2 / (normalizedPeriod + 1)
+
+  for (let i = normalizedPeriod; i < values.length; i += 1) {
+    const value = values[i]
+    previousEma = (value - previousEma) * multiplier + previousEma
+    result[i] = previousEma
+  }
+
+  return result
+}
+
+export function calculateSMA(values: number[], period: number): Array<number | null> {
+  const normalizedPeriod = Math.max(1, Math.floor(period))
+  const result: Array<number | null> = new Array(values.length).fill(null)
+
+  if (values.length < normalizedPeriod) {
+    return result
+  }
+
+  let windowSum = 0
+
+  for (let i = 0; i < values.length; i += 1) {
+    windowSum += values[i]
+
+    if (i >= normalizedPeriod) {
+      windowSum -= values[i - normalizedPeriod]
+    }
+
+    if (i >= normalizedPeriod - 1) {
+      result[i] = windowSum / normalizedPeriod
+    }
+  }
+
+  return result
+}
+
 type StochasticRSIOptions = {
   stochLength?: number
   kSmoothing?: number

@@ -3,7 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { DashboardView } from './components/DashboardView'
-import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
+import { calculateEMA, calculateRSI, calculateSMA, calculateStochasticRSI } from './lib/indicators'
 import {
   checkPushServerConnection,
   ensurePushSubscription,
@@ -78,6 +78,13 @@ export type MomentumNotification = {
 }
 
 type MomentumComputation = MomentumReading & { direction: 'long' | 'short' | null }
+
+export type MovingAverageMarker = {
+  index: number
+  value: number
+  color: string
+  label: string
+}
 
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
@@ -505,6 +512,10 @@ function App() {
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
 
+  const ema10Values = useMemo(() => calculateEMA(closes, 10), [closes])
+  const ema50Values = useMemo(() => calculateEMA(closes, 50), [closes])
+  const sma200Values = useMemo(() => calculateSMA(closes, 200), [closes])
+
   useEffect(() => {
     lastMomentumTriggerRef.current = null
     setMomentumNotifications([])
@@ -566,6 +577,61 @@ function App() {
     [data, timeframe],
   )
 
+  const movingAverageMarkers = useMemo(() => {
+    const markers: MovingAverageMarker[] = []
+
+    const appendCrossMarkers = (
+      fast: Array<number | null>,
+      slow: Array<number | null>,
+      fastLabel: string,
+      slowLabel: string,
+    ) => {
+      const length = Math.min(fast.length, slow.length)
+      for (let i = 1; i < length; i += 1) {
+        const prevFast = fast[i - 1]
+        const prevSlow = slow[i - 1]
+        const currentFast = fast[i]
+        const currentSlow = slow[i]
+
+        if (
+          prevFast == null ||
+          prevSlow == null ||
+          currentFast == null ||
+          currentSlow == null
+        ) {
+          continue
+        }
+
+        const previousDifference = prevFast - prevSlow
+        const currentDifference = currentFast - currentSlow
+
+        const crossedUp = previousDifference < 0 && currentDifference >= 0
+        const crossedDown = previousDifference > 0 && currentDifference <= 0
+
+        if (!crossedUp && !crossedDown) {
+          continue
+        }
+
+        const label = crossedUp
+          ? `${fastLabel} crossed above ${slowLabel}`
+          : `${fastLabel} crossed below ${slowLabel}`
+        const color = crossedUp ? '#34d399' : '#f87171'
+        const value =
+          currentDifference === 0
+            ? currentFast
+            : (currentFast + currentSlow) / 2
+
+        markers.push({ index: i, value, color, label })
+      }
+    }
+
+    appendCrossMarkers(ema10Values, ema50Values, 'EMA 10', 'EMA 50')
+    appendCrossMarkers(ema10Values, sma200Values, 'EMA 10', 'MA 200')
+    appendCrossMarkers(ema50Values, sma200Values, 'EMA 50', 'MA 200')
+
+    return markers
+  }, [ema10Values, ema50Values, sma200Values])
+
   const latestCandle = data?.[data.length - 1]
   const priceChange = useMemo(() => {
     if (!data || data.length < 2) {
@@ -576,6 +642,16 @@ function App() {
     const percent = (difference / previous.close) * 100
     return { difference, percent }
   }, [data, latestCandle])
+
+  const movingAverageSeries = useMemo(
+    () => ({
+      ema10: ema10Values,
+      ema50: ema50Values,
+      ma200: sma200Values,
+      markers: movingAverageMarkers,
+    }),
+    [ema10Values, ema50Values, sma200Values, movingAverageMarkers],
+  )
 
   const momentumThresholds = useMemo(() => {
     const clamp = (value: string, fallback: number) => {
@@ -944,6 +1020,7 @@ function App() {
       priceChange={priceChange}
       isMarketSummaryCollapsed={isMarketSummaryCollapsed}
       onToggleMarketSummary={toggleMarketSummary}
+      movingAverageSeries={movingAverageSeries}
       rsiLengthDescription={rsiLengthDescription}
       rsiValues={rsiValues}
       labels={labels}

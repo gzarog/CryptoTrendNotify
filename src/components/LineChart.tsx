@@ -12,6 +12,15 @@ type LineSeries = {
   color: string
 }
 
+type Marker = {
+  index: number
+  value: number
+  color?: string
+  label?: string
+}
+
+type MarkerWithCoordinates = Marker & { x: number; y: number }
+
 type LineChartProps = {
   title: string
   labels: string[]
@@ -23,6 +32,7 @@ type LineChartProps = {
     max?: number
   }
   guideLines?: GuideLine[]
+  markers?: Marker[]
 }
 
 const DEFAULT_WIDTH = 640
@@ -64,6 +74,7 @@ export function LineChart({
   color = DEFAULT_COLOR,
   yDomain,
   guideLines = [],
+  markers = [],
 }: LineChartProps) {
   const gradientId = useId()
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -143,14 +154,31 @@ export function LineChart({
       labelIndexes.add(Math.floor((labelsLength - 1) / 2))
     }
 
+    const markerPoints: MarkerWithCoordinates[] = markers
+      .map((marker) => {
+        const { index, value } = marker
+
+        if (!Number.isFinite(index) || !Number.isFinite(value)) {
+          return null
+        }
+
+        const x = PADDING + (innerWidth * index) / domainLength
+        const y =
+          PADDING + innerHeight - ((value - resolvedMin) / range) * innerHeight
+
+        return { ...marker, x, y }
+      })
+      .filter((entry): entry is MarkerWithCoordinates => Boolean(entry))
+
     return {
       min: resolvedMin,
       max: resolvedMax,
       pointsBySeries,
       ticks,
       labelIndexes: Array.from(labelIndexes).sort((a, b) => a - b),
+      markerPoints,
     }
-  }, [resolvedSeries, labels, yDomain, guideLines])
+  }, [resolvedSeries, labels, yDomain, guideLines, markers])
 
   const latestSeriesValues = useMemo(
     () =>
@@ -177,7 +205,7 @@ export function LineChart({
   const hasSingleSeries = resolvedSeries.length === 1
   const primaryLatestValue = hasSingleSeries ? latestSeriesValues[0]?.value ?? null : null
   const gradientColor = resolvedSeries[0]?.color ?? color ?? DEFAULT_COLOR
-  const { pointsBySeries, ticks, labelIndexes, min, max } = chart
+  const { pointsBySeries, ticks, labelIndexes, min, max, markerPoints } = chart
 
   const getPointForIndex = (index: number) => {
     for (const seriesPoints of pointsBySeries) {
@@ -285,6 +313,21 @@ export function LineChart({
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+          ))}
+          {markerPoints.map((marker, index) => (
+            <g key={`marker-${index}-${marker.index}`}>
+              <text
+                x={marker.x}
+                y={marker.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={12}
+                fill={marker.color ?? '#f97316'}
+              >
+                ✕
+                {marker.label ? <title>{marker.label}</title> : null}
+              </text>
+            </g>
           ))}
           {ticks.map((value) => {
             const y =
