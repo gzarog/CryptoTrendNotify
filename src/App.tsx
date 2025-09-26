@@ -69,6 +69,10 @@ type MomentumNotification = {
   symbol: string
   direction: 'long' | 'short'
   intensity: MomentumIntensity
+  label: string
+  timeframeSummary: string
+  rsiSummary: string
+  stochasticSummary: string
   readings: MomentumReading[]
   triggeredAt: number
 }
@@ -705,11 +709,26 @@ function App() {
       }),
     )
 
+    const timeframeSummary = readings.map((reading) => reading.timeframeLabel).join(' • ')
+    const rsiSummary = readings
+      .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
+      .join(' • ')
+    const stochasticSummary = readings
+      .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
+      .join(' • ')
+    const directionLabel = primary.direction === 'long' ? 'Long' : 'Short'
+    const momentumLabel = `${directionLabel} momentum ${timeframeSummary} Rsi ${rsiSummary} Stoch Rsi (stochastic rsi %d ${stochasticSummary})`
+    const emoji = MOMENTUM_EMOJI_BY_INTENSITY[intensity]
+
     const entry: MomentumNotification = {
       id: signature,
       symbol,
       direction: primary.direction,
       intensity,
+      label: momentumLabel,
+      timeframeSummary,
+      rsiSummary,
+      stochasticSummary,
       readings,
       triggeredAt: readings[0]?.openTime ?? Date.now(),
     }
@@ -719,19 +738,9 @@ function App() {
       return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
     })
 
-    const timeframeLabel = readings.map((reading) => reading.timeframeLabel).join(' • ')
-    const emoji = MOMENTUM_EMOJI_BY_INTENSITY[intensity]
-    const directionLabel = primary.direction === 'long' ? 'Long' : 'Short'
-    const rsiBody = readings
-      .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
-      .join(', ')
-    const stochasticBody = readings
-      .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
-      .join(', ')
-
     void showAppNotification({
-      title: `${emoji} ${directionLabel} momentum ${timeframeLabel}`,
-      body: `${symbol} RSI ${rsiBody} • Stoch RSI %D ${stochasticBody}`,
+      title: `${emoji} ${momentumLabel}`,
+      body: `${symbol} — Rsi ${rsiSummary} • Stoch Rsi (stochastic rsi %d ${stochasticSummary})`,
       tag: signature,
       data: {
         symbol,
@@ -1052,16 +1061,6 @@ function App() {
                 ) : (
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
                     {visibleMomentumNotifications.map((entry) => {
-                      const directionLabel = entry.direction === 'long' ? 'Long' : 'Short'
-                      const timeframeLabel = entry.readings
-                        .map((reading) => reading.timeframeLabel)
-                        .join(' • ')
-                      const rsiLabel = entry.readings
-                        .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
-                        .join(' • ')
-                      const stochasticLabel = entry.readings
-                        .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
-                        .join(' • ')
                       const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
                       const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
                       return (
@@ -1070,13 +1069,13 @@ function App() {
                           className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
                         >
                           <span className="text-[11px] font-semibold uppercase tracking-wide">
-                            {emoji} {directionLabel} momentum • {timeframeLabel}
+                            {emoji} {entry.label}
                           </span>
                           <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                          <span className="text-[11px] text-white/80">Rsi {entry.rsiSummary}</span>
                           <span className="text-[11px] text-white/80">
-                            RSI {rsiLabel}
+                            Stoch Rsi (stochastic rsi %d {entry.stochasticSummary})
                           </span>
-                          <span className="text-[11px] text-white/80">Stoch RSI %D {stochasticLabel}</span>
                           <span className="text-[10px] text-white/60">
                             {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
                           </span>
