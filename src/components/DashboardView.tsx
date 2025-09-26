@@ -318,7 +318,7 @@ export function DashboardView({
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Momentum filters
             </span>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="momentum-rsi-long"
