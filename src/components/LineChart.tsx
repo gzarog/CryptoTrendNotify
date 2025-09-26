@@ -33,6 +33,7 @@ type LineChartProps = {
   }
   guideLines?: GuideLine[]
   markers?: Marker[]
+  isLoading?: boolean
 }
 
 const DEFAULT_WIDTH = 640
@@ -75,6 +76,7 @@ export function LineChart({
   yDomain,
   guideLines = [],
   markers = [],
+  isLoading = false,
 }: LineChartProps) {
   const gradientId = useId()
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -218,7 +220,22 @@ export function LineChart({
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+    <div
+      className="relative flex h-full w-full flex-col gap-4 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-6"
+      aria-busy={isLoading}
+    >
+      {isLoading && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-slate-950/80 text-indigo-100 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="text-4xl" role="img" aria-hidden="true">
+            ⌛
+          </span>
+          <p className="text-sm font-semibold">Reloading chart data…</p>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
@@ -262,7 +279,11 @@ export function LineChart({
         </button>
       </div>
       {!isCollapsed && (
-        <svg viewBox={`0 0 ${DEFAULT_WIDTH} ${DEFAULT_HEIGHT}`} className="w-full flex-1 text-white">
+        <svg
+          viewBox={`0 0 ${DEFAULT_WIDTH} ${DEFAULT_HEIGHT}`}
+          className="w-full flex-1 text-white"
+          aria-hidden={isLoading}
+        >
           {hasSingleSeries && (
             <>
               <defs>
