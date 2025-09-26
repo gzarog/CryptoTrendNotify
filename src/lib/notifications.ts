@@ -193,11 +193,17 @@ export async function showAppNotification({
       return true
     }
 
-    const subscription = await registration.pushManager.getSubscription()
+    const showNotification = registration.showNotification(title, options)
 
-    if (!subscription) {
-      await registration.showNotification(title, options)
-      return true
+    void registration.pushManager
+      .getSubscription()
+      .catch((error) => console.warn('Failed to read push subscription', error))
+
+    try {
+      await showNotification
+    } catch (error) {
+      console.error('Service worker notification failed, falling back to Notification API', error)
+      new Notification(title, options)
     }
 
     return true
