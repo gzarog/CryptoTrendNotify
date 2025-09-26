@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import type { MomentumIntensity, MomentumNotification } from '../App'
+import type { MomentumIntensity, MomentumNotification, MovingAverageMarker } from '../App'
 import { LineChart } from './LineChart'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
@@ -74,6 +74,12 @@ type DashboardViewProps = {
   priceChange: { difference: number; percent: number } | null
   isMarketSummaryCollapsed: boolean
   onToggleMarketSummary: () => void
+  movingAverageSeries: {
+    ema10: Array<number | null>
+    ema50: Array<number | null>
+    ma200: Array<number | null>
+    markers: MovingAverageMarker[]
+  }
   rsiLengthDescription: string
   rsiValues: Array<number | null>
   labels: string[]
@@ -136,6 +142,7 @@ export function DashboardView({
   priceChange,
   isMarketSummaryCollapsed,
   onToggleMarketSummary,
+  movingAverageSeries,
   rsiLengthDescription,
   rsiValues,
   labels,
@@ -562,14 +569,24 @@ export function DashboardView({
                         <span className="text-xs text-slate-500">Waiting for additional price data…</span>
                       )}
                     </div>
-                  </div>
-                )}
               </div>
-              <LineChart
-                title={`RSI (${rsiLengthDescription})`}
-                data={rsiValues}
-                labels={labels}
-                color="#818cf8"
+            )}
+          </div>
+          <LineChart
+            title="Moving averages (EMA 10 • EMA 50 • MA 200)"
+            labels={labels}
+            series={[
+              { name: 'EMA 10', data: movingAverageSeries.ema10, color: '#38bdf8' },
+              { name: 'EMA 50', data: movingAverageSeries.ema50, color: '#a855f7' },
+              { name: 'MA 200', data: movingAverageSeries.ma200, color: '#f97316' },
+            ]}
+            markers={movingAverageSeries.markers}
+          />
+          <LineChart
+            title={`RSI (${rsiLengthDescription})`}
+            data={rsiValues}
+            labels={labels}
+            color="#818cf8"
                 yDomain={{ min: 0, max: 100 }}
                 guideLines={rsiGuideLines}
               />
