@@ -928,17 +928,18 @@ function App() {
         return null
       }
 
-      let direction: 'long' | 'short' | null = null
-
-      if (
+      const isLongTrigger =
         latestRsi < momentumThresholds.longRsi &&
         latestStochasticD < momentumThresholds.longStochastic
-      ) {
-        direction = 'long'
-      } else if (
+      const isShortTrigger =
         latestRsi > momentumThresholds.shortRsi &&
         latestStochasticD > momentumThresholds.shortStochastic
-      ) {
+
+      let direction: 'long' | 'short' | null = null
+
+      if (isLongTrigger) {
+        direction = 'long'
+      } else if (isShortTrigger) {
         direction = 'short'
       }
 
@@ -994,7 +995,9 @@ function App() {
       }),
     )
 
-    const timeframeSummary = readings.map((reading) => reading.timeframeLabel).join(' • ')
+    const timeframeSummary = readings
+      .map((reading) => reading.timeframeLabel)
+      .join(' • ')
     const rsiSummary = readings
       .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
       .join(' • ')
