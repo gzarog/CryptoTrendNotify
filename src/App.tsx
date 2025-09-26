@@ -77,9 +77,11 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '360', label: '360m (6h)' },
 ]
 
-const NOTIFICATION_TIMEFRAME_OPTIONS = TIMEFRAMES.filter((option) =>
-  ['1', '5', '15'].includes(option.value),
-)
+const NOTIFICATION_TIMEFRAME_OPTIONS: TimeframeOption[] = [
+  { value: '1', label: '1m' },
+  { value: '5', label: '5m' },
+  { value: '15', label: '15m' },
+]
 
 const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '1'
 
