@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-import { LineChart } from './components/LineChart'
+import { DashboardView } from './components/DashboardView'
 import { calculateRSI, calculateStochasticRSI } from './lib/indicators'
 import {
   checkPushServerConnection,
@@ -12,7 +12,7 @@ import {
   showAppNotification,
 } from './lib/notifications'
 
-type Candle = {
+export type Candle = {
   openTime: number
   closeTime: number
   open: number
@@ -54,7 +54,7 @@ type StochasticSetting = {
   label: string
 }
 
-type MomentumIntensity = 'green' | 'yellow' | 'orange' | 'red'
+export type MomentumIntensity = 'green' | 'yellow' | 'orange' | 'red'
 
 type MomentumReading = {
   timeframe: string
@@ -64,7 +64,7 @@ type MomentumReading = {
   openTime: number
 }
 
-type MomentumNotification = {
+export type MomentumNotification = {
   id: string
   symbol: string
   direction: 'long' | 'short'
@@ -104,13 +104,6 @@ const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   yellow: '🟡',
   orange: '🟠',
   red: '🔴',
-}
-
-const MOMENTUM_CARD_CLASSES: Record<MomentumIntensity, string> = {
-  green: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
-  yellow: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
-  orange: 'border-orange-400/40 bg-orange-500/10 text-orange-100',
-  red: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
 }
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
@@ -283,6 +276,10 @@ function formatIntervalLabel(value: string): string {
 function formatTimestamp(timestamp: number, timeframe: string): string {
   const formatter = Number(timeframe) >= 60 ? DATE_FORMATTERS.long : DATE_FORMATTERS.short
   return formatter.format(new Date(timestamp))
+}
+
+function formatTriggeredAt(timestamp: number): string {
+  return DATE_FORMATTERS.short.format(new Date(timestamp))
 }
 
 function resolveBarLimit(selection: string, customValue: string): number | null {
@@ -729,6 +726,20 @@ function App() {
 
   const canInstall = useMemo(() => !!installPromptEvent, [installPromptEvent])
 
+  const dismissUpdateBanner = useCallback(() => {
+    setShowUpdateBanner(false)
+  }, [])
+
+  const dismissOfflineReadyBanner = useCallback(() => {
+    setShowOfflineReadyBanner(false)
+  }, [])
+
+  const toggleMarketSummary = useCallback(() => {
+    setIsMarketSummaryCollapsed((previous) => !previous)
+  }, [])
+
+  const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
+
   const handleInstall = async () => {
     if (!installPromptEvent) {
       return
@@ -759,363 +770,58 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
-      <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-white">Crypto momentum dashboard</h1>
-            <p className="text-sm text-slate-400">Live Bybit OHLCV data with RSI signals ready for the web and PWA.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleManualRefresh}
-              disabled={isFetching}
-              className="rounded-full border border-indigo-400/60 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isFetching ? 'Refreshing…' : 'Refresh now'}
-            </button>
-            {canInstall && (
-              <button
-                type="button"
-                onClick={handleInstall}
-                className="rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-indigo-400"
-              >
-                Install app
-              </button>
-            )}
-          </div>
-        </div>
-        {showUpdateBanner && (
-          <div className="border-t border-indigo-500/40 bg-indigo-500/10">
-            <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-3 text-xs text-indigo-100">
-              <span className="font-medium">A new version is ready.</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowUpdateBanner(false)}
-                  className="rounded-full border border-indigo-400/60 px-3 py-1 font-medium text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-                >
-                  Later
-                </button>
-                <button
-                  type="button"
-                  onClick={handleUpdate}
-                  className="rounded-full bg-indigo-500 px-3 py-1 font-semibold text-white shadow transition hover:bg-indigo-400"
-                >
-                  Update now
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {showOfflineReadyBanner && (
-          <div className="border-t border-emerald-500/40 bg-emerald-500/10">
-            <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3 text-xs text-emerald-100">
-              <span className="font-medium">CryptoTrendNotify is ready to work offline.</span>
-              <button
-                type="button"
-                onClick={() => setShowOfflineReadyBanner(false)}
-                className="rounded-full border border-emerald-400/60 px-3 py-1 font-medium text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
-      </header>
-
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-8">
-        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="flex flex-col gap-2">
-            <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Crypto
-            </label>
-            <select
-              id="symbol"
-              value={symbol}
-              onChange={(event) => setSymbol(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {CRYPTO_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Timeframe
-            </label>
-            <select
-              id="timeframe"
-              value={timeframe}
-              onChange={(event) => setTimeframe(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {TIMEFRAMES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Bars
-            </label>
-            <select
-              id="bar-count"
-              value={barSelection}
-              onChange={(event) => setBarSelection(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {BAR_COUNT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {barSelection === 'custom' && (
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={MAX_BAR_LIMIT}
-                    value={customBarCount}
-                    onChange={(event) => setCustomBarCount(event.target.value)}
-                    className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
-                  />
-                  <span className="text-xs text-slate-400">bars</span>
-                </div>
-                <span className="text-[10px] text-slate-500">Max {MAX_BAR_LIMIT} bars</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Refresh interval
-            </label>
-            <select
-              id="refresh-interval"
-              value={refreshSelection}
-              onChange={(event) => setRefreshSelection(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {REFRESH_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {refreshSelection === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  value={customRefresh}
-                  onChange={(event) => setCustomRefresh(event.target.value)}
-                  className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
-                />
-                <span className="text-xs text-slate-400">minutes</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Push server
-              </span>
-              {pushServerConnected === null ? (
-                <span className="text-[11px] text-slate-500">Checking…</span>
-              ) : pushServerConnected ? (
-                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">
-                  Connected
-                </span>
-              ) : (
-                <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">
-                  Offline
-                </span>
-              )}
-            </div>
-            {pushServerConnected === false && (
-              <span className="text-[11px] text-rose-300">
-                Unable to reach the push server. Start the backend service to deliver notifications.
-              </span>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Notifications
-              </span>
-              {supportsNotifications ? (
-                notificationPermission === 'granted' ? (
-                  <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">
-                    Enabled
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleEnableNotifications}
-                    className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-                  >
-                    Enable alerts
-                  </button>
-                )
-              ) : (
-                <span className="text-[11px] text-slate-500">Not supported in this browser</span>
-              )}
-            </div>
-            {notificationPermission === 'denied' && supportsNotifications && (
-              <span className="text-[11px] text-rose-300">
-                Notifications are blocked. Update your browser settings to enable alerts.
-              </span>
-            )}
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-6">
-          {isLoading && (
-            <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
-              <p>Loading live market data…</p>
-            </div>
-          )}
-          {isError && (
-            <div className="rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-sm text-rose-200">
-              <p>{error instanceof Error ? error.message : 'Failed to load data.'}</p>
-            </div>
-          )}
-          {!isLoading && !isError && (
-            <>
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Momentum notifications
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Latest alerts for {symbol}
-                  </span>
-                </div>
-                {visibleMomentumNotifications.length === 0 ? (
-                  <p className="text-xs text-slate-500">
-                    No momentum notifications have been triggered yet. Alerts will surface here once the
-                    RSI and Stochastic RSI conditions are met.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
-                    {visibleMomentumNotifications.map((entry) => {
-                      const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
-                      const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
-                      return (
-                        <div
-                          key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                        >
-                          <span className="text-[11px] font-semibold uppercase tracking-wide">
-                            {emoji} {entry.label}
-                          </span>
-                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                          <span className="text-[11px] text-white/80">Rsi {entry.rsiSummary}</span>
-                          <span className="text-[11px] text-white/80">
-                            Stoch Rsi (stochastic rsi %d {entry.stochasticSummary})
-                          </span>
-                          <span className="text-[10px] text-white/60">
-                            {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <h2 className="text-base font-semibold text-white">Market snapshot</h2>
-                    <p className="text-xs text-slate-400">Applied across all charts</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsMarketSummaryCollapsed((previous) => !previous)}
-                    className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
-                    aria-expanded={!isMarketSummaryCollapsed}
-                  >
-                    {isMarketSummaryCollapsed ? 'Expand' : 'Collapse'}
-                    <span aria-hidden="true">{isMarketSummaryCollapsed ? '▾' : '▴'}</span>
-                  </button>
-                </div>
-                {!isMarketSummaryCollapsed && (
-                  <div className="grid gap-6 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</span>
-                      <span className="text-lg font-semibold text-white">{lastUpdatedLabel}</span>
-                      <span className="text-xs text-slate-400">
-                        {refreshInterval
-                          ? `Every ${
-                              refreshSelection === 'custom'
-                                ? `${customRefresh || '—'}m`
-                                : formatIntervalLabel(refreshSelection)
-                            }`
-                          : 'Auto refresh disabled'}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">Data window</span>
-                      <span className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</span>
-                      <span className="text-xs text-slate-400">Refresh applies to RSI and Stochastic RSI panels</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">Last close</span>
-                      <span className="text-lg font-semibold text-white">
-                        {latestCandle ? latestCandle.close.toFixed(5) : '—'}
-                      </span>
-                      {latestCandle && priceChange ? (
-                        <span
-                          className={`text-xs font-medium ${
-                            priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {priceChange.difference >= 0 ? '+' : ''}
-                          {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-500">Waiting for additional price data…</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <LineChart
-                title={`RSI (${rsiLengthDescription})`}
-                data={rsiValues}
-                labels={labels}
-                color="#818cf8"
-                yDomain={{ min: 0, max: 100 }}
-                guideLines={rsiGuideLines}
-              />
-              <LineChart
-                title={`Stochastic RSI (${stochasticLengthDescription})`}
-                labels={labels}
-                series={[
-                  { name: '%K', data: stochasticSeries.kValues, color: '#34d399' },
-                  { name: '%D', data: stochasticSeries.dValues, color: '#f87171' },
-                ]}
-                yDomain={{ min: 0, max: 100 }}
-                guideLines={stochasticGuideLines}
-              />
-            </>
-          )}
-        </section>
-      </main>
-
-      <footer className="border-t border-white/5 bg-slate-950/80">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-1 px-6 py-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>&copy; {new Date().getFullYear()} CryptoTrendNotify — Live momentum insights at a glance.</p>
-          <p>Built for responsive web and installable PWA experiences.</p>
-        </div>
-      </footer>
-    </div>
+    <DashboardView
+      canInstall={canInstall}
+      isFetching={isFetching}
+      onManualRefresh={handleManualRefresh}
+      onInstall={handleInstall}
+      showUpdateBanner={showUpdateBanner}
+      onDismissUpdateBanner={dismissUpdateBanner}
+      onUpdate={handleUpdate}
+      showOfflineReadyBanner={showOfflineReadyBanner}
+      onDismissOfflineReadyBanner={dismissOfflineReadyBanner}
+      symbol={symbol}
+      onSymbolChange={setSymbol}
+      cryptoOptions={CRYPTO_OPTIONS}
+      timeframe={timeframe}
+      timeframeOptions={TIMEFRAMES}
+      onTimeframeChange={setTimeframe}
+      barSelection={barSelection}
+      barCountOptions={BAR_COUNT_OPTIONS}
+      onBarSelectionChange={setBarSelection}
+      customBarCount={customBarCount}
+      onCustomBarCountChange={setCustomBarCount}
+      maxBarLimit={MAX_BAR_LIMIT}
+      refreshSelection={refreshSelection}
+      refreshOptions={REFRESH_OPTIONS}
+      onRefreshSelectionChange={setRefreshSelection}
+      customRefresh={customRefresh}
+      onCustomRefreshChange={setCustomRefresh}
+      pushServerConnected={pushServerConnected}
+      supportsNotifications={supportsNotifications}
+      notificationPermission={notificationPermission}
+      onEnableNotifications={handleEnableNotifications}
+      isLoading={isLoading}
+      isError={isError}
+      error={error}
+      visibleMomentumNotifications={visibleMomentumNotifications}
+      formatTriggeredAt={formatTriggeredAtLabel}
+      lastUpdatedLabel={lastUpdatedLabel}
+      refreshInterval={refreshInterval}
+      formatIntervalLabel={formatIntervalLabel}
+      resolvedBarLimit={resolvedBarLimit}
+      latestCandle={latestCandle}
+      priceChange={priceChange}
+      isMarketSummaryCollapsed={isMarketSummaryCollapsed}
+      onToggleMarketSummary={toggleMarketSummary}
+      rsiLengthDescription={rsiLengthDescription}
+      rsiValues={rsiValues}
+      labels={labels}
+      rsiGuideLines={rsiGuideLines}
+      stochasticLengthDescription={stochasticLengthDescription}
+      stochasticSeries={stochasticSeries}
+      stochasticGuideLines={stochasticGuideLines}
+    />
   )
 }
 
