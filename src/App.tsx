@@ -54,15 +54,26 @@ type StochasticSetting = {
   label: string
 }
 
+type MomentumNotificationDetail = {
+  timeframe: string
+  timeframeLabel: string
+  rsi: number
+  stochasticD: number
+}
+
+type MomentumNotificationTone = 'emerald' | 'amber' | 'rose'
+
 type MomentumNotification = {
   id: string
   symbol: string
   timeframe: string
   timeframeLabel: string
   direction: 'long' | 'short'
+  tone: MomentumNotificationTone
   rsi: number
   stochasticD: number
   triggeredAt: number
+  details: MomentumNotificationDetail[]
 }
 
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
@@ -84,6 +95,9 @@ const NOTIFICATION_TIMEFRAME_OPTIONS: TimeframeOption[] = [
 ]
 
 const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '1'
+
+const COMPOUND_NOTIFICATION_TIMEFRAMES = ['5', '15'] as const
+const COMPOUND_NOTIFICATION_TIMEFRAME_KEY = '5-15'
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -296,11 +310,17 @@ function App() {
     () => (selectedNotificationTimeframe ? [selectedNotificationTimeframe] : []),
     [selectedNotificationTimeframe],
   )
+  const monitoredNotificationTimeframes = useMemo(() => {
+    const unique = new Set(notificationTimeframes)
+    COMPOUND_NOTIFICATION_TIMEFRAMES.forEach((value) => unique.add(value))
+    return Array.from(unique)
+  }, [notificationTimeframes])
   const lastNotificationByTimeframeRef = useRef<Record<string, number | null>>({
     [DEFAULT_NOTIFICATION_TIMEFRAME]: null,
   })
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
+  const lastCompoundNotificationRef = useRef<{ long?: string; short?: string }>({})
 
   const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
 
@@ -454,7 +474,7 @@ function App() {
   })
 
   const notificationQueries = useQueries({
-    queries: notificationTimeframes.map((value) => ({
+    queries: monitoredNotificationTimeframes.map((value) => ({
       queryKey: ['notification-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
       enabled: notificationsEnabled,
@@ -478,12 +498,17 @@ function App() {
     lastNotificationByTimeframeRef.current = {
       [selectedNotificationTimeframe]: null,
     }
+    lastCompoundNotificationRef.current = {}
     setMomentumNotifications([])
   }, [selectedNotificationTimeframe, symbol])
 
   useEffect(() => {
     setMomentumNotifications((previous) =>
-      previous.filter((entry) => entry.timeframe === selectedNotificationTimeframe),
+      previous.filter(
+        (entry) =>
+          entry.timeframe === selectedNotificationTimeframe ||
+          entry.timeframe === COMPOUND_NOTIFICATION_TIMEFRAME_KEY,
+      ),
     )
   }, [selectedNotificationTimeframe])
 
@@ -571,7 +596,18 @@ function App() {
       return
     }
 
-    notificationTimeframes.forEach((timeframeValue, index) => {
+    const timeframeDataMap = new Map<
+      string,
+      {
+        latestRsi: number
+        latestStochasticD: number
+        latestOpenTime: number
+        timeframeLabel: string
+      }
+    >()
+    const selectedTimeframeSet = new Set(notificationTimeframes)
+
+    monitoredNotificationTimeframes.forEach((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
 
@@ -582,12 +618,6 @@ function App() {
       const latest = candles[candles.length - 1]
 
       if (!latest) {
-        return
-      }
-
-      const lastProcessed = lastNotificationByTimeframeRef.current[timeframeValue]
-
-      if (lastProcessed === latest.openTime) {
         return
       }
 
@@ -613,58 +643,201 @@ function App() {
         timeframeStochasticSeries.dValues[timeframeStochasticSeries.dValues.length - 1]
       const timeframeLabel = formatIntervalLabel(timeframeValue)
 
-      if (typeof latestRsi === 'number' && typeof latestStochasticD === 'number') {
-        if (latestRsi <= 30 && latestStochasticD <= 20) {
-          setMomentumNotifications((previous) => {
-            const entry: MomentumNotification = {
-              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
-              symbol,
-              timeframe: timeframeValue,
-              timeframeLabel,
-              direction: 'long',
-              rsi: latestRsi,
-              stochasticD: latestStochasticD,
-              triggeredAt: latest.openTime,
-            }
+      if (typeof latestRsi !== 'number' || typeof latestStochasticD !== 'number') {
+        return
+      }
 
-            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
-          })
-          void showAppNotification({
-            title: `🟢 Long momentum ${timeframeLabel}`,
-            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
-            tag: `long-${symbol}-${timeframeValue}`,
-            data: { symbol, timeframe: timeframeValue, direction: 'long' },
-          })
-        } else if (latestRsi >= 70 && latestStochasticD < 80) {
-          setMomentumNotifications((previous) => {
-            const entry: MomentumNotification = {
-              id: `${symbol}-${timeframeValue}-${latest.openTime}`,
-              symbol,
-              timeframe: timeframeValue,
-              timeframeLabel,
-              direction: 'short',
-              rsi: latestRsi,
-              stochasticD: latestStochasticD,
-              triggeredAt: latest.openTime,
-            }
+      timeframeDataMap.set(timeframeValue, {
+        latestRsi,
+        latestStochasticD,
+        latestOpenTime: latest.openTime,
+        timeframeLabel,
+      })
 
-            const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-            return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
-          })
-          void showAppNotification({
-            title: `🔴 Short momentum ${timeframeLabel}`,
-            body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
-            tag: `short-${symbol}-${timeframeValue}`,
-            data: { symbol, timeframe: timeframeValue, direction: 'short' },
-          })
-        }
+      const lastProcessed = lastNotificationByTimeframeRef.current[timeframeValue]
+
+      if (!selectedTimeframeSet.has(timeframeValue)) {
+        lastNotificationByTimeframeRef.current[timeframeValue] = latest.openTime
+        return
+      }
+
+      if (lastProcessed === latest.openTime) {
+        return
+      }
+
+      const detail: MomentumNotificationDetail = {
+        timeframe: timeframeValue,
+        timeframeLabel,
+        rsi: latestRsi,
+        stochasticD: latestStochasticD,
+      }
+
+      if (latestRsi <= 30 && latestStochasticD <= 20) {
+        setMomentumNotifications((previous) => {
+          const entry: MomentumNotification = {
+            id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+            symbol,
+            timeframe: timeframeValue,
+            timeframeLabel,
+            direction: 'long',
+            tone: 'emerald',
+            rsi: latestRsi,
+            stochasticD: latestStochasticD,
+            triggeredAt: latest.openTime,
+            details: [detail],
+          }
+
+          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+          return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+        })
+        void showAppNotification({
+          title: `🟢 Long momentum ${timeframeLabel}`,
+          body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+          tag: `long-${symbol}-${timeframeValue}`,
+          data: { symbol, timeframe: timeframeValue, direction: 'long' },
+        })
+      } else if (latestRsi >= 70 && latestStochasticD < 80) {
+        setMomentumNotifications((previous) => {
+          const entry: MomentumNotification = {
+            id: `${symbol}-${timeframeValue}-${latest.openTime}`,
+            symbol,
+            timeframe: timeframeValue,
+            timeframeLabel,
+            direction: 'short',
+            tone: 'rose',
+            rsi: latestRsi,
+            stochasticD: latestStochasticD,
+            triggeredAt: latest.openTime,
+            details: [detail],
+          }
+
+          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+          return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+        })
+        void showAppNotification({
+          title: `🔴 Short momentum ${timeframeLabel}`,
+          body: `${symbol} RSI ${latestRsi.toFixed(2)} • Stoch RSI %D ${latestStochasticD.toFixed(2)}`,
+          tag: `short-${symbol}-${timeframeValue}`,
+          data: { symbol, timeframe: timeframeValue, direction: 'short' },
+        })
       }
 
       lastNotificationByTimeframeRef.current[timeframeValue] = latest.openTime
     })
+
+    const compoundDetails = COMPOUND_NOTIFICATION_TIMEFRAMES.map((timeframe) => {
+      const data = timeframeDataMap.get(timeframe)
+      if (!data) {
+        return null
+      }
+
+      return {
+        timeframe,
+        timeframeLabel: data.timeframeLabel,
+        rsi: data.latestRsi,
+        stochasticD: data.latestStochasticD,
+        openTime: data.latestOpenTime,
+      }
+    })
+
+    if (compoundDetails.every((detail) => detail !== null)) {
+      const typedDetails = compoundDetails as Array<{
+        timeframe: string
+        timeframeLabel: string
+        rsi: number
+        stochasticD: number
+        openTime: number
+      }>
+
+      const compoundKey = typedDetails
+        .map((detail) => `${detail.timeframe}-${detail.openTime}`)
+        .join('|')
+      const compoundLabel = typedDetails.map((detail) => detail.timeframeLabel).join(' & ')
+      const rsiSegment = typedDetails
+        .map((detail) => `${detail.timeframeLabel} ${detail.rsi.toFixed(2)}`)
+        .join(' • ')
+      const stochasticSegment = typedDetails
+        .map((detail) => `${detail.timeframeLabel} ${detail.stochasticD.toFixed(2)}`)
+        .join(' • ')
+      const notificationDetails: MomentumNotificationDetail[] = typedDetails.map((detail) => ({
+        timeframe: detail.timeframe,
+        timeframeLabel: detail.timeframeLabel,
+        rsi: detail.rsi,
+        stochasticD: detail.stochasticD,
+      }))
+      const triggeredAt = Math.max(...typedDetails.map((detail) => detail.openTime))
+      const averageRsi =
+        notificationDetails.reduce((total, detail) => total + detail.rsi, 0) /
+        notificationDetails.length
+      const averageStochasticD =
+        notificationDetails.reduce((total, detail) => total + detail.stochasticD, 0) /
+        notificationDetails.length
+
+      const meetsLongConditions = notificationDetails.every(
+        (detail) => detail.rsi <= 30 && detail.stochasticD <= 20,
+      )
+      const meetsShortConditions = notificationDetails.every(
+        (detail) => detail.rsi >= 70 && detail.stochasticD < 80,
+      )
+
+      if (meetsLongConditions && lastCompoundNotificationRef.current.long !== compoundKey) {
+        lastCompoundNotificationRef.current.long = compoundKey
+        setMomentumNotifications((previous) => {
+          const entry: MomentumNotification = {
+            id: `compound-long-${symbol}-${compoundKey}`,
+            symbol,
+            timeframe: COMPOUND_NOTIFICATION_TIMEFRAME_KEY,
+            timeframeLabel: compoundLabel,
+            direction: 'long',
+            tone: 'amber',
+            rsi: averageRsi,
+            stochasticD: averageStochasticD,
+            triggeredAt,
+            details: notificationDetails,
+          }
+
+          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+          return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+        })
+        void showAppNotification({
+          title: `🟡 Long momentum ${compoundLabel}`,
+          body: `${symbol} RSI ${rsiSegment} • Stoch RSI %D ${stochasticSegment}`,
+          tag: `compound-long-${symbol}`,
+          data: { symbol, timeframe: COMPOUND_NOTIFICATION_TIMEFRAME_KEY, direction: 'long' },
+        })
+      } else if (
+        meetsShortConditions &&
+        lastCompoundNotificationRef.current.short !== compoundKey
+      ) {
+        lastCompoundNotificationRef.current.short = compoundKey
+        setMomentumNotifications((previous) => {
+          const entry: MomentumNotification = {
+            id: `compound-short-${symbol}-${compoundKey}`,
+            symbol,
+            timeframe: COMPOUND_NOTIFICATION_TIMEFRAME_KEY,
+            timeframeLabel: compoundLabel,
+            direction: 'short',
+            tone: 'amber',
+            rsi: averageRsi,
+            stochasticD: averageStochasticD,
+            triggeredAt,
+            details: notificationDetails,
+          }
+
+          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+          return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
+        })
+        void showAppNotification({
+          title: `🟡 Short momentum ${compoundLabel}`,
+          body: `${symbol} RSI ${rsiSegment} • Stoch RSI %D ${stochasticSegment}`,
+          tag: `compound-short-${symbol}`,
+          data: { symbol, timeframe: COMPOUND_NOTIFICATION_TIMEFRAME_KEY, direction: 'short' },
+        })
+      }
+    }
   }, [
     notificationQueries,
+    monitoredNotificationTimeframes,
     notificationTimeframes,
     notificationsEnabled,
     symbol,
@@ -977,22 +1150,32 @@ function App() {
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
                     {momentumNotifications.map((entry) => {
                       const isLong = entry.direction === 'long'
+                      const toneClasses: Record<MomentumNotificationTone, string> = {
+                        emerald: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+                        rose: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+                        amber: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
+                      }
+                      const toneClassName = toneClasses[entry.tone]
+                      const detailLabel =
+                        entry.details.length > 1
+                          ? entry.details
+                              .map(
+                                (detail) =>
+                                  `${detail.timeframeLabel}: RSI ${detail.rsi.toFixed(2)} • Stoch RSI %D ${detail.stochasticD.toFixed(2)}`,
+                              )
+                              .join(' | ')
+                          : `RSI ${entry.rsi.toFixed(2)} • Stoch RSI %D ${entry.stochasticD.toFixed(2)}`
+
                       return (
                         <div
                           key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${
-                            isLong
-                              ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
-                              : 'border-rose-400/40 bg-rose-500/10 text-rose-100'
-                          }`}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${toneClassName}`}
                         >
                           <span className="text-[11px] font-semibold uppercase tracking-wide">
                             {isLong ? 'Long momentum' : 'Short momentum'} • {entry.timeframeLabel}
                           </span>
                           <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                          <span className="text-[11px] text-white/80">
-                            RSI {entry.rsi.toFixed(2)} • Stoch RSI %D {entry.stochasticD.toFixed(2)}
-                          </span>
+                          <span className="text-[11px] text-white/80">{detailLabel}</span>
                           <span className="text-[10px] text-white/60">
                             {DATE_FORMATTERS.short.format(new Date(entry.triggeredAt))}
                           </span>
