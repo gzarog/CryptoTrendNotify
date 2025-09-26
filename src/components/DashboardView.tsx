@@ -159,18 +159,6 @@ export function DashboardView({
       className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100"
       aria-busy={isFetching}
     >
-      {isFetching && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-slate-950/80 backdrop-blur-sm text-indigo-100"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="text-5xl" role="img" aria-hidden="true">
-            ⌛
-          </span>
-          <p className="text-sm font-semibold">Reloading market data…</p>
-        </div>
-      )}
       <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -596,26 +584,29 @@ export function DashboardView({
               { name: 'MA 200', data: movingAverageSeries.ma200, color: '#f97316' },
             ]}
             markers={movingAverageSeries.markers}
+            isLoading={isFetching}
           />
           <LineChart
             title={`RSI (${rsiLengthDescription})`}
             data={rsiValues}
             labels={labels}
             color="#818cf8"
-                yDomain={{ min: 0, max: 100 }}
-                guideLines={rsiGuideLines}
-              />
-              <LineChart
-                title={`Stochastic RSI (${stochasticLengthDescription})`}
-                labels={labels}
-                series={[
-                  { name: '%K', data: stochasticSeries.kValues, color: '#34d399' },
-                  { name: '%D', data: stochasticSeries.dValues, color: '#f87171' },
-                ]}
-                yDomain={{ min: 0, max: 100 }}
-                guideLines={stochasticGuideLines}
-              />
-            </>
+            yDomain={{ min: 0, max: 100 }}
+            guideLines={rsiGuideLines}
+            isLoading={isFetching}
+          />
+          <LineChart
+            title={`Stochastic RSI (${stochasticLengthDescription})`}
+            labels={labels}
+            series={[
+              { name: '%K', data: stochasticSeries.kValues, color: '#34d399' },
+              { name: '%D', data: stochasticSeries.dValues, color: '#f87171' },
+            ]}
+            yDomain={{ min: 0, max: 100 }}
+            guideLines={stochasticGuideLines}
+            isLoading={isFetching}
+          />
+          </>
           )}
         </section>
       </main>
