@@ -75,14 +75,13 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '120', label: '120m' },
   { value: '240', label: '240m (4h)' },
   { value: '360', label: '360m (6h)' },
-  { value: '420', label: '420m (7h)' },
 ]
 
 const NOTIFICATION_TIMEFRAME_OPTIONS = TIMEFRAMES.filter((option) =>
-  ['5', '15', '30'].includes(option.value),
+  ['1', '5', '15'].includes(option.value),
 )
 
-const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '5'
+const DEFAULT_NOTIFICATION_TIMEFRAME = NOTIFICATION_TIMEFRAME_OPTIONS[0]?.value ?? '1'
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -92,7 +91,6 @@ const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '120': { period: 17, label: '16–18' },
   '240': { period: 20, label: '18–21' },
   '360': { period: 23, label: '21–24' },
-  '420': { period: 26, label: '24–28' },
 }
 
 const DEFAULT_RSI_SETTING = { period: 14, label: '14' }
@@ -105,7 +103,6 @@ const STOCHASTIC_SETTINGS: Record<string, StochasticSetting> = {
   '120': { rsiLength: 16, stochLength: 16, kSmoothing: 3, dSmoothing: 3, label: 'RSI 16 • Stoch 16 • %K 3 • %D 3' },
   '240': { rsiLength: 21, stochLength: 21, kSmoothing: 4, dSmoothing: 4, label: 'RSI 21 • Stoch 21 • %K 4 (3–4) • %D 4 (3–4)' },
   '360': { rsiLength: 24, stochLength: 24, kSmoothing: 4, dSmoothing: 4, label: 'RSI 24 • Stoch 24 • %K 4 • %D 4' },
-  '420': { rsiLength: 28, stochLength: 28, kSmoothing: 4, dSmoothing: 4, label: 'RSI 28 • Stoch 28 • %K 4 • %D 4' },
 }
 
 const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
@@ -125,18 +122,18 @@ const REFRESH_OPTIONS: RefreshOption[] = [
   { value: 'custom', label: 'Custom' },
 ]
 
-const DEFAULT_REFRESH_SELECTION = '5'
+const DEFAULT_REFRESH_SELECTION = '1'
 
 const BAR_COUNT_OPTIONS: BarCountOption[] = [
-  { value: '500', label: '500' },
+  { value: '100', label: '100' },
+  { value: '200', label: '200' },
+  { value: '400', label: '400' },
+  { value: '600', label: '600' },
+  { value: '800', label: '800' },
   { value: '1000', label: '1000' },
-  { value: '1500', label: '1500' },
   { value: '2000', label: '2000' },
-  { value: '2500', label: '2500' },
   { value: '3000', label: '3000' },
-  { value: '3500', label: '3500' },
   { value: '4000', label: '4000' },
-  { value: '4500', label: '4500' },
   { value: '5000', label: '5000' },
   { value: 'custom', label: 'Custom' },
 ]
@@ -160,7 +157,7 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
   second: '2-digit',
 })
 
-const DEFAULT_BAR_LIMIT = 1000
+const DEFAULT_BAR_LIMIT = 200
 const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
@@ -282,8 +279,8 @@ function App() {
   const [symbol, setSymbol] = useState(CRYPTO_OPTIONS[0])
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0].value)
   const [refreshSelection, setRefreshSelection] = useState(DEFAULT_REFRESH_SELECTION)
-  const [customRefresh, setCustomRefresh] = useState('15')
-  const [barSelection, setBarSelection] = useState('1000')
+  const [customRefresh, setCustomRefresh] = useState('1')
+  const [barSelection, setBarSelection] = useState('200')
   const [customBarCount, setCustomBarCount] = useState(DEFAULT_BAR_LIMIT.toString())
   const [isMarketSummaryCollapsed, setIsMarketSummaryCollapsed] = useState(false)
   const supportsNotifications = isNotificationSupported()
