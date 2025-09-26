@@ -215,102 +215,104 @@ export function DashboardView({
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-8">
-        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-6">
-          <div className="flex flex-col gap-2">
-            <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Crypto
-            </label>
-            <select
-              id="symbol"
-              value={symbol}
-              onChange={(event) => onSymbolChange(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {cryptoOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Timeframe
-            </label>
-            <select
-              id="timeframe"
-              value={timeframe}
-              onChange={(event) => onTimeframeChange(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {timeframeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Bars
-            </label>
-            <select
-              id="bar-count"
-              value={barSelection}
-              onChange={(event) => onBarSelectionChange(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {barCountOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {barSelection === 'custom' && (
-              <div className="flex flex-col gap-1">
+        <section className="flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Crypto
+              </label>
+              <select
+                id="symbol"
+                value={symbol}
+                onChange={(event) => onSymbolChange(event.target.value)}
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              >
+                {cryptoOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Timeframe
+              </label>
+              <select
+                id="timeframe"
+                value={timeframe}
+                onChange={(event) => onTimeframeChange(event.target.value)}
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              >
+                {timeframeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Bars
+              </label>
+              <select
+                id="bar-count"
+                value={barSelection}
+                onChange={(event) => onBarSelectionChange(event.target.value)}
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              >
+                {barCountOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {barSelection === 'custom' && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={maxBarLimit}
+                      value={customBarCount}
+                      onChange={(event) => onCustomBarCountChange(event.target.value)}
+                      className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                    />
+                    <span className="text-xs text-slate-400">bars</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500">Max {maxBarLimit} bars</span>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Refresh interval
+              </label>
+              <select
+                id="refresh-interval"
+                value={refreshSelection}
+                onChange={(event) => onRefreshSelectionChange(event.target.value)}
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              >
+                {refreshOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {refreshSelection === 'custom' && (
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     min={1}
-                    max={maxBarLimit}
-                    value={customBarCount}
-                    onChange={(event) => onCustomBarCountChange(event.target.value)}
+                    value={customRefresh}
+                    onChange={(event) => onCustomRefreshChange(event.target.value)}
                     className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
                   />
-                  <span className="text-xs text-slate-400">bars</span>
+                  <span className="text-xs text-slate-400">minutes</span>
                 </div>
-                <span className="text-[10px] text-slate-500">Max {maxBarLimit} bars</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Refresh interval
-            </label>
-            <select
-              id="refresh-interval"
-              value={refreshSelection}
-              onChange={(event) => onRefreshSelectionChange(event.target.value)}
-              className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-            >
-              {refreshOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {refreshSelection === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  value={customRefresh}
-                  onChange={(event) => onCustomRefreshChange(event.target.value)}
-                  className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
-                />
-                <span className="text-xs text-slate-400">minutes</span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           <div className="flex flex-col gap-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -397,55 +399,59 @@ export function DashboardView({
               {formatThreshold(momentumThresholds.shortStochastic)}.
             </span>
           </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Push server
-              </span>
-              {pushServerConnected === null ? (
-                <span className="text-[11px] text-slate-500">Checking…</span>
-              ) : pushServerConnected ? (
-                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">
-                  Connected
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Push server
                 </span>
-              ) : (
-                <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">
-                  Offline
-                </span>
-              )}
-            </div>
-            {pushServerConnected === false && (
-              <span className="text-[11px] text-rose-300">
-                Unable to reach the push server. Start the backend service to deliver notifications.
-              </span>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Notifications
-              </span>
-              {supportsNotifications ? (
-                notificationPermission === 'granted' ? (
-                  <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">
-                    Enabled
+                {pushServerConnected === null ? (
+                  <span className="text-[11px] text-slate-500">Checking…</span>
+                ) : pushServerConnected ? (
+                  <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">
+                    Connected
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void onEnableNotifications()}
-                    className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-                  >
-                    Enable alerts
-                  </button>
-                )
-              ) : (
-                <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+                  <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">
+                    Offline
+                  </span>
+                )}
+              </div>
+              {pushServerConnected === false && (
+                <span className="text-[11px] text-rose-300">
+                  Unable to reach the push server. Start the backend service to deliver notifications.
+                </span>
               )}
             </div>
-            {notificationPermission === 'denied' && supportsNotifications && (
-              <span className="text-[11px] text-rose-300">
-                Notifications are blocked. Update your browser settings to enable alerts.
-              </span>
-            )}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Notifications
+                </span>
+                {supportsNotifications ? (
+                  notificationPermission === 'granted' ? (
+                    <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                      Enabled
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void onEnableNotifications()}
+                      className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                    >
+                      Enable alerts
+                    </button>
+                  )
+                ) : (
+                  <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+                )}
+              </div>
+              {notificationPermission === 'denied' && supportsNotifications && (
+                <span className="text-[11px] text-rose-300">
+                  Notifications are blocked. Update your browser settings to enable alerts.
+                </span>
+              )}
+            </div>
           </div>
         </section>
 
