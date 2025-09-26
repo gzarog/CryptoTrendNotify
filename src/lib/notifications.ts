@@ -169,7 +169,7 @@ export async function showAppNotification({
     return false
   }
 
-  const options: NotificationOptions = {
+  const options: NotificationOptions & { renotify?: boolean; timestamp?: number } = {
     body,
     tag,
     data,
