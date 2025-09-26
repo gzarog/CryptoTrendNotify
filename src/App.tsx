@@ -180,6 +180,11 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
   second: '2-digit',
 })
 
+const GUIDE_VALUE_FORMATTER = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+})
+
 const DEFAULT_BAR_LIMIT = 200
 const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
@@ -572,24 +577,6 @@ function App() {
     return { difference, percent }
   }, [data, latestCandle])
 
-  const rsiGuideLines = useMemo(
-    () => [
-      { value: 70, label: '70', color: 'rgba(239, 68, 68, 0.7)' },
-      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
-      { value: 30, label: '30', color: 'rgba(16, 185, 129, 0.7)' },
-    ],
-    [],
-  )
-
-  const stochasticGuideLines = useMemo(
-    () => [
-      { value: 80, label: '80', color: 'rgba(239, 68, 68, 0.7)' },
-      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
-      { value: 20, label: '20', color: 'rgba(16, 185, 129, 0.7)' },
-    ],
-    [],
-  )
-
   const momentumThresholds = useMemo(() => {
     const clamp = (value: string, fallback: number) => {
       const parsed = Number(value)
@@ -626,6 +613,40 @@ function App() {
     stochasticLowerBoundInput,
     stochasticUpperBoundInput,
   ])
+
+  const rsiGuideLines = useMemo(
+    () => [
+      {
+        value: momentumThresholds.shortRsi,
+        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.shortRsi),
+        color: 'rgba(239, 68, 68, 0.7)',
+      },
+      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
+      {
+        value: momentumThresholds.longRsi,
+        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.longRsi),
+        color: 'rgba(16, 185, 129, 0.7)',
+      },
+    ],
+    [momentumThresholds.longRsi, momentumThresholds.shortRsi],
+  )
+
+  const stochasticGuideLines = useMemo(
+    () => [
+      {
+        value: momentumThresholds.shortStochastic,
+        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.shortStochastic),
+        color: 'rgba(239, 68, 68, 0.7)',
+      },
+      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
+      {
+        value: momentumThresholds.longStochastic,
+        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.longStochastic),
+        color: 'rgba(16, 185, 129, 0.7)',
+      },
+    ],
+    [momentumThresholds.longStochastic, momentumThresholds.shortStochastic],
+  )
 
   useEffect(() => {
     const sanitized = momentumThresholds.rsiLower.toString()
