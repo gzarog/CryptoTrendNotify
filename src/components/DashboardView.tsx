@@ -155,7 +155,21 @@ export function DashboardView({
     Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
+      {isFetching && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-col items-center gap-3 text-center text-slate-100"
+          >
+            <span role="img" aria-label="κλεψύδρα" className="text-6xl">
+              ⌛
+            </span>
+            <span className="text-sm font-medium tracking-wide">Επαναφόρτωση δεδομένων…</span>
+          </div>
+        </div>
+      )}
       <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
