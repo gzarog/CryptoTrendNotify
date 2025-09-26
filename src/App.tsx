@@ -490,7 +490,7 @@ function App() {
       queryKey: ['notification-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
       enabled: notificationsEnabled,
-      refetchInterval: Number(value) * 60_000,
+      refetchInterval: refreshInterval,
       refetchIntervalInBackground: true,
       retry: 1,
       placeholderData: (previousData: Candle[] | undefined) => previousData,
