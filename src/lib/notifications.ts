@@ -20,6 +20,8 @@ type PushNotificationPayload = AppNotificationPayload & {
   renotify?: boolean
 }
 
+type ExtendedNotificationOptions = NotificationOptions & { renotify?: boolean; timestamp?: number }
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -169,7 +171,7 @@ export async function showAppNotification({
     return false
   }
 
-  const options: NotificationOptions = {
+  const options: ExtendedNotificationOptions = {
     body,
     tag,
     data,

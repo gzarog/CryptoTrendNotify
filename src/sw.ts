@@ -12,6 +12,8 @@ declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<PrecacheEntry | string>
 }
 
+type ExtendedNotificationOptions = NotificationOptions & { renotify?: boolean; timestamp?: number }
+
 clientsClaim()
 precacheAndRoute(self.__WB_MANIFEST)
 
@@ -87,7 +89,7 @@ self.addEventListener('push', (event) => {
   })()
 
   const title = payload?.title ?? 'Momentum alert'
-  const options: NotificationOptions = {
+  const options: ExtendedNotificationOptions = {
     body: payload?.body ?? 'Open the app to view the latest trend insights.',
     tag: payload?.tag,
     icon: payload?.icon ?? '/icons/pwa-icon.svg',
