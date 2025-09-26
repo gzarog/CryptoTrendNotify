@@ -967,9 +967,6 @@ function App() {
                 <span className="text-[11px] text-slate-500">Not supported in this browser</span>
               )}
             </div>
-            <p className="text-[11px] leading-5 text-slate-500">
-              Receive browser and PWA alerts whenever momentum conditions trigger across tracked timeframes.
-            </p>
             {notificationPermission === 'denied' && supportsNotifications && (
               <span className="text-[11px] text-rose-300">
                 Notifications are blocked. Update your browser settings to enable alerts.
