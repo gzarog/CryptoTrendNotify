@@ -183,6 +183,13 @@ const LAST_REFRESH_FORMATTER = new Intl.DateTimeFormat(undefined, {
 const DEFAULT_BAR_LIMIT = 200
 const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
+
+const DEFAULT_MOMENTUM_BOUNDS = {
+  rsiLower: 20,
+  rsiUpper: 80,
+  stochasticLower: 20,
+  stochasticUpper: 80,
+}
 // Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
 // issues batched requests when callers ask for a larger window.
 const BYBIT_REQUEST_LIMIT = 200
@@ -313,6 +320,18 @@ function App() {
   const supportsNotifications = isNotificationSupported()
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
     supportsNotifications ? Notification.permission : 'denied',
+  )
+  const [rsiLowerBoundInput, setRsiLowerBoundInput] = useState(
+    DEFAULT_MOMENTUM_BOUNDS.rsiLower.toString(),
+  )
+  const [rsiUpperBoundInput, setRsiUpperBoundInput] = useState(
+    DEFAULT_MOMENTUM_BOUNDS.rsiUpper.toString(),
+  )
+  const [stochasticLowerBoundInput, setStochasticLowerBoundInput] = useState(
+    DEFAULT_MOMENTUM_BOUNDS.stochasticLower.toString(),
+  )
+  const [stochasticUpperBoundInput, setStochasticUpperBoundInput] = useState(
+    DEFAULT_MOMENTUM_BOUNDS.stochasticUpper.toString(),
   )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
@@ -571,6 +590,80 @@ function App() {
     [],
   )
 
+  const momentumThresholds = useMemo(() => {
+    const clamp = (value: string, fallback: number) => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) {
+        return fallback
+      }
+      return Math.min(Math.max(parsed, 0), 100)
+    }
+
+    const rsiLower = clamp(rsiLowerBoundInput, DEFAULT_MOMENTUM_BOUNDS.rsiLower)
+    const rsiUpper = clamp(rsiUpperBoundInput, DEFAULT_MOMENTUM_BOUNDS.rsiUpper)
+    const stochasticLower = clamp(
+      stochasticLowerBoundInput,
+      DEFAULT_MOMENTUM_BOUNDS.stochasticLower,
+    )
+    const stochasticUpper = clamp(
+      stochasticUpperBoundInput,
+      DEFAULT_MOMENTUM_BOUNDS.stochasticUpper,
+    )
+
+    return {
+      rsiLower,
+      rsiUpper,
+      stochasticLower,
+      stochasticUpper,
+      longRsi: Math.min(rsiLower, rsiUpper),
+      shortRsi: Math.max(rsiLower, rsiUpper),
+      longStochastic: Math.min(stochasticLower, stochasticUpper),
+      shortStochastic: Math.max(stochasticLower, stochasticUpper),
+    }
+  }, [
+    rsiLowerBoundInput,
+    rsiUpperBoundInput,
+    stochasticLowerBoundInput,
+    stochasticUpperBoundInput,
+  ])
+
+  useEffect(() => {
+    const sanitized = momentumThresholds.rsiLower.toString()
+    if (sanitized !== rsiLowerBoundInput) {
+      setRsiLowerBoundInput(sanitized)
+    }
+  }, [momentumThresholds.rsiLower, rsiLowerBoundInput])
+
+  useEffect(() => {
+    const sanitized = momentumThresholds.rsiUpper.toString()
+    if (sanitized !== rsiUpperBoundInput) {
+      setRsiUpperBoundInput(sanitized)
+    }
+  }, [momentumThresholds.rsiUpper, rsiUpperBoundInput])
+
+  useEffect(() => {
+    const sanitized = momentumThresholds.stochasticLower.toString()
+    if (sanitized !== stochasticLowerBoundInput) {
+      setStochasticLowerBoundInput(sanitized)
+    }
+  }, [momentumThresholds.stochasticLower, stochasticLowerBoundInput])
+
+  useEffect(() => {
+    const sanitized = momentumThresholds.stochasticUpper.toString()
+    if (sanitized !== stochasticUpperBoundInput) {
+      setStochasticUpperBoundInput(sanitized)
+    }
+  }, [momentumThresholds.stochasticUpper, stochasticUpperBoundInput])
+
+  useEffect(() => {
+    lastMomentumTriggerRef.current = null
+  }, [
+    momentumThresholds.longRsi,
+    momentumThresholds.shortRsi,
+    momentumThresholds.longStochastic,
+    momentumThresholds.shortStochastic,
+  ])
+
   const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
 
   useEffect(() => {
@@ -620,9 +713,15 @@ function App() {
 
       let direction: 'long' | 'short' | null = null
 
-      if (latestRsi < 20 && latestStochasticD < 20) {
+      if (
+        latestRsi < momentumThresholds.longRsi &&
+        latestStochasticD < momentumThresholds.longStochastic
+      ) {
         direction = 'long'
-      } else if (latestRsi > 80 && latestStochasticD > 80) {
+      } else if (
+        latestRsi > momentumThresholds.shortRsi &&
+        latestStochasticD > momentumThresholds.shortStochastic
+      ) {
         direction = 'short'
       }
 
@@ -721,6 +820,7 @@ function App() {
     notificationQueries,
     notificationTimeframes,
     notificationsEnabled,
+    momentumThresholds,
     symbol,
   ])
 
@@ -804,6 +904,15 @@ function App() {
       isLoading={isLoading}
       isError={isError}
       error={error}
+      rsiLowerBoundInput={rsiLowerBoundInput}
+      onRsiLowerBoundInputChange={setRsiLowerBoundInput}
+      rsiUpperBoundInput={rsiUpperBoundInput}
+      onRsiUpperBoundInputChange={setRsiUpperBoundInput}
+      stochasticLowerBoundInput={stochasticLowerBoundInput}
+      onStochasticLowerBoundInputChange={setStochasticLowerBoundInput}
+      stochasticUpperBoundInput={stochasticUpperBoundInput}
+      onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
+      momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       lastUpdatedLabel={lastUpdatedLabel}

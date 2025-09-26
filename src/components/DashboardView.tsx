@@ -50,6 +50,20 @@ type DashboardViewProps = {
   isLoading: boolean
   isError: boolean
   error: unknown
+  rsiLowerBoundInput: string
+  onRsiLowerBoundInputChange: Dispatch<SetStateAction<string>>
+  rsiUpperBoundInput: string
+  onRsiUpperBoundInputChange: Dispatch<SetStateAction<string>>
+  stochasticLowerBoundInput: string
+  onStochasticLowerBoundInputChange: Dispatch<SetStateAction<string>>
+  stochasticUpperBoundInput: string
+  onStochasticUpperBoundInputChange: Dispatch<SetStateAction<string>>
+  momentumThresholds: {
+    longRsi: number
+    shortRsi: number
+    longStochastic: number
+    shortStochastic: number
+  }
   visibleMomentumNotifications: MomentumNotification[]
   formatTriggeredAt: (timestamp: number) => string
   lastUpdatedLabel: string
@@ -103,6 +117,15 @@ export function DashboardView({
   isLoading,
   isError,
   error,
+  rsiLowerBoundInput,
+  onRsiLowerBoundInputChange,
+  rsiUpperBoundInput,
+  onRsiUpperBoundInputChange,
+  stochasticLowerBoundInput,
+  onStochasticLowerBoundInputChange,
+  stochasticUpperBoundInput,
+  onStochasticUpperBoundInputChange,
+  momentumThresholds,
   visibleMomentumNotifications,
   formatTriggeredAt,
   lastUpdatedLabel,
@@ -121,6 +144,9 @@ export function DashboardView({
   stochasticSeries,
   stochasticGuideLines,
 }: DashboardViewProps) {
+  const formatThreshold = (value: number) =>
+    Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
+
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
       <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
@@ -189,7 +215,7 @@ export function DashboardView({
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-8">
-        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-6">
           <div className="flex flex-col gap-2">
             <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Crypto
@@ -285,6 +311,91 @@ export function DashboardView({
                 <span className="text-xs text-slate-400">minutes</span>
               </div>
             )}
+          </div>
+          <div className="flex flex-col gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Momentum filters
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="momentum-rsi-long"
+                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  RSI long ≤
+                </label>
+                <input
+                  id="momentum-rsi-long"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={rsiLowerBoundInput}
+                  onChange={(event) => onRsiLowerBoundInputChange(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="momentum-rsi-short"
+                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  RSI short ≥
+                </label>
+                <input
+                  id="momentum-rsi-short"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={rsiUpperBoundInput}
+                  onChange={(event) => onRsiUpperBoundInputChange(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="momentum-stoch-long"
+                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Stoch %D long ≤
+                </label>
+                <input
+                  id="momentum-stoch-long"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={stochasticLowerBoundInput}
+                  onChange={(event) => onStochasticLowerBoundInputChange(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="momentum-stoch-short"
+                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Stoch %D short ≥
+                </label>
+                <input
+                  id="momentum-stoch-short"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={stochasticUpperBoundInput}
+                  onChange={(event) => onStochasticUpperBoundInputChange(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                />
+              </div>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              Long triggers when RSI ≤ {formatThreshold(momentumThresholds.longRsi)} and Stoch RSI %D ≤{' '}
+              {formatThreshold(momentumThresholds.longStochastic)}. Short triggers when RSI ≥{' '}
+              {formatThreshold(momentumThresholds.shortRsi)} and Stoch RSI %D ≥{' '}
+              {formatThreshold(momentumThresholds.shortStochastic)}.
+            </span>
           </div>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
