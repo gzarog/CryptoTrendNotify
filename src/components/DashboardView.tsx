@@ -66,6 +66,7 @@ type DashboardViewProps = {
   }
   visibleMomentumNotifications: MomentumNotification[]
   formatTriggeredAt: (timestamp: number) => string
+  onDismissMomentumNotification: (notificationId: string) => void
   lastUpdatedLabel: string
   refreshInterval: number | false
   formatIntervalLabel: (value: string) => string
@@ -134,6 +135,7 @@ export function DashboardView({
   momentumThresholds,
   visibleMomentumNotifications,
   formatTriggeredAt,
+  onDismissMomentumNotification,
   lastUpdatedLabel,
   refreshInterval,
   formatIntervalLabel,
@@ -499,11 +501,21 @@ export function DashboardView({
                       return (
                         <div
                           key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
                         >
-                          <span className="text-[11px] font-semibold uppercase tracking-wide">
-                            {emoji} {entry.label}
-                          </span>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide">
+                              {emoji} {entry.label}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onDismissMomentumNotification(entry.id)}
+                              className="flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-base text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                              aria-label="Dismiss momentum notification"
+                            >
+                              ×
+                            </button>
+                          </div>
                           <span className="text-sm font-semibold text-white">{entry.symbol}</span>
                           <span className="text-[11px] text-white/80">Rsi {entry.rsiSummary}</span>
                           <span className="text-[11px] text-white/80">
