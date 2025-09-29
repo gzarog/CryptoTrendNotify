@@ -3,6 +3,8 @@ import { URL } from 'node:url'
 import webpush from 'web-push'
 
 import { PushSubscriptionStore } from './push-subscription-store.js'
+import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
+import { startMarketWatch } from './market-watcher.js'
 
 const PORT = Number.parseInt(process.env.PUSH_SERVER_PORT ?? process.env.PORT ?? '4000', 10)
 let vapidPublicKey = process.env.VAPID_PUBLIC_KEY
@@ -54,43 +56,6 @@ function isValidSubscription(payload) {
     typeof payload.keys.p256dh === 'string' &&
     typeof payload.keys.auth === 'string'
   )
-}
-
-function normalizeNotificationPayload(input) {
-  if (!input || typeof input !== 'object') {
-    return null
-  }
-
-  if (typeof input.title !== 'string' || typeof input.body !== 'string') {
-    return null
-  }
-
-  const output = {
-    title: input.title,
-    body: input.body,
-  }
-
-  if (typeof input.tag === 'string') {
-    output.tag = input.tag
-  }
-
-  if (typeof input.icon === 'string') {
-    output.icon = input.icon
-  }
-
-  if (typeof input.badge === 'string') {
-    output.badge = input.badge
-  }
-
-  if (typeof input.renotify === 'boolean') {
-    output.renotify = input.renotify
-  }
-
-  if (input.data !== undefined) {
-    output.data = input.data
-  }
-
-  return output
 }
 
 async function handleRequest(req, res, store) {
@@ -166,42 +131,8 @@ async function handleRequest(req, res, store) {
         return
       }
 
-      const subscriptions = store.list()
-
-      if (subscriptions.length === 0) {
-        sendJson(res, 202, { success: true, delivered: 0 })
-        return
-      }
-
-      const message = JSON.stringify(notification)
-      const deliveryResults = await Promise.allSettled(
-        subscriptions.map((subscription) =>
-          webpush.sendNotification(subscription, message, { TTL: 60 }).catch((error) => {
-            error.endpoint = subscription.endpoint
-            throw error
-          }),
-        ),
-      )
-
-      const staleEndpoints = []
-      let deliveredCount = 0
-
-      for (const result of deliveryResults) {
-        if (result.status === 'fulfilled') {
-          deliveredCount += 1
-        } else if (result.reason) {
-          const statusCode = result.reason.statusCode
-
-          if (statusCode === 404 || statusCode === 410) {
-            staleEndpoints.push(result.reason.endpoint)
-          } else {
-            console.error('Push delivery failed', result.reason)
-          }
-        }
-      }
-
-      await Promise.all(staleEndpoints.map((endpoint) => store.remove(endpoint)))
-      sendJson(res, 200, { success: true, delivered: deliveredCount, stale: staleEndpoints.length })
+      const { delivered, stale } = await broadcastNotification(store, notification)
+      sendJson(res, 200, { success: true, delivered, stale })
     } catch (error) {
       console.error('Failed to send push notifications', error)
       sendJson(res, 500, { error: 'Unable to send push notification' })
@@ -237,6 +168,8 @@ async function start() {
   server.listen(PORT, () => {
     console.log(`Push notification server listening on port ${PORT}`)
   })
+
+  startMarketWatch({ store })
 }
 
 start().catch((error) => {
