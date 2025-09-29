@@ -338,7 +338,15 @@ function formatTimestamp(timestamp: number, timeframe: string): string {
 }
 
 function formatTriggeredAt(timestamp: number): string {
-  return DATE_FORMATTERS.short.format(new Date(timestamp))
+  const date = new Date(timestamp)
+  const day = date.getDate().toString().padStart(2, '0')
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const year = date.getFullYear().toString()
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  const seconds = date.getSeconds().toString().padStart(2, '0')
+
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
 }
 
 function resolveBarLimit(selection: string, customValue: string): number | null {
@@ -1058,6 +1066,12 @@ function App() {
     setIsMarketSummaryCollapsed((previous) => !previous)
   }, [])
 
+  const dismissMomentumNotification = useCallback((notificationId: string) => {
+    setMomentumNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
 
   const handleInstall = async () => {
@@ -1135,6 +1149,7 @@ function App() {
       momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
+      onDismissMomentumNotification={dismissMomentumNotification}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}
       formatIntervalLabel={formatIntervalLabel}
