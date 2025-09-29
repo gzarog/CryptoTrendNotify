@@ -37,6 +37,60 @@ export function normalizeNotificationPayload(input) {
   return output
 }
 
+function shouldDeliverToSubscription(notification, filters) {
+  if (!filters) {
+    return true
+  }
+
+  const data = notification?.data
+
+  if (!data || typeof data !== 'object') {
+    return true
+  }
+
+  if (filters.symbols && filters.symbols.length > 0) {
+    const symbol = typeof data.symbol === 'string' ? data.symbol.toUpperCase() : null
+    if (!symbol || !filters.symbols.includes(symbol)) {
+      return false
+    }
+  }
+
+  const type = data.type
+
+  if (type === 'momentum') {
+    if (filters.momentumTimeframes && filters.momentumTimeframes.length > 0) {
+      const timeframes = Array.isArray(data.timeframes)
+        ? data.timeframes.map((value) => String(value))
+        : null
+
+      if (
+        timeframes &&
+        !timeframes.some((value) => filters.momentumTimeframes.includes(value))
+      ) {
+        return false
+      }
+    }
+  } else if (type === 'moving-average') {
+    if (filters.movingAverageTimeframes && filters.movingAverageTimeframes.length > 0) {
+      const timeframe = data.timeframe ? String(data.timeframe) : null
+
+      if (timeframe && !filters.movingAverageTimeframes.includes(timeframe)) {
+        return false
+      }
+    }
+
+    if (filters.movingAveragePairs && filters.movingAveragePairs.length > 0) {
+      const pair = typeof data.pair === 'string' ? data.pair : null
+
+      if (pair && !filters.movingAveragePairs.includes(pair)) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
 export async function broadcastNotification(store, notification) {
   const subscriptions = store.list()
 
@@ -44,13 +98,23 @@ export async function broadcastNotification(store, notification) {
     return { delivered: 0, stale: 0 }
   }
 
+  const eligible = subscriptions.filter((entry) =>
+    shouldDeliverToSubscription(notification, entry.filters),
+  )
+
+  if (eligible.length === 0) {
+    return { delivered: 0, stale: 0 }
+  }
+
   const message = JSON.stringify(notification)
   const deliveryResults = await Promise.allSettled(
-    subscriptions.map((subscription) =>
-      webpush.sendNotification(subscription, message, { TTL: 60 }).catch((error) => {
-        error.endpoint = subscription.endpoint
-        throw error
-      }),
+    eligible.map((entry) =>
+      webpush
+        .sendNotification(entry.subscription, message, { TTL: 60 })
+        .catch((error) => {
+          error.endpoint = entry.subscription.endpoint
+          throw error
+        }),
     ),
   )
 

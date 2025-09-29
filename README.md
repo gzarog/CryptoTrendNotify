@@ -83,7 +83,7 @@ npm run build
 
 1. When users grant notification permission, the app calls the Push API to create a subscription and sends it to the backend.
 2. The subscription is stored in `server/data/push-subscriptions.json` so pushes survive server restarts.
-3. Server-side market watchers continuously poll Bybit even when the PWA is closed. When a momentum or moving-average trigger fires, the backend broadcasts the notification to every stored subscription via `web-push`. The service worker displays the alert even if the app is closed.
+3. Server-side market watchers continuously poll Bybit even when the PWA is closed. When a momentum or moving-average trigger fires, the backend only broadcasts the notification to subscriptions whose saved filters match the symbol/pair so alerts respect the dashboard selections even if the app is closed. The service worker displays the alert even if the app is closed.
 
 The service worker lives in `src/sw.ts` and handles precaching, runtime caching, `push`, and `notificationclick` events.
 
