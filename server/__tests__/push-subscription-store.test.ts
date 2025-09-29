@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
@@ -68,5 +68,25 @@ describe('PushSubscriptionStore', () => {
       { endpoint: 'https://example.com/2', keys: { p256dh: 'c', auth: 'd' } },
     ])
     expect(await store.remove('https://example.com/missing')).toBe(false)
+  })
+
+  it('persists subscriptions to disk and reloads them', async () => {
+    const store = new PushSubscriptionStore(context.filePath)
+    await store.init()
+
+    const subscription = {
+      endpoint: 'https://example.com/3',
+      keys: { p256dh: 'key', auth: 'secret' },
+    }
+
+    await store.upsert(subscription as any)
+
+    const fileContents = await readFile(context.filePath, 'utf8')
+    expect(JSON.parse(fileContents)).toEqual([subscription])
+
+    const reloaded = new PushSubscriptionStore(context.filePath)
+    await reloaded.init()
+
+    expect(reloaded.list()).toEqual([subscription])
   })
 })

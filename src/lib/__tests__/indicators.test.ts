@@ -37,6 +37,14 @@ describe('calculateEMA', () => {
     expect(result[2]).toBeCloseTo(11.333, 3)
     expect(result[4]).toBeCloseTo(13.312, 3)
   })
+
+  it('normalizes the period to avoid division by zero', () => {
+    const values = [5, 6, 7]
+    const result = calculateEMA(values, 0)
+
+    expect(result[0]).toBe(5)
+    expect(result[1]).toBeCloseTo(6, 5)
+  })
 })
 
 describe('calculateSMA', () => {
