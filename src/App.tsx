@@ -975,6 +975,11 @@ function App() {
     [movingAverageNotifications],
   )
 
+  const handleClearNotifications = useCallback(() => {
+    setMomentumNotifications([])
+    setMovingAverageNotifications([])
+  }, [])
+
   useEffect(() => {
     if (!notificationsEnabled) {
       return
@@ -1359,6 +1364,7 @@ function App() {
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissMomentumNotification={dismissMomentumNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}
+      onClearNotifications={handleClearNotifications}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}
       formatIntervalLabel={formatIntervalLabel}
