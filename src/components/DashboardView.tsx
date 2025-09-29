@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import type {
   MomentumIntensity,
   MomentumNotification,
@@ -79,6 +79,7 @@ type DashboardViewProps = {
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
+  onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
   formatIntervalLabel: (value: string) => string
@@ -150,6 +151,7 @@ export function DashboardView({
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
+  onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
   formatIntervalLabel,
@@ -169,6 +171,41 @@ export function DashboardView({
 }: DashboardViewProps) {
   const formatThreshold = (value: number) =>
     Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
+
+  const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
+
+  const allNotifications = useMemo(
+    () =>
+      [
+        ...visibleMovingAverageNotifications.map((entry) => ({
+          type: 'moving-average' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
+        ...visibleMomentumNotifications.map((entry) => ({
+          type: 'momentum' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
+      ].sort((a, b) => b.triggeredAt - a.triggeredAt),
+    [visibleMomentumNotifications, visibleMovingAverageNotifications],
+  )
+
+  const totalNotificationCount =
+    visibleMomentumNotifications.length + visibleMovingAverageNotifications.length
+
+  const handleToggleNotifications = () => {
+    if (totalNotificationCount === 0) {
+      return
+    }
+
+    setIsNotificationPopupOpen((previous) => !previous)
+  }
+
+  const handleClearNotifications = () => {
+    onClearNotifications()
+    setIsNotificationPopupOpen(false)
+  }
 
   return (
     <div
@@ -190,6 +227,124 @@ export function DashboardView({
             >
               {isFetching ? 'Refreshing…' : 'Refresh now'}
             </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={handleToggleNotifications}
+                className="relative flex items-center justify-center rounded-full border border-indigo-400/60 bg-slate-950/80 px-3 py-2 text-lg text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={
+                  totalNotificationCount > 0
+                    ? `View ${totalNotificationCount} notifications`
+                    : 'No notifications available'
+                }
+                aria-haspopup="dialog"
+                aria-expanded={isNotificationPopupOpen}
+                disabled={totalNotificationCount === 0}
+              >
+                <span aria-hidden="true">🔔</span>
+                {totalNotificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-semibold text-white">
+                    {totalNotificationCount}
+                  </span>
+                )}
+              </button>
+              {isNotificationPopupOpen && (
+                <div className="absolute right-0 z-50 mt-3 w-80 rounded-2xl border border-white/10 bg-slate-900/95 p-4 text-sm shadow-xl">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Notifications
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsNotificationPopupOpen(false)}
+                      className="text-xs text-slate-400 transition hover:text-white"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
+                    {allNotifications.length === 0 ? (
+                      <p className="text-xs text-slate-500">No notifications available.</p>
+                    ) : (
+                      allNotifications.map((notification) => {
+                        if (notification.type === 'moving-average') {
+                          const entry = notification.payload
+                          const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                          const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
+                          const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
+
+                          return (
+                            <div
+                              key={`moving-${entry.id}`}
+                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                  {emoji} {directionLabel}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissMovingAverageNotification(entry.id)}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                  aria-label="Dismiss moving average notification"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                              <span className="text-[11px] text-white/80">
+                                {entry.timeframeLabel} • {entry.pairLabel}
+                              </span>
+                              <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
+                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                            </div>
+                          )
+                        }
+
+                        const entry = notification.payload
+                        const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                        const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
+
+                        return (
+                          <div
+                            key={`momentum-${entry.id}`}
+                            className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                {emoji} {entry.label}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onDismissMomentumNotification(entry.id)}
+                                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                aria-label="Dismiss momentum notification"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                            <span className="text-[11px] text-white/80">RSI {entry.rsiSummary}</span>
+                            <span className="text-[11px] text-white/80">
+                              Stoch RSI (stochastic RSI %D {entry.stochasticSummary})
+                            </span>
+                            <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearNotifications}
+                    className="mt-4 w-full rounded-full border border-indigo-400/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={allNotifications.length === 0}
+                  >
+                    Clear notifications
+                  </button>
+                </div>
+              )}
+            </div>
             {canInstall && (
               <button
                 type="button"
@@ -494,111 +649,6 @@ export function DashboardView({
           )}
           {!isLoading && !isError && (
             <>
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Moving average notifications
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Latest crossovers for {symbol}
-                  </span>
-                </div>
-                {visibleMovingAverageNotifications.length === 0 ? (
-                  <p className="text-xs text-slate-500">
-                    No moving average notifications have been triggered yet. Alerts will appear when
-                    the moving averages cross.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
-                    {visibleMovingAverageNotifications.map((entry) => {
-                      const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
-                      const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
-                      const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
-
-                      return (
-                        <div
-                          key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide">
-                              {emoji} {directionLabel}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => onDismissMovingAverageNotification(entry.id)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-base text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
-                              aria-label="Dismiss moving average notification"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                          <span className="text-[11px] text-white/80">
-                            {entry.timeframeLabel} • {entry.pairLabel}
-                          </span>
-                          <span className="text-[11px] text-white/80">
-                            Price {entry.price.toFixed(5)}
-                          </span>
-                          <span className="text-[10px] text-white/60">
-                            {formatTriggeredAt(entry.triggeredAt)}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Momentum notifications
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Latest alerts for {symbol}
-                  </span>
-                </div>
-                {visibleMomentumNotifications.length === 0 ? (
-                  <p className="text-xs text-slate-500">
-                    No momentum notifications have been triggered yet. Alerts will surface here once the RSI and Stochastic RSI conditions are met.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
-                    {visibleMomentumNotifications.map((entry) => {
-                      const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
-                      const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
-                      return (
-                        <div
-                          key={entry.id}
-                          className={`flex min-w-[220px] flex-1 flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide">
-                              {emoji} {entry.label}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => onDismissMomentumNotification(entry.id)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-base text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
-                              aria-label="Dismiss momentum notification"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                          <span className="text-[11px] text-white/80">Rsi {entry.rsiSummary}</span>
-                          <span className="text-[11px] text-white/80">
-                            Stoch Rsi (stochastic rsi %d {entry.stochasticSummary})
-                          </span>
-                          <span className="text-[10px] text-white/60">
-                            {formatTriggeredAt(entry.triggeredAt)}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex flex-col gap-1">
