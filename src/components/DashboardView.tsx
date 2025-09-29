@@ -212,7 +212,7 @@ export function DashboardView({
       className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100"
       aria-busy={isFetching}
     >
-      <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">Crypto momentum dashboard</h1>
