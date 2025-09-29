@@ -39,4 +39,16 @@ export default defineConfig({
     tailwindcss(),
     VitePWA(pwaOptions as Parameters<typeof VitePWA>[0]),
   ],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.ts',
+    css: true,
+    environmentMatchGlobs: [
+      ['server/**/*.test.{ts,tsx}', 'node'],
+    ],
+    coverage: {
+      reporter: ['text', 'html'],
+    },
+  },
 })
