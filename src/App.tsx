@@ -86,6 +86,18 @@ export type MovingAverageMarker = {
   label: string
 }
 
+export type MovingAverageCrossNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  pairLabel: string
+  direction: 'golden' | 'death'
+  intensity: Exclude<MomentumIntensity, 'red'>
+  price: number
+  triggeredAt: number
+}
+
 const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
 const TIMEFRAMES: TimeframeOption[] = [
@@ -112,6 +124,8 @@ const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   orange: '🟠',
   red: '🔴',
 }
+
+const MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES = TIMEFRAMES.map((option) => option.value)
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -195,6 +209,7 @@ const GUIDE_VALUE_FORMATTER = new Intl.NumberFormat(undefined, {
 const DEFAULT_BAR_LIMIT = 200
 const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
+const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 
 const DEFAULT_MOMENTUM_BOUNDS = {
   rsiLower: 20,
@@ -218,6 +233,52 @@ const STORAGE_KEYS = {
 } as const
 
 const isBrowser = typeof window !== 'undefined'
+
+type CrossDirection = 'golden' | 'death'
+
+type CrossDetection = {
+  index: number
+  direction: CrossDirection
+}
+
+function detectLatestCross(
+  fast: Array<number | null>,
+  slow: Array<number | null>,
+): CrossDetection | null {
+  const length = Math.min(fast.length, slow.length)
+
+  for (let i = length - 1; i >= 1; i -= 1) {
+    const prevFast = fast[i - 1]
+    const prevSlow = slow[i - 1]
+    const currentFast = fast[i]
+    const currentSlow = slow[i]
+
+    if (
+      prevFast == null ||
+      prevSlow == null ||
+      currentFast == null ||
+      currentSlow == null
+    ) {
+      continue
+    }
+
+    const previousDifference = prevFast - prevSlow
+    const currentDifference = currentFast - currentSlow
+
+    const crossedUp = previousDifference < 0 && currentDifference >= 0
+    const crossedDown = previousDifference > 0 && currentDifference <= 0
+
+    if (crossedUp) {
+      return { index: i, direction: 'golden' }
+    }
+
+    if (crossedDown) {
+      return { index: i, direction: 'death' }
+    }
+  }
+
+  return null
+}
 
 function readLocalStorage(key: string): string | null {
   if (!isBrowser) {
@@ -428,7 +489,10 @@ function App() {
   )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
+  const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
+  const [movingAverageNotifications, setMovingAverageNotifications] =
+    useState<MovingAverageCrossNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -631,6 +695,19 @@ function App() {
     })),
   })
 
+  const movingAverageNotificationTimeframes = MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES
+  const movingAverageNotificationQueries = useQueries({
+    queries: movingAverageNotificationTimeframes.map((value) => ({
+      queryKey: ['moving-average-notification-kline', symbol, value, resolvedBarLimit],
+      queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
+      enabled: notificationsEnabled,
+      refetchInterval: refreshInterval,
+      refetchIntervalInBackground: true,
+      retry: 1,
+      placeholderData: (previousData: Candle[] | undefined) => previousData,
+    })),
+  })
+
   const lastUpdatedLabel = useMemo(() => {
     if (!dataUpdatedAt) {
       return '—'
@@ -646,12 +723,15 @@ function App() {
 
   useEffect(() => {
     lastMomentumTriggerRef.current = null
+    lastMovingAverageTriggersRef.current = {}
     setMomentumNotifications([])
+    setMovingAverageNotifications([])
   }, [symbol])
 
   useEffect(() => {
     if (!notificationsEnabled) {
       lastMomentumTriggerRef.current = null
+      lastMovingAverageTriggersRef.current = {}
     }
   }, [notificationsEnabled])
 
@@ -890,6 +970,124 @@ function App() {
   ])
 
   const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
+  const visibleMovingAverageNotifications = useMemo(
+    () => movingAverageNotifications,
+    [movingAverageNotifications],
+  )
+
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      return
+    }
+
+    movingAverageNotificationTimeframes.forEach((timeframeValue, index) => {
+      const query = movingAverageNotificationQueries[index]
+      const candles = query?.data
+
+      if (!candles || candles.length < 2) {
+        return
+      }
+
+      const closesForTimeframe = candles.map((candle) => candle.close)
+      const ema10Series = calculateEMA(closesForTimeframe, 10)
+      const ema50Series = calculateEMA(closesForTimeframe, 50)
+      const sma200Series = calculateSMA(closesForTimeframe, 200)
+
+      const pairs = [
+        {
+          fast: ema10Series,
+          slow: ema50Series,
+          pairLabel: 'EMA 10 / EMA 50',
+          intensity: 'green' as const,
+          tag: 'ema10-ema50',
+        },
+        {
+          fast: ema10Series,
+          slow: sma200Series,
+          pairLabel: 'EMA 10 / MA 200',
+          intensity: 'yellow' as const,
+          tag: 'ema10-ma200',
+        },
+        {
+          fast: ema50Series,
+          slow: sma200Series,
+          pairLabel: 'EMA 50 / MA 200',
+          intensity: 'orange' as const,
+          tag: 'ema50-ma200',
+        },
+      ]
+
+      pairs.forEach((config) => {
+        const cross = detectLatestCross(config.fast, config.slow)
+
+        if (!cross || cross.index !== candles.length - 1) {
+          return
+        }
+
+        const candle = candles[cross.index]
+
+        if (!candle) {
+          return
+        }
+
+        const price = candle.close
+
+        if (!Number.isFinite(price)) {
+          return
+        }
+
+        const timeframeLabel = formatIntervalLabel(timeframeValue)
+        const directionLabel = cross.direction === 'golden' ? 'Golden cross' : 'Death cross'
+        const signatureKey = `${symbol}-${timeframeValue}-${config.tag}`
+        const signature = `${signatureKey}-${cross.direction}-${candle.openTime}`
+
+        if (lastMovingAverageTriggersRef.current[signatureKey] === signature) {
+          return
+        }
+
+        lastMovingAverageTriggersRef.current[signatureKey] = signature
+
+        const entry: MovingAverageCrossNotification = {
+          id: signature,
+          symbol,
+          timeframe: timeframeValue,
+          timeframeLabel,
+          pairLabel: config.pairLabel,
+          direction: cross.direction,
+          intensity: config.intensity,
+          price,
+          triggeredAt: candle.openTime ?? Date.now(),
+        }
+
+        setMovingAverageNotifications((previous) => {
+          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+          return next.slice(0, MAX_MOVING_AVERAGE_NOTIFICATIONS)
+        })
+
+        const emoji = MOMENTUM_EMOJI_BY_INTENSITY[config.intensity]
+        const priceLabel = price.toFixed(5)
+        const bodyDirection = directionLabel.toLowerCase()
+
+        void showAppNotification({
+          title: `${emoji} ${symbol} ${timeframeLabel} ${directionLabel}`,
+          body: `${config.pairLabel} ${bodyDirection} at ${priceLabel}`,
+          tag: signature,
+          data: {
+            symbol,
+            timeframe: timeframeValue,
+            pair: config.tag,
+            direction: cross.direction,
+          },
+        })
+      })
+    })
+  }, [
+    lastMovingAverageTriggersRef,
+    movingAverageNotificationQueries,
+    movingAverageNotificationTimeframes,
+    notificationsEnabled,
+    symbol,
+  ])
 
   useEffect(() => {
     if (!notificationsEnabled) {
@@ -1072,6 +1270,12 @@ function App() {
     )
   }, [])
 
+  const dismissMovingAverageNotification = useCallback((notificationId: string) => {
+    setMovingAverageNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
 
   const handleInstall = async () => {
@@ -1095,11 +1299,14 @@ function App() {
     await refetch()
 
     if (notificationsEnabled) {
-      await Promise.all(
-        notificationQueries.map((query) =>
+      await Promise.all([
+        ...notificationQueries.map((query) =>
           query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
         ),
-      )
+        ...movingAverageNotificationQueries.map((query) =>
+          query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
+        ),
+      ])
     }
   }
 
@@ -1148,8 +1355,10 @@ function App() {
       onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
       momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
+      visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissMomentumNotification={dismissMomentumNotification}
+      onDismissMovingAverageNotification={dismissMovingAverageNotification}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}
       formatIntervalLabel={formatIntervalLabel}

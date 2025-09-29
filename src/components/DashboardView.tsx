@@ -1,5 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react'
-import type { MomentumIntensity, MomentumNotification, MovingAverageMarker } from '../App'
+import type {
+  MomentumIntensity,
+  MomentumNotification,
+  MovingAverageCrossNotification,
+  MovingAverageMarker,
+} from '../App'
 import { LineChart } from './LineChart'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
@@ -14,6 +19,11 @@ const MOMENTUM_CARD_CLASSES: Record<MomentumIntensity, string> = {
   yellow: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
   orange: 'border-orange-400/40 bg-orange-500/10 text-orange-100',
   red: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+}
+
+const MOVING_AVERAGE_DIRECTION_LABELS: Record<'golden' | 'death', string> = {
+  golden: 'Golden cross',
+  death: 'Death cross',
 }
 
 type DashboardViewProps = {
@@ -64,8 +74,10 @@ type DashboardViewProps = {
     longStochastic: number
     shortStochastic: number
   }
+  visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
   formatTriggeredAt: (timestamp: number) => string
+  onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -133,8 +145,10 @@ export function DashboardView({
   stochasticUpperBoundInput,
   onStochasticUpperBoundInputChange,
   momentumThresholds,
+  visibleMovingAverageNotifications,
   visibleMomentumNotifications,
   formatTriggeredAt,
+  onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   lastUpdatedLabel,
   refreshInterval,
@@ -480,6 +494,61 @@ export function DashboardView({
           )}
           {!isLoading && !isError && (
             <>
+              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Moving average notifications
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Latest crossovers for {symbol}
+                  </span>
+                </div>
+                {visibleMovingAverageNotifications.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    No moving average notifications have been triggered yet. Alerts will appear when
+                    the moving averages cross.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-3">
+                    {visibleMovingAverageNotifications.map((entry) => {
+                      const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                      const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
+                      const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`flex min-w-[220px] flex-1 flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide">
+                              {emoji} {directionLabel}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onDismissMovingAverageNotification(entry.id)}
+                              className="flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-base text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                              aria-label="Dismiss moving average notification"
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                          <span className="text-[11px] text-white/80">
+                            {entry.timeframeLabel} • {entry.pairLabel}
+                          </span>
+                          <span className="text-[11px] text-white/80">
+                            Price {entry.price.toFixed(5)}
+                          </span>
+                          <span className="text-[10px] text-white/60">
+                            {formatTriggeredAt(entry.triggeredAt)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
