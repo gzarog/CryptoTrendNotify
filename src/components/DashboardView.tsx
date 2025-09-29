@@ -416,6 +416,50 @@ export function DashboardView({
           aria-label="Dashboard filters and market snapshot"
         >
           <section className="flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Push server</span>
+                  {pushServerConnected === null ? (
+                    <span className="text-[11px] text-slate-500">Checking…</span>
+                  ) : pushServerConnected ? (
+                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">Connected</span>
+                  ) : (
+                    <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">Offline</span>
+                  )}
+                </div>
+                {pushServerConnected === false && (
+                  <span className="text-[11px] text-rose-300">
+                    Unable to reach the push server. Start the backend service to deliver notifications.
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Notifications</span>
+                  {supportsNotifications ? (
+                    notificationPermission === 'granted' ? (
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">Enabled</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void onEnableNotifications()}
+                        className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                      >
+                        Enable alerts
+                      </button>
+                    )
+                  ) : (
+                    <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+                  )}
+                </div>
+                {notificationPermission === 'denied' && supportsNotifications && (
+                  <span className="text-[11px] text-rose-300">
+                    Notifications are blocked. Update your browser settings to enable alerts.
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
               <div className="flex flex-col gap-2">
                 <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -584,50 +628,6 @@ export function DashboardView({
               <span className="text-[11px] text-slate-500">
                 Long triggers when RSI ≤ {formatThreshold(momentumThresholds.longRsi)} and Stoch RSI %D ≤ {formatThreshold(momentumThresholds.longStochastic)}. Short triggers when RSI ≥ {formatThreshold(momentumThresholds.shortRsi)} and Stoch RSI %D ≥ {formatThreshold(momentumThresholds.shortStochastic)}.
               </span>
-            </div>
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Push server</span>
-                  {pushServerConnected === null ? (
-                    <span className="text-[11px] text-slate-500">Checking…</span>
-                  ) : pushServerConnected ? (
-                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">Connected</span>
-                  ) : (
-                    <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">Offline</span>
-                  )}
-                </div>
-                {pushServerConnected === false && (
-                  <span className="text-[11px] text-rose-300">
-                    Unable to reach the push server. Start the backend service to deliver notifications.
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Notifications</span>
-                  {supportsNotifications ? (
-                    notificationPermission === 'granted' ? (
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">Enabled</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void onEnableNotifications()}
-                        className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-                      >
-                        Enable alerts
-                      </button>
-                    )
-                  ) : (
-                    <span className="text-[11px] text-slate-500">Not supported in this browser</span>
-                  )}
-                </div>
-                {notificationPermission === 'denied' && supportsNotifications && (
-                  <span className="text-[11px] text-rose-300">
-                    Notifications are blocked. Update your browser settings to enable alerts.
-                  </span>
-                )}
-              </div>
             </div>
           </section>
           {!isLoading && !isError && (
