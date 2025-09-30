@@ -111,7 +111,7 @@ const TIMEFRAMES: TimeframeOption[] = [
   { value: '360', label: '360m (6h)' },
 ]
 
-const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60'] as const
+const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360'] as const
 const MOMENTUM_INTENSITY_BY_LEVEL: Record<number, MomentumIntensity> = {
   1: 'green',
   2: 'yellow',
@@ -1217,7 +1217,8 @@ function App() {
       matchingReadings.push(result)
     }
 
-    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[matchingReadings.length]
+    const intensityLevel = Math.min(matchingReadings.length, 4)
+    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[intensityLevel]
 
     if (!intensity) {
       return

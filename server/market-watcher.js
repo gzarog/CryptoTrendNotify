@@ -5,7 +5,7 @@ const SYMBOLS = process.env.PUSH_WATCH_SYMBOLS
   ? process.env.PUSH_WATCH_SYMBOLS.split(',').map((symbol) => symbol.trim()).filter(Boolean)
   : ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
 
-const MOMENTUM_TIMEFRAMES = ['5', '15', '30', '60']
+const MOMENTUM_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360']
 const MOVING_AVERAGE_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360']
 const MOMENTUM_INTENSITY_BY_LEVEL = {
   1: 'green',
@@ -305,7 +305,8 @@ export function startMarketWatch({ store }) {
       matchingReadings.push(result)
     }
 
-    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[matchingReadings.length]
+    const intensityLevel = Math.min(matchingReadings.length, 4)
+    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[intensityLevel]
 
     if (!intensity) {
       return
