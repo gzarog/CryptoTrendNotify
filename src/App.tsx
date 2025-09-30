@@ -723,7 +723,7 @@ function App() {
 
   const notificationQueries = useQueries({
     queries: notificationTimeframes.map((value) => ({
-      queryKey: ['notification-kline', symbol, value, resolvedBarLimit],
+      queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
       enabled: notificationsEnabled,
       refetchInterval: refreshInterval,
@@ -736,7 +736,7 @@ function App() {
   const movingAverageNotificationTimeframes = MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES
   const movingAverageNotificationQueries = useQueries({
     queries: movingAverageNotificationTimeframes.map((value) => ({
-      queryKey: ['moving-average-notification-kline', symbol, value, resolvedBarLimit],
+      queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
       enabled: notificationsEnabled,
       refetchInterval: refreshInterval,
