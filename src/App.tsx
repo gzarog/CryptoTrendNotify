@@ -10,6 +10,7 @@ import {
   isNotificationSupported,
   requestNotificationPermission,
   showAppNotification,
+  type PushSubscriptionFilters,
 } from './lib/notifications'
 
 export type Candle = {
@@ -126,6 +127,7 @@ const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
 }
 
 const MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES = TIMEFRAMES.map((option) => option.value)
+const MOVING_AVERAGE_PAIR_TAGS = ['ema10-ema50', 'ema10-ma200', 'ema50-ma200'] as const
 
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
@@ -495,6 +497,16 @@ function App() {
     useState<MovingAverageCrossNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
+  const subscriptionFilters = useMemo<PushSubscriptionFilters>(
+    () => ({
+      symbols: [symbol],
+      momentumTimeframes: [...MOMENTUM_SIGNAL_TIMEFRAMES],
+      movingAverageTimeframes: [...MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES],
+      movingAveragePairs: [...MOVING_AVERAGE_PAIR_TAGS],
+    }),
+    [symbol],
+  )
+
   useEffect(() => {
     writeLocalStorage(STORAGE_KEYS.symbol, symbol)
   }, [symbol])
@@ -606,7 +618,7 @@ function App() {
     let cancelled = false
 
     const initializeSubscription = async () => {
-      const subscriptionEstablished = await ensurePushSubscription()
+      const subscriptionEstablished = await ensurePushSubscription(subscriptionFilters)
 
       if (cancelled) {
         return
@@ -624,7 +636,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [notificationsEnabled, updatePushServerStatus])
+  }, [notificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
   const handleEnableNotifications = async () => {
     if (!supportsNotifications) {
@@ -652,7 +664,7 @@ function App() {
     setNotificationPermission(permission)
 
     if (permission === 'granted') {
-      const subscriptionEstablished = await ensurePushSubscription()
+      const subscriptionEstablished = await ensurePushSubscription(subscriptionFilters)
       setPushServerConnected(subscriptionEstablished)
 
       if (!subscriptionEstablished) {
@@ -663,6 +675,32 @@ function App() {
 
     void updatePushServerStatus()
   }
+
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      return
+    }
+
+    let cancelled = false
+
+    const syncSubscription = async () => {
+      const established = await ensurePushSubscription(subscriptionFilters)
+
+      if (cancelled) {
+        return
+      }
+
+      if (!established) {
+        void updatePushServerStatus()
+      }
+    }
+
+    void syncSubscription()
+
+    return () => {
+      cancelled = true
+    }
+  }, [notificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
   useEffect(() => {
     const handler = (event: BeforeInstallPromptEvent) => {

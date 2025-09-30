@@ -20,6 +20,13 @@ type PushNotificationPayload = AppNotificationPayload & {
   renotify?: boolean
 }
 
+export type PushSubscriptionFilters = {
+  symbols?: string[]
+  momentumTimeframes?: string[]
+  movingAverageTimeframes?: string[]
+  movingAveragePairs?: string[]
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -50,13 +57,26 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-async function sendSubscriptionToServer(subscription: PushSubscription): Promise<void> {
+async function sendSubscriptionToServer(
+  subscription: PushSubscription,
+  filters?: PushSubscriptionFilters,
+): Promise<void> {
   const payload = subscription.toJSON() as PushSubscriptionJSON
+  const body: {
+    subscription: PushSubscriptionJSON
+    filters?: PushSubscriptionFilters
+  } = {
+    subscription: payload,
+  }
+
+  if (filters) {
+    body.filters = filters
+  }
 
   try {
     await fetchJson<{ success: true }>('/api/push/subscriptions', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     })
   } catch (error) {
     console.error('Failed to store push subscription', error)
@@ -83,7 +103,9 @@ export async function checkPushServerConnection(): Promise<boolean> {
   }
 }
 
-export async function ensurePushSubscription(): Promise<boolean> {
+export async function ensurePushSubscription(
+  filters?: PushSubscriptionFilters,
+): Promise<boolean> {
   if (typeof window === 'undefined') {
     return false
   }
@@ -109,7 +131,7 @@ export async function ensurePushSubscription(): Promise<boolean> {
       })
     }
 
-    await sendSubscriptionToServer(subscription)
+    await sendSubscriptionToServer(subscription, filters)
     return true
   } catch (error) {
     console.error('Failed to initialize push subscription', error)

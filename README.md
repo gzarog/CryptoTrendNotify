@@ -51,6 +51,9 @@ By default the server listens on port `4000`. You can customize it with environm
 - `PUSH_SERVER_PORT`: override the port (falls back to `PORT`).
 - `PUSH_SUBSCRIPTIONS_FILE`: path to the JSON file that stores subscriptions (defaults to `server/data/push-subscriptions.json`).
 - `PUSH_ALLOWED_ORIGIN`: value for the `Access-Control-Allow-Origin` header.
+- `PUSH_ENABLE_MARKET_WATCH`: set to `false` to disable server-side market polling (enabled by default).
+- `PUSH_MARKET_WATCH_INTERVAL_MS`: polling cadence in milliseconds (defaults to `60000`).
+- `PUSH_WATCH_SYMBOLS`: comma-separated list of symbols to monitor (defaults to `DOGEUSDT,BTCUSDT,ETHUSDT,XRPUSDT,SOLUSDT`).
 
 ### Start the frontend
 
@@ -80,7 +83,7 @@ npm run build
 
 1. When users grant notification permission, the app calls the Push API to create a subscription and sends it to the backend.
 2. The subscription is stored in `server/data/push-subscriptions.json` so pushes survive server restarts.
-3. When a momentum alert fires, the client asks the backend to broadcast the notification. The backend sends the payload to every stored subscription via `web-push`. The service worker displays the alert even if the app is closed.
+3. Server-side market watchers continuously poll Bybit even when the PWA is closed. When a momentum or moving-average trigger fires, the backend only broadcasts the notification to subscriptions whose saved filters match the symbol/pair so alerts respect the dashboard selections even if the app is closed. The service worker displays the alert even if the app is closed.
 
 The service worker lives in `src/sw.ts` and handles precaching, runtime caching, `push`, and `notificationclick` events.
 
@@ -89,4 +92,13 @@ The service worker lives in `src/sw.ts` and handles precaching, runtime caching,
 1. Start the push server and Vite dev server.
 2. Load the app, enable notifications, and accept the browser permission prompt.
 3. Watch the terminal logs for "Push notification server listening" to confirm the backend is running.
-4. Trigger a momentum alert (or craft a `curl` request to `POST /api/push/notifications`) to verify the PWA receives pushes even while the tab is closed.
+4. Trigger a momentum alert (or craft a `curl` request to `POST /api/push/notifications`) to verify the PWA receives pushes even while the tab is closed. With the watcher enabled, alerts will also arrive automatically once market conditions meet the thresholds.
+
+## Server-driven alerts
+
+The push backend mirrors the client-side alert logic so notifications continue flowing when no browsers are open:
+
+- **Momentum alerts**: evaluates RSI and Stochastic RSI for 5m, 15m, 30m, and 60m intervals. Consecutive timeframe confirmations produce progressively higher-intensity alerts.
+- **Moving-average crosses**: watches EMA 10/EMA 50, EMA 10/MA 200, and EMA 50/MA 200 pairs across all supported intervals.
+
+The watcher polls Bybit every 60 seconds by default. Customize the cadence or symbols with the environment variables listed above.

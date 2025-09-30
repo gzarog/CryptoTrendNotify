@@ -3,6 +3,8 @@ import { URL } from 'node:url'
 import webpush from 'web-push'
 
 import { PushSubscriptionStore } from './push-subscription-store.js'
+import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
+import { startMarketWatch } from './market-watcher.js'
 
 const PORT = Number.parseInt(process.env.PUSH_SERVER_PORT ?? process.env.PORT ?? '4000', 10)
 let vapidPublicKey = process.env.VAPID_PUBLIC_KEY
@@ -10,6 +12,118 @@ let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com'
 const ALLOWED_ORIGIN = process.env.PUSH_ALLOWED_ORIGIN ?? '*'
 const SUBSCRIPTION_FILE = process.env.PUSH_SUBSCRIPTIONS_FILE
+
+const KNOWN_TIMEFRAMES = new Set(['5', '15', '30', '60', '120', '240', '360'])
+const KNOWN_MOVING_AVERAGE_PAIRS = new Set(['ema10-ema50', 'ema10-ma200', 'ema50-ma200'])
+
+function normalizeStringArray(values, transform = (value) => value) {
+  if (!Array.isArray(values)) {
+    return undefined
+  }
+
+  const normalized = []
+
+  for (const value of values) {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      continue
+    }
+
+    const transformed = transform(String(value))
+
+    if (typeof transformed === 'string' && transformed.length > 0) {
+      normalized.push(transformed)
+    }
+  }
+
+  if (normalized.length === 0) {
+    return undefined
+  }
+
+  return Array.from(new Set(normalized))
+}
+
+function normalizeSubscriptionFilters(input) {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+
+  const filters = {}
+
+  const symbols = normalizeStringArray(input.symbols, (value) => value.trim().toUpperCase())
+  if (symbols && symbols.length > 0) {
+    filters.symbols = symbols
+  }
+
+  const momentumTimeframes = normalizeStringArray(input.momentumTimeframes, (value) => {
+    const trimmed = value.trim()
+    return /^\d+$/.test(trimmed) ? trimmed : ''
+  })
+  if (momentumTimeframes && momentumTimeframes.length > 0) {
+    filters.momentumTimeframes = momentumTimeframes.filter((value) => KNOWN_TIMEFRAMES.has(value))
+    if (filters.momentumTimeframes.length === 0) {
+      delete filters.momentumTimeframes
+    }
+  }
+
+  const movingAverageTimeframes = normalizeStringArray(input.movingAverageTimeframes, (value) => {
+    const trimmed = value.trim()
+    return /^\d+$/.test(trimmed) ? trimmed : ''
+  })
+  if (movingAverageTimeframes && movingAverageTimeframes.length > 0) {
+    filters.movingAverageTimeframes = movingAverageTimeframes.filter((value) => KNOWN_TIMEFRAMES.has(value))
+    if (filters.movingAverageTimeframes.length === 0) {
+      delete filters.movingAverageTimeframes
+    }
+  }
+
+  const movingAveragePairs = normalizeStringArray(input.movingAveragePairs, (value) => value.trim())
+  if (movingAveragePairs && movingAveragePairs.length > 0) {
+    filters.movingAveragePairs = movingAveragePairs.filter((value) =>
+      KNOWN_MOVING_AVERAGE_PAIRS.has(value),
+    )
+    if (filters.movingAveragePairs.length === 0) {
+      delete filters.movingAveragePairs
+    }
+  }
+
+  return Object.keys(filters).length > 0 ? filters : undefined
+}
+
+function normalizeSubscriptionPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const rawSubscription =
+    payload.subscription && typeof payload.subscription === 'object' ? payload.subscription : payload
+
+  if (!rawSubscription || typeof rawSubscription !== 'object') {
+    return null
+  }
+
+  if (!isValidSubscription(rawSubscription)) {
+    return null
+  }
+
+  const normalized = {
+    subscription: {
+      endpoint: rawSubscription.endpoint,
+      expirationTime:
+        rawSubscription.expirationTime == null ? null : Number(rawSubscription.expirationTime) || null,
+      keys: {
+        p256dh: rawSubscription.keys.p256dh,
+        auth: rawSubscription.keys.auth,
+      },
+    },
+  }
+
+  const filters = normalizeSubscriptionFilters(payload.filters ?? payload.preferences)
+  if (filters) {
+    normalized.filters = filters
+  }
+
+  return normalized
+}
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload)
@@ -56,43 +170,6 @@ function isValidSubscription(payload) {
   )
 }
 
-function normalizeNotificationPayload(input) {
-  if (!input || typeof input !== 'object') {
-    return null
-  }
-
-  if (typeof input.title !== 'string' || typeof input.body !== 'string') {
-    return null
-  }
-
-  const output = {
-    title: input.title,
-    body: input.body,
-  }
-
-  if (typeof input.tag === 'string') {
-    output.tag = input.tag
-  }
-
-  if (typeof input.icon === 'string') {
-    output.icon = input.icon
-  }
-
-  if (typeof input.badge === 'string') {
-    output.badge = input.badge
-  }
-
-  if (typeof input.renotify === 'boolean') {
-    output.renotify = input.renotify
-  }
-
-  if (input.data !== undefined) {
-    output.data = input.data
-  }
-
-  return output
-}
-
 async function handleRequest(req, res, store) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -121,12 +198,14 @@ async function handleRequest(req, res, store) {
       const raw = await readBody(req)
       const payload = raw ? JSON.parse(raw) : null
 
-      if (!isValidSubscription(payload)) {
+      const normalized = normalizeSubscriptionPayload(payload)
+
+      if (!normalized) {
         sendJson(res, 400, { error: 'Invalid subscription payload' })
         return
       }
 
-      await store.upsert(payload)
+      await store.upsert(normalized)
       sendJson(res, 201, { success: true })
     } catch (error) {
       console.error('Failed to store push subscription', error)
@@ -166,42 +245,8 @@ async function handleRequest(req, res, store) {
         return
       }
 
-      const subscriptions = store.list()
-
-      if (subscriptions.length === 0) {
-        sendJson(res, 202, { success: true, delivered: 0 })
-        return
-      }
-
-      const message = JSON.stringify(notification)
-      const deliveryResults = await Promise.allSettled(
-        subscriptions.map((subscription) =>
-          webpush.sendNotification(subscription, message, { TTL: 60 }).catch((error) => {
-            error.endpoint = subscription.endpoint
-            throw error
-          }),
-        ),
-      )
-
-      const staleEndpoints = []
-      let deliveredCount = 0
-
-      for (const result of deliveryResults) {
-        if (result.status === 'fulfilled') {
-          deliveredCount += 1
-        } else if (result.reason) {
-          const statusCode = result.reason.statusCode
-
-          if (statusCode === 404 || statusCode === 410) {
-            staleEndpoints.push(result.reason.endpoint)
-          } else {
-            console.error('Push delivery failed', result.reason)
-          }
-        }
-      }
-
-      await Promise.all(staleEndpoints.map((endpoint) => store.remove(endpoint)))
-      sendJson(res, 200, { success: true, delivered: deliveredCount, stale: staleEndpoints.length })
+      const { delivered, stale } = await broadcastNotification(store, notification)
+      sendJson(res, 200, { success: true, delivered, stale })
     } catch (error) {
       console.error('Failed to send push notifications', error)
       sendJson(res, 500, { error: 'Unable to send push notification' })
@@ -237,6 +282,8 @@ async function start() {
   server.listen(PORT, () => {
     console.log(`Push notification server listening on port ${PORT}`)
   })
+
+  startMarketWatch({ store })
 }
 
 start().catch((error) => {
