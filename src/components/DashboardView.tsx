@@ -4,6 +4,7 @@ import type {
   MomentumNotification,
   MovingAverageCrossNotification,
   MovingAverageMarker,
+  HeatmapNotification,
 } from '../App'
 import { LineChart } from './LineChart'
 import { RiskManagementPanel } from './RiskManagementPanel'
@@ -27,6 +28,37 @@ const MOMENTUM_CARD_CLASSES: Record<MomentumIntensity, string> = {
 const MOVING_AVERAGE_DIRECTION_LABELS: Record<'golden' | 'death', string> = {
   golden: 'Golden cross',
   death: 'Death cross',
+}
+
+const HEATMAP_CARD_CLASS_BY_STRENGTH: Record<string, string> = {
+  weak: MOMENTUM_CARD_CLASSES.green,
+  standard: MOMENTUM_CARD_CLASSES.yellow,
+  strong: MOMENTUM_CARD_CLASSES.orange,
+}
+
+const HEATMAP_DEFAULT_CARD_CLASS =
+  'border-indigo-400/40 bg-indigo-500/10 text-indigo-100'
+
+const HEATMAP_EMOJI_BY_DIRECTION: Record<'LONG' | 'SHORT', string> = {
+  LONG: '🟢',
+  SHORT: '🔴',
+}
+
+function getHeatmapCardClass(strength: string | null | undefined): string {
+  if (!strength) {
+    return HEATMAP_DEFAULT_CARD_CLASS
+  }
+
+  const normalized = strength.toLowerCase()
+  return HEATMAP_CARD_CLASS_BY_STRENGTH[normalized] ?? HEATMAP_DEFAULT_CARD_CLASS
+}
+
+function formatBlockedReason(reason: string | null | undefined): string {
+  if (typeof reason !== 'string' || reason.length === 0) {
+    return 'check limits'
+  }
+
+  return reason.replace(/_/g, ' ')
 }
 
 type DashboardViewProps = {
@@ -84,9 +116,11 @@ type DashboardViewProps = {
   }
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
+  visibleHeatmapNotifications: HeatmapNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
+  onDismissHeatmapNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -162,9 +196,11 @@ export function DashboardView({
   momentumThresholds,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
+  visibleHeatmapNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
+  onDismissHeatmapNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -194,6 +230,11 @@ export function DashboardView({
   const allNotifications = useMemo(
     () =>
       [
+        ...visibleHeatmapNotifications.map((entry) => ({
+          type: 'heatmap' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
         ...visibleMovingAverageNotifications.map((entry) => ({
           type: 'moving-average' as const,
           triggeredAt: entry.triggeredAt,
@@ -205,11 +246,17 @@ export function DashboardView({
           payload: entry,
         })),
       ].sort((a, b) => b.triggeredAt - a.triggeredAt),
-    [visibleMomentumNotifications, visibleMovingAverageNotifications],
+    [
+      visibleMomentumNotifications,
+      visibleMovingAverageNotifications,
+      visibleHeatmapNotifications,
+    ],
   )
 
   const totalNotificationCount =
-    visibleMomentumNotifications.length + visibleMovingAverageNotifications.length
+    visibleMomentumNotifications.length +
+    visibleMovingAverageNotifications.length +
+    visibleHeatmapNotifications.length
 
   const handleToggleNotifications = () => {
     if (totalNotificationCount === 0) {
@@ -284,6 +331,53 @@ export function DashboardView({
                       <p className="text-xs text-slate-500">No notifications available.</p>
                     ) : (
                       allNotifications.map((notification) => {
+                        if (notification.type === 'heatmap') {
+                          const entry = notification.payload
+                          const cardClasses = getHeatmapCardClass(
+                            typeof entry.strength === 'string' ? entry.strength : null,
+                          )
+                          const emoji = HEATMAP_EMOJI_BY_DIRECTION[entry.direction] ?? '🔥'
+                          const riskPlan = entry.alert.risk_plan
+                          const riskSummary = riskPlan
+                            ? `${riskPlan.finalRiskPct.toFixed(2)}% risk`
+                            : `Blocked (${formatBlockedReason(entry.alert.portfolio_check.reason)})`
+                          const portfolioRiskLabel = Number.isFinite(
+                            entry.alert.portfolio_check.portfolioOpenRiskPct,
+                          )
+                            ? `${entry.alert.portfolio_check.portfolioOpenRiskPct.toFixed(2)}%`
+                            : '—'
+
+                          return (
+                            <div
+                              key={`heatmap-${entry.id}`}
+                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                  {emoji} Heatmap {entry.direction.toLowerCase()}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissHeatmapNotification(entry.id)}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                  aria-label="Dismiss heatmap notification"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                              <span className="text-[11px] text-white/80">
+                                {entry.entryLabel} • Strength {entry.strength ?? '—'}
+                              </span>
+                              <span className="text-[11px] text-white/80">{riskSummary}</span>
+                              <span className="text-[11px] text-white/80">
+                                Portfolio open risk {portfolioRiskLabel}
+                              </span>
+                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                            </div>
+                          )
+                        }
+
                         if (notification.type === 'moving-average') {
                           const entry = notification.payload
                           const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
