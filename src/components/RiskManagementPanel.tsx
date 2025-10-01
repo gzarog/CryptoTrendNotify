@@ -2,19 +2,13 @@ import { type ChangeEvent, type Dispatch, type SetStateAction } from 'react'
 
 import type { HeatmapResult } from '../types/heatmap'
 
-const RISK_PCT_PER_TRADE: Record<string, number> = {
-  '5': 0.0075,
-  '15': 0.0075,
-  '30': 0.0075,
-  '60': 0.0075,
-  '120': 0.0075,
-  '240': 0.0075,
-  '360': 0.0075,
-}
-
 type RiskManagementPanelProps = {
   currentEquity: string
   onCurrentEquityChange: Dispatch<SetStateAction<string>>
+  riskBudgetPercent: string
+  onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
+  atrMultiplier: string
+  onAtrMultiplierChange: Dispatch<SetStateAction<string>>
   isCollapsed: boolean
   onToggleCollapse: () => void
   results: HeatmapResult[]
@@ -22,6 +16,16 @@ type RiskManagementPanelProps = {
 
 const parseEquity = (value: string): number | null => {
   const normalised = value.replace(/,/g, '').trim()
+  if (normalised === '') {
+    return null
+  }
+
+  const parsed = Number(normalised)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const parseNumericInput = (value: string): number | null => {
+  const normalised = value.trim()
   if (normalised === '') {
     return null
   }
@@ -38,11 +42,6 @@ const formatNumber = (value: number | null, maximumFractionDigits = 2) =>
         maximumFractionDigits,
       })
 
-const formatPercent = (value: number | null) =>
-  value == null || !Number.isFinite(value)
-    ? '—'
-    : `${(value * 100).toFixed(2)}%`
-
 const formatCurrency = (value: number | null) =>
   value == null || !Number.isFinite(value)
     ? '—'
@@ -56,6 +55,10 @@ const formatCurrency = (value: number | null) =>
 export function RiskManagementPanel({
   currentEquity,
   onCurrentEquityChange,
+  riskBudgetPercent,
+  onRiskBudgetPercentChange,
+  atrMultiplier,
+  onAtrMultiplierChange,
   isCollapsed,
   onToggleCollapse,
   results,
@@ -66,7 +69,23 @@ export function RiskManagementPanel({
     onCurrentEquityChange(sanitised)
   }
 
+  const handleRiskBudgetChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const rawValue = event.target.value
+    const sanitised = rawValue.replace(/[^0-9.]/g, '')
+    onRiskBudgetPercentChange(sanitised)
+  }
+
+  const handleAtrMultiplierChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const rawValue = event.target.value
+    const sanitised = rawValue.replace(/[^0-9.]/g, '')
+    onAtrMultiplierChange(sanitised)
+  }
+
   const equityValue = parseEquity(currentEquity)
+  const riskBudgetPercentValue = parseNumericInput(riskBudgetPercent)
+  const riskBudgetDecimal =
+    riskBudgetPercentValue != null ? riskBudgetPercentValue / 100 : null
+  const atrMultiplierValue = parseNumericInput(atrMultiplier) ?? 1
 
   const sortedResults = [...results]
     .filter((entry) =>
@@ -131,14 +150,54 @@ export function RiskManagementPanel({
             />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="risk-budget-percent"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-400"
+              >
+                Risk budget %
+              </label>
+              <input
+                id="risk-budget-percent"
+                inputMode="decimal"
+                value={riskBudgetPercent}
+                onChange={handleRiskBudgetChange}
+                placeholder="e.g. 0.75"
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="atr-multiplier"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-400"
+              >
+                ATR multiplier
+              </label>
+              <input
+                id="atr-multiplier"
+                inputMode="decimal"
+                value={atrMultiplier}
+                onChange={handleAtrMultiplierChange}
+                placeholder="e.g. 1"
+                className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-4">
             {sortedResults.length === 0 ? (
               <p className="text-xs text-slate-400">No calculated risk levels available.</p>
             ) : (
               sortedResults.map((result) => {
-                const riskPct = RISK_PCT_PER_TRADE[result.entryTimeframe] ?? null
                 const riskCapital =
-                  equityValue != null && riskPct != null ? equityValue * riskPct : null
+                  equityValue != null && riskBudgetDecimal != null
+                    ? equityValue * riskBudgetDecimal
+                    : null
+                const riskBudgetPercentLabel =
+                  riskBudgetPercentValue != null
+                    ? `${riskBudgetPercentValue.toFixed(2)}%`
+                    : null
 
                 const longStopDistance =
                   result.price != null && result.risk.slLong != null
@@ -164,7 +223,11 @@ export function RiskManagementPanel({
                       <div className="text-right">
                         <p className="text-[11px] uppercase tracking-wide text-slate-400">ATR</p>
                         <p className="text-sm font-semibold text-slate-200">
-                          {formatNumber(result.risk.atr)}
+                          {formatNumber(
+                            result.risk.atr != null
+                              ? result.risk.atr * atrMultiplierValue
+                              : null,
+                          )}
                         </p>
                       </div>
                     </header>
@@ -182,8 +245,8 @@ export function RiskManagementPanel({
                             Risk budget
                           </p>
                           <p className="text-sm font-medium text-slate-200">
-                            {riskCapital != null && riskPct != null
-                              ? `${formatCurrency(riskCapital)} (${formatPercent(riskPct)})`
+                            {riskCapital != null && riskBudgetDecimal != null
+                              ? `${formatCurrency(riskCapital)} (${riskBudgetPercentLabel ?? '—'})`
                               : '—'}
                           </p>
                         </div>

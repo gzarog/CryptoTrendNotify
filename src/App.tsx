@@ -413,6 +413,8 @@ const STORAGE_KEYS = {
   stochasticLowerBound: 'ctn:stochasticLowerBound',
   stochasticUpperBound: 'ctn:stochasticUpperBound',
   currentEquity: 'ctn:currentEquity',
+  riskBudgetPercent: 'ctn:riskBudgetPercent',
+  atrMultiplier: 'ctn:atrMultiplier',
 } as const
 
 const isBrowser = typeof window !== 'undefined'
@@ -831,6 +833,12 @@ function App() {
   const [currentEquityInput, setCurrentEquityInput] = useState(
     () => readLocalStorage(STORAGE_KEYS.currentEquity) ?? '',
   )
+  const [riskBudgetPercentInput, setRiskBudgetPercentInput] = useState(
+    () => readLocalStorage(STORAGE_KEYS.riskBudgetPercent) ?? '0.75',
+  )
+  const [atrMultiplierInput, setAtrMultiplierInput] = useState(
+    () => readLocalStorage(STORAGE_KEYS.atrMultiplier) ?? '1',
+  )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
@@ -902,6 +910,14 @@ function App() {
   useEffect(() => {
     writeLocalStorage(STORAGE_KEYS.currentEquity, currentEquityInput)
   }, [currentEquityInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.riskBudgetPercent, riskBudgetPercentInput)
+  }, [riskBudgetPercentInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.atrMultiplier, atrMultiplierInput)
+  }, [atrMultiplierInput])
 
   const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
 
@@ -2293,6 +2309,10 @@ function App() {
       onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
       currentEquity={currentEquityInput}
       onCurrentEquityChange={setCurrentEquityInput}
+      riskBudgetPercent={riskBudgetPercentInput}
+      onRiskBudgetPercentChange={setRiskBudgetPercentInput}
+      atrMultiplier={atrMultiplierInput}
+      onAtrMultiplierChange={setAtrMultiplierInput}
       momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}

@@ -72,6 +72,10 @@ type DashboardViewProps = {
   onStochasticUpperBoundInputChange: Dispatch<SetStateAction<string>>
   currentEquity: string
   onCurrentEquityChange: Dispatch<SetStateAction<string>>
+  riskBudgetPercent: string
+  onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
+  atrMultiplier: string
+  onAtrMultiplierChange: Dispatch<SetStateAction<string>>
   momentumThresholds: {
     longRsi: number
     shortRsi: number
@@ -151,6 +155,10 @@ export function DashboardView({
   onStochasticUpperBoundInputChange,
   currentEquity,
   onCurrentEquityChange,
+  riskBudgetPercent,
+  onRiskBudgetPercentChange,
+  atrMultiplier,
+  onAtrMultiplierChange,
   momentumThresholds,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
@@ -836,6 +844,10 @@ export function DashboardView({
           <RiskManagementPanel
             currentEquity={currentEquity}
             onCurrentEquityChange={onCurrentEquityChange}
+            riskBudgetPercent={riskBudgetPercent}
+            onRiskBudgetPercentChange={onRiskBudgetPercentChange}
+            atrMultiplier={atrMultiplier}
+            onAtrMultiplierChange={onAtrMultiplierChange}
             isCollapsed={isRiskPanelCollapsed}
             onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
             results={heatmapResults}
