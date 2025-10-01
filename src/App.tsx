@@ -99,7 +99,7 @@ export type MovingAverageCrossNotification = {
   triggeredAt: number
 }
 
-const CRYPTO_OPTIONS = ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
+const DEFAULT_SYMBOL = 'BTCUSDT'
 
 const TIMEFRAMES: TimeframeOption[] = [
   { value: '5', label: '5m' },
@@ -435,7 +435,11 @@ function App() {
 
   const [symbol, setSymbol] = useState(() => {
     const stored = readLocalStorage(STORAGE_KEYS.symbol)
-    return stored && CRYPTO_OPTIONS.includes(stored) ? stored : CRYPTO_OPTIONS[0]
+    if (typeof stored === 'string' && stored.trim().length > 0) {
+      return stored.toUpperCase()
+    }
+
+    return DEFAULT_SYMBOL
   })
   const [timeframe, setTimeframe] = useState(() => {
     const stored = readLocalStorage(STORAGE_KEYS.timeframe)
@@ -1353,7 +1357,6 @@ function App() {
       onDismissOfflineReadyBanner={dismissOfflineReadyBanner}
       symbol={symbol}
       onSymbolChange={setSymbol}
-      cryptoOptions={CRYPTO_OPTIONS}
       timeframe={timeframe}
       timeframeOptions={TIMEFRAMES}
       onTimeframeChange={setTimeframe}
