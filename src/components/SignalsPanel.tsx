@@ -27,10 +27,60 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
     [signals],
   )
 
-  const normalizedSnapshots = useMemo(
-    () => snapshots.slice().sort((a, b) => a.timeframe.localeCompare(b.timeframe)),
-    [snapshots],
-  )
+  const normalizedSnapshots = useMemo(() => {
+    const UNIT_MULTIPLIERS: Record<string, number> = {
+      M: 1,
+      H: 60,
+      D: 60 * 24,
+      W: 60 * 24 * 7,
+    }
+
+    const parseTimeframeWeight = (value: string) => {
+      const trimmed = value.trim()
+      if (trimmed.length === 0) {
+        return Number.POSITIVE_INFINITY
+      }
+
+      const asNumber = Number(trimmed)
+      if (Number.isFinite(asNumber)) {
+        return asNumber
+      }
+
+      const normalized = trimmed.toUpperCase()
+      const unitPrefixMatch = normalized.match(/^([A-Z]+)(\d+)$/)
+      if (unitPrefixMatch) {
+        const [, unit, amount] = unitPrefixMatch
+        const multiplier = UNIT_MULTIPLIERS[unit] ?? null
+        if (multiplier != null) {
+          return multiplier * Number(amount)
+        }
+      }
+
+      const unitSuffixMatch = normalized.match(/^(\d+)([A-Z]+)$/)
+      if (unitSuffixMatch) {
+        const [, amount, unit] = unitSuffixMatch
+        const multiplier = UNIT_MULTIPLIERS[unit] ?? null
+        if (multiplier != null) {
+          return multiplier * Number(amount)
+        }
+      }
+
+      return Number.POSITIVE_INFINITY
+    }
+
+    return snapshots
+      .slice()
+      .sort((a, b) => {
+        const aWeight = parseTimeframeWeight(a.timeframe)
+        const bWeight = parseTimeframeWeight(b.timeframe)
+
+        if (aWeight === bWeight) {
+          return a.timeframe.localeCompare(b.timeframe)
+        }
+
+        return aWeight - bWeight
+      })
+  }, [snapshots])
 
   const formatDirection = (value: TimeframeSignalSnapshot['trend']) =>
     value.toLowerCase()
