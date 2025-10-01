@@ -19,7 +19,16 @@ import {
   showAppNotification,
   type PushSubscriptionFilters,
 } from './lib/notifications'
-import { buildAtrRiskLevels, riskGradeFromSignal } from './lib/risk'
+import {
+  buildAlert,
+  buildAtrRiskLevels,
+  riskGradeFromSignal,
+} from './lib/risk'
+import {
+  createDefaultAccountState,
+  createRiskConfigFromHeatmapConfig,
+} from './lib/risk-presets'
+import type { AlertPayload, RiskConfig } from './lib/risk'
 
 export type Candle = {
   openTime: number
@@ -104,6 +113,18 @@ export type MovingAverageCrossNotification = {
   direction: 'golden' | 'death'
   intensity: Exclude<MomentumIntensity, 'red'>
   price: number
+  triggeredAt: number
+}
+
+export type HeatmapNotification = {
+  id: string
+  symbol: string
+  entryTimeframe: string
+  entryLabel: string
+  direction: 'LONG' | 'SHORT'
+  bias: 'BULL' | 'BEAR' | 'NEUTRAL'
+  strength: AlertPayload['strength']
+  alert: AlertPayload
   triggeredAt: number
 }
 
@@ -393,6 +414,7 @@ const DEFAULT_BAR_LIMIT = 200
 const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
+const MAX_HEATMAP_NOTIFICATIONS = 6
 
 const DEFAULT_MOMENTUM_BOUNDS = {
   rsiLower: 20,
@@ -785,6 +807,7 @@ function App() {
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
+  const lastHeatmapTriggersRef = useRef<Record<string, string>>({})
   const heatmapStateRef = useRef<
     Record<
       string,
@@ -798,6 +821,8 @@ function App() {
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [movingAverageNotifications, setMovingAverageNotifications] =
     useState<MovingAverageCrossNotification[]>([])
+  const [heatmapNotifications, setHeatmapNotifications] =
+    useState<HeatmapNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
@@ -1878,15 +1903,24 @@ function App() {
     momentumThresholds.shortStochastic,
   ])
 
+  useEffect(() => {
+    lastHeatmapTriggersRef.current = {}
+  }, [normalizedSymbol])
+
   const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
   const visibleMovingAverageNotifications = useMemo(
     () => movingAverageNotifications,
     [movingAverageNotifications],
   )
+  const visibleHeatmapNotifications = useMemo(
+    () => heatmapNotifications,
+    [heatmapNotifications],
+  )
 
   const handleClearNotifications = useCallback(() => {
     setMomentumNotifications([])
     setMovingAverageNotifications([])
+    setHeatmapNotifications([])
   }, [])
 
   useEffect(() => {
@@ -1996,6 +2030,155 @@ function App() {
     movingAverageNotificationQueries,
     movingAverageNotificationTimeframes,
     normalizedSymbol,
+  ])
+
+  useEffect(() => {
+    if (heatmapResults.length === 0) {
+      return
+    }
+
+    const equityValue = Number(currentEquityInput)
+    const accountState = Number.isFinite(equityValue) && equityValue > 0
+      ? createDefaultAccountState({
+          equity: equityValue,
+          equityPeak: Math.max(equityValue, equityValue),
+        })
+      : createDefaultAccountState()
+
+    const riskBudgetValue = Number(riskBudgetPercentInput)
+    const riskOverrides: RiskConfig = {}
+
+    if (Number.isFinite(riskBudgetValue) && riskBudgetValue > 0) {
+      riskOverrides.baseRiskWeakPct = riskBudgetValue
+      riskOverrides.baseRiskStdPct = riskBudgetValue
+      riskOverrides.baseRiskStrongPct = riskBudgetValue
+      riskOverrides.instrumentRiskCapPct = riskBudgetValue
+      riskOverrides.maxOpenRiskPctPortfolio = riskBudgetValue * 4
+    }
+
+    heatmapResults.forEach((result) => {
+      if (!result || result.signal === 'NONE') {
+        return
+      }
+
+      const signatureKey = `${result.symbol}-${result.entryTimeframe}`
+      const triggerAt = result.closedAt ?? result.evaluatedAt ?? Date.now()
+      const signature = `${signatureKey}-${result.signal}-${triggerAt}`
+
+      if (lastHeatmapTriggersRef.current[signatureKey] === signature) {
+        return
+      }
+
+      lastHeatmapTriggersRef.current[signatureKey] = signature
+
+      const timeframeConfig =
+        HEATMAP_CONFIGS[result.entryTimeframe as HeatmapEntryTimeframe]
+      if (!timeframeConfig) {
+        return
+      }
+
+      const riskConfig = createRiskConfigFromHeatmapConfig(timeframeConfig, {
+        ...riskOverrides,
+      })
+
+      const rsiHtfPayload = result.votes.breakdown.reduce<Record<string, number | null>>(
+        (acc, entry) => {
+          if (entry?.label) {
+            acc[entry.label] = entry.value ?? null
+          }
+          return acc
+        },
+        {},
+      )
+
+      const alertPayload = buildAlert(
+        {
+          side: result.signal,
+          symbol: result.symbol,
+          entryTF: result.entryTimeframe,
+          strengthHint: result.strength,
+          bias: result.bias,
+          votes: {
+            bull: result.votes.bull,
+            bear: result.votes.bear,
+            total: result.votes.total,
+          },
+          atrPct: result.filters.atrPct,
+          atr: result.risk.atr,
+          price: result.price,
+          rsiHTF: rsiHtfPayload,
+          rsiLTF: result.rsiLtf.value,
+          stochrsi: {
+            k: result.stochRsi.k,
+            d: result.stochRsi.d,
+            rawNormalized: result.stochRsi.rawNormalized,
+            event: result.stochEvent,
+          },
+          filters: result.filters,
+          barTimeISO: Number.isFinite(triggerAt)
+            ? new Date(triggerAt).toISOString()
+            : null,
+        },
+        riskConfig,
+        accountState,
+      )
+
+      const riskPlan = alertPayload.risk_plan
+      const blockedReason = alertPayload.portfolio_check.reason
+      const readableReason =
+        typeof blockedReason === 'string'
+          ? blockedReason.replace(/_/g, ' ')
+          : 'check limits'
+
+      const riskSummary = riskPlan
+        ? `Risk ${riskPlan.finalRiskPct.toFixed(2)}%`
+        : `Risk blocked (${readableReason})`
+
+      const directionLabel = result.signal === 'LONG' ? 'Long' : 'Short'
+      const title = `${result.signal === 'LONG' ? '🟢' : '🔴'} Heatmap ${directionLabel} ${result.symbol} ${result.entryLabel}`
+      const bodyParts = [
+        `${result.symbol} ${result.entryLabel} bias ${result.bias}`,
+        `Strength ${alertPayload.strength ?? result.strength}`,
+        riskSummary,
+      ]
+      const body = bodyParts.filter(Boolean).join(' — ')
+
+      void showAppNotification({
+        title,
+        body,
+        tag: signature,
+        data: {
+          type: 'heatmap',
+          source: 'client',
+          symbol: result.symbol,
+          direction: result.signal,
+          entryTimeframe: result.entryTimeframe,
+          alert: alertPayload,
+        },
+      })
+
+      const entry: HeatmapNotification = {
+        id: signature,
+        symbol: result.symbol,
+        entryTimeframe: result.entryTimeframe,
+        entryLabel: result.entryLabel,
+        direction: result.signal,
+        bias: result.bias,
+        strength: alertPayload.strength ?? result.strength,
+        alert: alertPayload,
+        triggeredAt: triggerAt,
+      }
+
+      setHeatmapNotifications((previous) => {
+        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+        return next.slice(0, MAX_HEATMAP_NOTIFICATIONS)
+      })
+    })
+  }, [
+    heatmapResults,
+    currentEquityInput,
+    riskBudgetPercentInput,
+    lastHeatmapTriggersRef,
   ])
 
   useEffect(() => {
@@ -2175,6 +2358,12 @@ function App() {
     )
   }, [])
 
+  const dismissHeatmapNotification = useCallback((notificationId: string) => {
+    setHeatmapNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const dismissMovingAverageNotification = useCallback((notificationId: string) => {
     setMovingAverageNotifications((previous) =>
       previous.filter((notification) => notification.id !== notificationId),
@@ -2268,8 +2457,10 @@ function App() {
       momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
+      visibleHeatmapNotifications={visibleHeatmapNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissMomentumNotification={dismissMomentumNotification}
+      onDismissHeatmapNotification={dismissHeatmapNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}
       onClearNotifications={handleClearNotifications}
       lastUpdatedLabel={lastUpdatedLabel}

@@ -6,7 +6,15 @@ import {
   calculateStochasticRSI,
 } from './indicators.js'
 import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
-import { buildAtrRiskLevels, riskGradeFromSignal } from '../core/risk.js'
+import {
+  buildAlert,
+  buildAtrRiskLevels,
+  riskGradeFromSignal,
+} from '../core/risk.js'
+import {
+  createDefaultAccountState,
+  createRiskConfigFromHeatmapConfig,
+} from '../core/risk-presets.js'
 
 function normalizeSymbol(value) {
   if (typeof value !== 'string') {
@@ -15,6 +23,17 @@ function normalizeSymbol(value) {
 
   const trimmed = value.trim().toUpperCase()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function parseEnvNumber(name, fallback) {
+  const raw = process.env?.[name]
+
+  if (raw == null) {
+    return fallback
+  }
+
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : fallback
 }
 
 const ENV_SYMBOLS = (process.env.PUSH_WATCH_SYMBOLS
@@ -222,6 +241,67 @@ const HEATMAP_CONFIGS = {
     volMaxAtrPct: 3.0,
   },
 }
+
+const ACCOUNT_EQUITY_DEFAULT = 100_000
+const ACCOUNT_EQUITY = parseEnvNumber('RISK_ACCOUNT_EQUITY', ACCOUNT_EQUITY_DEFAULT)
+const ACCOUNT_EQUITY_PEAK = parseEnvNumber(
+  'RISK_ACCOUNT_EQUITY_PEAK',
+  Math.max(ACCOUNT_EQUITY, ACCOUNT_EQUITY_DEFAULT),
+)
+const ACCOUNT_TODAY_PNL = parseEnvNumber('RISK_ACCOUNT_TODAY_PNL_PCT', 0)
+
+const DEFAULT_RISK_ACCOUNT_STATE = createDefaultAccountState({
+  equity: ACCOUNT_EQUITY,
+  equityPeak: ACCOUNT_EQUITY_PEAK,
+  todayRealizedPnLPct: ACCOUNT_TODAY_PNL,
+})
+
+const BASE_RISK_OVERRIDE = parseEnvNumber('RISK_BASE_TRADE_PCT', null)
+const PORTFOLIO_RISK_CAP_OVERRIDE = parseEnvNumber('RISK_PORTFOLIO_MAX_PCT', null)
+const MAX_POSITIONS_OVERRIDE = parseEnvNumber('RISK_MAX_OPEN_POSITIONS', null)
+const DAILY_LOSS_CAP_OVERRIDE = parseEnvNumber('RISK_DAILY_LOSS_CAP_PCT', null)
+
+const heatmapRiskConfigCache = new Map()
+
+function getHeatmapRiskConfig(entryTimeframe) {
+  const cached = heatmapRiskConfigCache.get(entryTimeframe)
+  if (cached) {
+    return cached
+  }
+
+  const base = HEATMAP_CONFIGS[entryTimeframe]
+  if (!base) {
+    return null
+  }
+
+  const overrides = {}
+
+  if (BASE_RISK_OVERRIDE != null) {
+    overrides.baseRiskWeakPct = BASE_RISK_OVERRIDE
+    overrides.baseRiskStdPct = BASE_RISK_OVERRIDE
+    overrides.baseRiskStrongPct = BASE_RISK_OVERRIDE
+    overrides.instrumentRiskCapPct = BASE_RISK_OVERRIDE
+    overrides.maxOpenRiskPctPortfolio =
+      PORTFOLIO_RISK_CAP_OVERRIDE != null
+        ? PORTFOLIO_RISK_CAP_OVERRIDE
+        : BASE_RISK_OVERRIDE * 4
+  } else if (PORTFOLIO_RISK_CAP_OVERRIDE != null) {
+    overrides.maxOpenRiskPctPortfolio = PORTFOLIO_RISK_CAP_OVERRIDE
+  }
+
+  if (MAX_POSITIONS_OVERRIDE != null) {
+    overrides.maxOpenPositions = Math.max(1, Math.floor(MAX_POSITIONS_OVERRIDE))
+  }
+
+  if (DAILY_LOSS_CAP_OVERRIDE != null) {
+    overrides.maxDailyLossPct = DAILY_LOSS_CAP_OVERRIDE
+  }
+
+  const config = createRiskConfigFromHeatmapConfig(base, overrides)
+  heatmapRiskConfigCache.set(entryTimeframe, config)
+  return config
+}
+
 const HEATMAP_NEUTRAL_BAND = { lower: 45, upper: 55 }
 
 const MAX_BAR_LIMIT = 5000
@@ -763,6 +843,11 @@ export function startMarketWatch({ store }) {
         typeof latestAtr === 'number' && Number.isFinite(latestAtr)
           ? latestAtr
           : NaN
+      const atrBounds = {
+        min: config.volMinAtrPct,
+        max: config.volMaxAtrPct,
+      }
+      const atrStatus = 'ok'
       const riskBlock = buildAtrRiskLevels(priceValue, atrValue, config)
 
       const votesPayload = {
@@ -776,21 +861,80 @@ export function startMarketWatch({ store }) {
         k: currentK,
         d: currentD,
         raw: rawNormalized,
+        rawNormalized,
         event: eventLabel,
       }
 
       const filtersPayload = {
+        atrPct,
+        atrBounds,
+        atrStatus,
         maSide,
+        maLongOk,
+        maShortOk,
         distPctToMA200: distToMa200,
+        useMa200Filter: config.useMa200Filter,
       }
 
       const timestampIso = new Date(latest.openTime + timeframeMs).toISOString()
+      const riskConfig = getHeatmapRiskConfig(entryTimeframe)
+      const riskAlert =
+        riskConfig == null
+          ? null
+          : buildAlert(
+              {
+                side: directionLabel,
+                symbol,
+                entryTF: entryTimeframe,
+                strengthHint: strength,
+                bias,
+                votes: {
+                  bull: htfVotes.bull,
+                  bear: htfVotes.bear,
+                  total: htfVotes.total,
+                },
+                atrPct,
+                atr: atrValue,
+                price: priceValue,
+                rsiHTF: htfRsiValues,
+                rsiLTF: latestRsi,
+                stochrsi: {
+                  k: Number.isFinite(currentK) ? currentK : null,
+                  d: Number.isFinite(currentD) ? currentD : null,
+                  rawNormalized,
+                  event: eventLabel,
+                },
+                filters: filtersPayload,
+                barTimeISO: timestampIso,
+              },
+              riskConfig,
+              DEFAULT_RISK_ACCOUNT_STATE,
+            )
+
+      const formatMetric = (value) =>
+        Number.isFinite(value) ? value.toFixed(2) : '—'
+
+      const riskBodySegment =
+        riskAlert && riskAlert.risk_plan
+          ? `Risk ${riskAlert.risk_plan.finalRiskPct.toFixed(2)}%`
+          : riskAlert
+          ? `Risk blocked (${riskAlert.portfolio_check.reason ?? 'check limits'})`
+          : null
+
+      const bodySegments = [
+        `${symbol} ${config.entryLabel} bias ${bias}`,
+        `RSI ${formatMetric(latestRsi)} • StochRSI %K ${formatMetric(currentK)} %D ${formatMetric(currentD)}`,
+      ]
+
+      if (riskBodySegment) {
+        bodySegments.push(riskBodySegment)
+      }
+
+      const body = bodySegments.join(' — ')
 
       const payload = normalizeNotificationPayload({
         title: `${longSignal ? '🟢' : '🔴'} Heatmap ${directionLabel} ${symbol} ${config.entryLabel}`,
-        body: `${symbol} ${config.entryLabel} bias ${bias} — RSI ${latestRsi.toFixed(2)} • StochRSI %K ${currentK.toFixed(
-          2,
-        )} %D ${currentD.toFixed(2)}`,
+        body,
         tag: `heatmap-${symbol}-${entryTimeframe}-${directionLabel}-${latest.openTime}`,
         data: {
           type: 'heatmap',
@@ -805,6 +949,7 @@ export function startMarketWatch({ store }) {
           stochRsi: stochPayload,
           filters: filtersPayload,
           risk: riskBlock,
+          alert: riskAlert ?? null,
           timestamp: timestampIso,
           strength,
         },

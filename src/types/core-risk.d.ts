@@ -182,3 +182,23 @@ declare module '../../core/risk.js' {
     OPERATIONS: Record<'ADD' | 'SUBTRACT', PriceOperation>
   }
 }
+
+declare module '../../core/risk-presets.js' {
+  import type { AccountState, RiskConfig } from '../../core/risk.js'
+
+  export function createDefaultAccountState(
+    overrides?: Partial<AccountState>,
+  ): AccountState
+  export function createRiskConfigFromHeatmapConfig(
+    config: {
+      riskPctPerTrade?: number
+      atrMultSl?: number
+      atrMultTp1?: number
+      atrMultTp2?: number
+      volMaxAtrPct?: number
+      volMinAtrPct?: number
+      [key: string]: unknown
+    },
+    overrides?: RiskConfig,
+  ): RiskConfig
+}
