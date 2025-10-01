@@ -6,6 +6,7 @@ import type {
   MovingAverageMarker,
 } from '../App'
 import { LineChart } from './LineChart'
+import { RiskManagementPanel } from './RiskManagementPanel'
 import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
 import type { HeatmapResult } from '../types/heatmap'
 
@@ -69,6 +70,12 @@ type DashboardViewProps = {
   onStochasticLowerBoundInputChange: Dispatch<SetStateAction<string>>
   stochasticUpperBoundInput: string
   onStochasticUpperBoundInputChange: Dispatch<SetStateAction<string>>
+  currentEquity: string
+  onCurrentEquityChange: Dispatch<SetStateAction<string>>
+  riskBudgetPercent: string
+  onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
+  atrMultiplier: string
+  onAtrMultiplierChange: Dispatch<SetStateAction<string>>
   momentumThresholds: {
     longRsi: number
     shortRsi: number
@@ -146,6 +153,12 @@ export function DashboardView({
   onStochasticLowerBoundInputChange,
   stochasticUpperBoundInput,
   onStochasticUpperBoundInputChange,
+  currentEquity,
+  onCurrentEquityChange,
+  riskBudgetPercent,
+  onRiskBudgetPercentChange,
+  atrMultiplier,
+  onAtrMultiplierChange,
   momentumThresholds,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
@@ -175,7 +188,8 @@ export function DashboardView({
     Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
 
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isRiskPanelCollapsed, setIsRiskPanelCollapsed] = useState(false)
 
   const allNotifications = useMemo(
     () =>
@@ -205,10 +219,6 @@ export function DashboardView({
     setIsNotificationPopupOpen((previous) => !previous)
   }
 
-  const handleToggleSidebar = () => {
-    setIsSidebarOpen((previous) => !previous)
-  }
-
   const handleClearNotifications = () => {
     onClearNotifications()
     setIsNotificationPopupOpen(false)
@@ -226,15 +236,6 @@ export function DashboardView({
             <p className="text-sm text-slate-400">Live Bybit OHLCV data with RSI signals ready for the web and PWA.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleToggleSidebar}
-              className="rounded-full border border-indigo-400/60 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-              aria-expanded={isSidebarOpen}
-              aria-controls="dashboard-sidebar"
-            >
-              {isSidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-            </button>
             <button
               type="button"
               onClick={() => void onManualRefresh()}
@@ -414,223 +415,320 @@ export function DashboardView({
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-8 lg:flex-row lg:items-start lg:gap-10">
         <aside
           id="dashboard-sidebar"
-          className={`${isSidebarOpen ? 'flex lg:flex' : 'hidden lg:hidden'} w-full flex-col gap-6 lg:w-80 lg:flex-shrink-0 lg:sticky lg:top-28`}
+          className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
+            isSidebarCollapsed ? 'lg:w-16' : 'lg:w-80'
+          }`}
           aria-label="Dashboard filters and market snapshot"
         >
-          <section className="flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Push server</span>
-                  {pushServerConnected === null ? (
-                    <span className="text-[11px] text-slate-500">Checking…</span>
-                  ) : pushServerConnected ? (
-                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">Connected</span>
-                  ) : (
-                    <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">Offline</span>
-                  )}
+          <section
+            className={`flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 transition-[padding,opacity,transform] duration-300 ${
+              isSidebarCollapsed ? 'items-center gap-4 px-3 py-4' : 'p-6'
+            }`}
+          >
+            <div
+              className={`flex w-full items-center ${
+                isSidebarCollapsed ? 'justify-center' : 'justify-between'
+              } gap-3`}
+            >
+              {!isSidebarCollapsed && (
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+                  Filters
+                </h2>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed((previous) => !previous)}
+                className={`flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/60 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white ${
+                  isSidebarCollapsed ? 'px-2 py-2' : 'px-3 py-1'
+                }`}
+                aria-expanded={!isSidebarCollapsed}
+              >
+                <span className="sr-only">
+                  {isSidebarCollapsed ? 'Show dashboard filters' : 'Hide dashboard filters'}
+                </span>
+                <span aria-hidden="true" className="text-lg leading-none">
+                  {isSidebarCollapsed ? '⟩' : '⟨'}
+                </span>
+                {!isSidebarCollapsed && <span aria-hidden="true">Hide</span>}
+                {isSidebarCollapsed && <span aria-hidden="true" className="text-[11px]">Show</span>}
+              </button>
+            </div>
+            {!isSidebarCollapsed && (
+              <>
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Push server</span>
+                      {pushServerConnected === null ? (
+                        <span className="text-[11px] text-slate-500">Checking…</span>
+                      ) : pushServerConnected ? (
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">Connected</span>
+                      ) : (
+                        <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">Offline</span>
+                      )}
+                    </div>
+                    {pushServerConnected === false && (
+                      <span className="text-[11px] text-rose-300">
+                        Unable to reach the push server. Start the backend service to deliver notifications.
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Notifications</span>
+                      {supportsNotifications ? (
+                        notificationPermission === 'granted' ? (
+                          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">Enabled</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void onEnableNotifications()}
+                            className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                          >
+                            Enable alerts
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+                      )}
+                    </div>
+                    {notificationPermission === 'denied' && supportsNotifications && (
+                      <span className="text-[11px] text-rose-300">
+                        Notifications are blocked. Update your browser settings to enable alerts.
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {pushServerConnected === false && (
-                  <span className="text-[11px] text-rose-300">
-                    Unable to reach the push server. Start the backend service to deliver notifications.
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Notifications</span>
-                  {supportsNotifications ? (
-                    notificationPermission === 'granted' ? (
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">Enabled</span>
-                    ) : (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Crypto
+                    </label>
+                    <input
+                      id="symbol"
+                      type="text"
+                      value={symbol}
+                      onChange={(event) =>
+                        onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
+                      }
+                      placeholder="e.g. BTCUSDT"
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium uppercase tracking-wide text-white shadow focus:border-indigo-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Timeframe
+                    </label>
+                    <select
+                      id="timeframe"
+                      value={timeframe}
+                      onChange={(event) => onTimeframeChange(event.target.value)}
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    >
+                      {timeframeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Bars
+                    </label>
+                    <select
+                      id="bar-count"
+                      value={barSelection}
+                      onChange={(event) => onBarSelectionChange(event.target.value)}
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    >
+                      {barCountOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {barSelection === 'custom' && (
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="custom-bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Custom bars
+                      </label>
+                      <input
+                        id="custom-bar-count"
+                        inputMode="numeric"
+                        value={customBarCount}
+                        onChange={(event) => onCustomBarCountChange(event.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder={`Max ${maxBarLimit}`}
+                        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Auto refresh
+                    </label>
+                    <select
+                      id="refresh-interval"
+                      value={refreshSelection}
+                      onChange={(event) => onRefreshSelectionChange(event.target.value)}
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    >
+                      {refreshOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {refreshSelection === 'custom' && (
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="custom-refresh" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Custom refresh (minutes)
+                      </label>
+                      <input
+                        id="custom-refresh"
+                        inputMode="numeric"
+                        value={customRefresh}
+                        onChange={(event) => onCustomRefreshChange(event.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="e.g. 5"
+                        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="rsi-lower-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      RSI lower bound
+                    </label>
+                    <input
+                      id="rsi-lower-bound"
+                      inputMode="numeric"
+                      value={rsiLowerBoundInput}
+                      onChange={(event) =>
+                        onRsiLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="30"
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="rsi-upper-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      RSI upper bound
+                    </label>
+                    <input
+                      id="rsi-upper-bound"
+                      inputMode="numeric"
+                      value={rsiUpperBoundInput}
+                      onChange={(event) =>
+                        onRsiUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="70"
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="stochastic-lower-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Stochastic RSI lower bound
+                    </label>
+                    <input
+                      id="stochastic-lower-bound"
+                      inputMode="numeric"
+                      value={stochasticLowerBoundInput}
+                      onChange={(event) =>
+                        onStochasticLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="20"
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="stochastic-upper-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Stochastic RSI upper bound
+                    </label>
+                    <input
+                      id="stochastic-upper-bound"
+                      inputMode="numeric"
+                      value={stochasticUpperBoundInput}
+                      onChange={(event) =>
+                        onStochasticUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="80"
+                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">RSI thresholds</span>
+                      <span className="text-sm text-slate-300">
+                        Long ≤ {formatThreshold(momentumThresholds.longRsi)} · Short ≥ {formatThreshold(momentumThresholds.shortRsi)}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs uppercase tracking-wider text-slate-400">Stoch RSI thresholds</span>
+                      <span className="text-sm text-slate-300">
+                        Long ≤ {formatThreshold(momentumThresholds.longStochastic)} · Short ≥ {formatThreshold(momentumThresholds.shortStochastic)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Momentum alerts</span>
                       <button
                         type="button"
-                        onClick={() => void onEnableNotifications()}
-                        className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                        onClick={onClearNotifications}
+                        className="text-xs text-indigo-200 transition hover:text-white"
                       >
-                        Enable alerts
+                        Clear all
                       </button>
-                    )
-                  ) : (
-                    <span className="text-[11px] text-slate-500">Not supported in this browser</span>
-                  )}
-                </div>
-                {notificationPermission === 'denied' && supportsNotifications && (
-                  <span className="text-[11px] text-rose-300">
-                    Notifications are blocked. Update your browser settings to enable alerts.
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Crypto
-                </label>
-                <input
-                  id="symbol"
-                  type="text"
-                  value={symbol}
-                  onChange={(event) =>
-                    onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
-                  }
-                  placeholder="e.g. BTCUSDT"
-                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium uppercase tracking-wide text-white shadow focus:border-indigo-400 focus:outline-none"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Timeframe
-                </label>
-                <select
-                  id="timeframe"
-                  value={timeframe}
-                  onChange={(event) => onTimeframeChange(event.target.value)}
-                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                >
-                  {timeframeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Bars
-                </label>
-                <select
-                  id="bar-count"
-                  value={barSelection}
-                  onChange={(event) => onBarSelectionChange(event.target.value)}
-                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                >
-                  {barCountOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {barSelection === 'custom' && (
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={maxBarLimit}
-                        value={customBarCount}
-                        onChange={(event) => onCustomBarCountChange(event.target.value)}
-                        className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
-                      />
-                      <span className="text-xs text-slate-400">bars</span>
                     </div>
-                    <span className="text-[11px] text-slate-500">Max {maxBarLimit}</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Refresh
-                </label>
-                <select
-                  id="refresh-interval"
-                  value={refreshSelection}
-                  onChange={(event) => onRefreshSelectionChange(event.target.value)}
-                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                >
-                  {refreshOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {refreshSelection === 'custom' && (
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={60}
-                        value={customRefresh}
-                        onChange={(event) => onCustomRefreshChange(event.target.value)}
-                        className="w-24 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
-                      />
-                      <span className="text-xs text-slate-400">minutes</span>
+                    <div className="flex flex-col gap-2 text-xs text-slate-300">
+                      {visibleMomentumNotifications.length === 0 ? (
+                        <p>No recent momentum alerts.</p>
+                      ) : (
+                        visibleMomentumNotifications.slice(0, 3).map((notification) => (
+                          <div key={notification.id} className="flex flex-col">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {notification.label}
+                            </span>
+                            <span>{notification.symbol}</span>
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <span className="text-[11px] text-slate-500">Max 60 minutes</span>
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="grid gap-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="momentum-rsi-long" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    RSI long ≤
-                  </label>
-                  <input
-                    id="momentum-rsi-long"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={rsiLowerBoundInput}
-                    onChange={(event) => onRsiLowerBoundInputChange(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                  />
+                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Moving average alerts</span>
+                      <button
+                        type="button"
+                        onClick={onClearNotifications}
+                        className="text-xs text-indigo-200 transition hover:text-white"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 text-xs text-slate-300">
+                      {visibleMovingAverageNotifications.length === 0 ? (
+                        <p>No moving average alerts.</p>
+                      ) : (
+                        visibleMovingAverageNotifications.slice(0, 3).map((notification) => (
+                          <div key={notification.id} className="flex flex-col">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {notification.direction === 'golden' ? 'Golden cross' : 'Death cross'}
+                            </span>
+                            <span>{notification.symbol}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="momentum-rsi-short" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    RSI short ≥
-                  </label>
-                  <input
-                    id="momentum-rsi-short"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={rsiUpperBoundInput}
-                    onChange={(event) => onRsiUpperBoundInputChange(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="momentum-stoch-long" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Stoch %D long ≤
-                  </label>
-                  <input
-                    id="momentum-stoch-long"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={stochasticLowerBoundInput}
-                    onChange={(event) => onStochasticLowerBoundInputChange(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="momentum-stoch-short" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Stoch %D short ≥
-                  </label>
-                  <input
-                    id="momentum-stoch-short"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={stochasticUpperBoundInput}
-                    onChange={(event) => onStochasticUpperBoundInputChange(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-              <span className="text-[11px] text-slate-500">
-                Long triggers when RSI ≤ {formatThreshold(momentumThresholds.longRsi)} and Stoch RSI %D ≤ {formatThreshold(momentumThresholds.longStochastic)}. Short triggers when RSI ≥ {formatThreshold(momentumThresholds.shortRsi)} and Stoch RSI %D ≥ {formatThreshold(momentumThresholds.shortStochastic)}.
-              </span>
-            </div>
+              </>
+            )}
           </section>
-          {!isLoading && !isError && (
+          {!isSidebarCollapsed && !isLoading && !isError && (
             <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-1">
@@ -738,6 +836,23 @@ export function DashboardView({
             </>
           )}
         </section>
+        <aside
+          className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
+            isRiskPanelCollapsed ? 'lg:w-16' : 'lg:w-80'
+          }`}
+        >
+          <RiskManagementPanel
+            currentEquity={currentEquity}
+            onCurrentEquityChange={onCurrentEquityChange}
+            riskBudgetPercent={riskBudgetPercent}
+            onRiskBudgetPercentChange={onRiskBudgetPercentChange}
+            atrMultiplier={atrMultiplier}
+            onAtrMultiplierChange={onAtrMultiplierChange}
+            isCollapsed={isRiskPanelCollapsed}
+            onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
+            results={heatmapResults}
+          />
+        </aside>
       </main>
 
       <footer className="border-t border-white/5 bg-slate-950/80">
