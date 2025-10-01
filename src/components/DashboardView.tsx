@@ -6,6 +6,7 @@ import type {
   MovingAverageMarker,
 } from '../App'
 import { LineChart } from './LineChart'
+import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   green: '🟢',
@@ -730,6 +731,7 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
+              <RsiStochRsiHeatmap />
             </>
           )}
         </section>
