@@ -750,6 +750,7 @@ export function DashboardView({
             onCurrentEquityChange={onCurrentEquityChange}
             isCollapsed={isRiskPanelCollapsed}
             onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
+            results={heatmapResults}
           />
         </aside>
       </main>
