@@ -1,5 +1,10 @@
 import type { HeatmapResult } from '../types/heatmap'
-import type { SignalDirection, SignalStrength, TradingSignal } from '../types/signals'
+import type {
+  SignalDirection,
+  SignalStrength,
+  TimeframeSignalSnapshot,
+  TradingSignal,
+} from '../types/signals'
 
 const RSI_OVERSOLD = 35
 const RSI_OVERBOUGHT = 65
@@ -13,6 +18,74 @@ export function deriveSignalsFromHeatmap(results: HeatmapResult[]): TradingSigna
     .map((result) => mapHeatmapResultToSignal(result))
     .filter((signal): signal is TradingSignal => signal != null)
     .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export function deriveTimeframeSnapshots(
+  results: HeatmapResult[],
+): TimeframeSignalSnapshot[] {
+  return results.map((result) => mapHeatmapResultToSnapshot(result))
+}
+
+function mapHeatmapResultToSnapshot(
+  result: HeatmapResult,
+): TimeframeSignalSnapshot {
+  const ema10 = toNumberOrNull(result.ema?.ema10)
+  const ema50 = toNumberOrNull(result.ema?.ema50)
+  const ma200 = toNumberOrNull(result.ma200.value)
+  const price = toNumberOrNull(result.price)
+
+  let trend: TimeframeSignalSnapshot['trend'] = 'Neutral'
+
+  if (ema10 != null && ema50 != null && price != null && ma200 != null) {
+    if (ema10 > ema50 && price > ma200) {
+      trend = 'Bullish'
+    } else if (ema10 < ema50 && price < ma200) {
+      trend = 'Bearish'
+    }
+  }
+
+  const rsi = toNumberOrNull(result.rsiLtf.value)
+  const stochK = toNumberOrNull(result.stochRsi.k)
+  const stochD = toNumberOrNull(result.stochRsi.d)
+
+  let momentum: TimeframeSignalSnapshot['momentum'] = 'Neutral'
+
+  if (rsi != null && stochK != null && stochD != null) {
+    if (rsi > 50 && stochK > stochD) {
+      momentum = 'Bullish'
+    } else if (rsi < 50 && stochK < stochD) {
+      momentum = 'Bearish'
+    }
+  }
+
+  let side: SignalDirection | null = null
+
+  if (result.signal === 'LONG') {
+    side = 'Bullish'
+  } else if (result.signal === 'SHORT') {
+    side = 'Bearish'
+  } else if (trend === 'Bullish') {
+    side = 'Bullish'
+  } else if (trend === 'Bearish') {
+    side = 'Bearish'
+  }
+
+  const reasons = side ? buildReasons(result, side) : []
+  const confluenceScore = side ? scoreSignal(result, side, reasons) : null
+  const strength = confluenceScore != null ? bucketSignal(confluenceScore) : null
+
+  return {
+    timeframe: result.entryTimeframe,
+    timeframeLabel: result.entryLabel,
+    trend,
+    momentum,
+    confluenceScore,
+    strength,
+    price: price,
+    bias: result.bias,
+    slopeMa200: toNumberOrNull(result.ma200.slope),
+    side,
+  }
 }
 
 function mapHeatmapResultToSignal(result: HeatmapResult): TradingSignal | null {
@@ -184,6 +257,10 @@ function bucketSignal(score: number): SignalStrength {
     return 'Medium'
   }
   return 'Weak'
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function clampScore(score: number): number {

@@ -29,7 +29,7 @@ import {
   createRiskConfigFromHeatmapConfig,
 } from './lib/risk-presets'
 import type { AlertPayload, RiskConfig } from './lib/risk'
-import { deriveSignalsFromHeatmap } from './lib/signals'
+import { deriveSignalsFromHeatmap, deriveTimeframeSnapshots } from './lib/signals'
 import type { SignalNotification, TradingSignal } from './types/signals'
 
 export type Candle = {
@@ -1367,6 +1367,7 @@ function App() {
           strength: 'weak',
           signal: 'NONE',
           stochEvent: null,
+          ema: { ema10: null, ema50: null },
           votes: {
             bull: bullVotes,
             bear: bearVotes,
@@ -1421,6 +1422,8 @@ function App() {
         kSmoothing: config.kSmooth,
         dSmoothing: config.dSmooth,
       })
+      const ema10Series = calculateEMA(closesEntry, 10)
+      const ema50Series = calculateEMA(closesEntry, 50)
       const atrSeries = calculateATR(entryCandles, config.atrLength)
       const ma200Series = calculateSMA(closesEntry, 200)
 
@@ -1493,6 +1496,10 @@ function App() {
 
       const atrIndex = findPreviousIndex(atrSeries, atrSeries.length - 1)
       const latestAtr = atrIndex != null ? atrSeries[atrIndex] ?? null : null
+      const ema10Index = findPreviousIndex(ema10Series, ema10Series.length - 1)
+      const latestEma10 = ema10Index != null ? ema10Series[ema10Index] ?? null : null
+      const ema50Index = findPreviousIndex(ema50Series, ema50Series.length - 1)
+      const latestEma50 = ema50Index != null ? ema50Series[ema50Index] ?? null : null
       const maIndex = findPreviousIndex(ma200Series, ma200Series.length - 1)
       const latestMa200 = maIndex != null ? ma200Series[maIndex] ?? null : null
       const prevMaIndex =
@@ -1727,6 +1734,16 @@ function App() {
         strength,
         signal,
         stochEvent,
+        ema: {
+          ema10:
+            typeof latestEma10 === 'number' && Number.isFinite(latestEma10)
+              ? latestEma10
+              : null,
+          ema50:
+            typeof latestEma50 === 'number' && Number.isFinite(latestEma50)
+              ? latestEma50
+              : null,
+        },
         votes: {
           bull: bullVotes,
           bear: bearVotes,
@@ -1803,6 +1820,11 @@ function App() {
 
   const tradingSignals = useMemo<TradingSignal[]>(
     () => deriveSignalsFromHeatmap(heatmapResults),
+    [heatmapResults],
+  )
+
+  const timeframeSnapshots = useMemo(
+    () => deriveTimeframeSnapshots(heatmapResults),
     [heatmapResults],
   )
 
@@ -2544,6 +2566,7 @@ function App() {
       onAtrMultiplierChange={setAtrMultiplierInput}
       momentumThresholds={momentumThresholds}
       signals={tradingSignals}
+      timeframeSnapshots={timeframeSnapshots}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       visibleHeatmapNotifications={visibleHeatmapNotifications}

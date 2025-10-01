@@ -31,3 +31,16 @@ export type SignalNotification = {
   reasons: string[]
   triggeredAt: number
 }
+
+export type TimeframeSignalSnapshot = {
+  timeframe: string
+  timeframeLabel: string
+  trend: SignalDirection | 'Neutral'
+  momentum: SignalDirection | 'Neutral'
+  confluenceScore: number | null
+  strength: SignalStrength | null
+  price: number | null
+  bias: 'BULL' | 'BEAR' | 'NEUTRAL'
+  slopeMa200: number | null
+  side: SignalDirection | null
+}

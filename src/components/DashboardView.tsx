@@ -6,7 +6,11 @@ import type {
   MovingAverageMarker,
   HeatmapNotification,
 } from '../App'
-import type { SignalNotification, TradingSignal } from '../types/signals'
+import type {
+  SignalNotification,
+  TimeframeSignalSnapshot,
+  TradingSignal,
+} from '../types/signals'
 import { LineChart } from './LineChart'
 import { RiskManagementPanel } from './RiskManagementPanel'
 import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
@@ -117,6 +121,7 @@ type DashboardViewProps = {
     shortStochastic: number
   }
   signals: TradingSignal[]
+  timeframeSnapshots: TimeframeSignalSnapshot[]
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
   visibleHeatmapNotifications: HeatmapNotification[]
@@ -200,6 +205,7 @@ export function DashboardView({
   onAtrMultiplierChange,
   momentumThresholds,
   signals,
+  timeframeSnapshots,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
   visibleHeatmapNotifications,
@@ -1012,7 +1018,11 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
-              <SignalsPanel signals={signals} isLoading={isFetching} />
+              <SignalsPanel
+                signals={signals}
+                snapshots={timeframeSnapshots}
+                isLoading={isFetching}
+              />
               <RsiStochRsiHeatmap results={heatmapResults} />
             </>
           )}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { TradingSignal } from '../types/signals'
+import type { TimeframeSignalSnapshot, TradingSignal } from '../types/signals'
 
 const STRENGTH_BADGE_CLASS: Record<string, string> = {
   weak: 'bg-emerald-500/10 text-emerald-200 border-emerald-400/40',
@@ -7,18 +7,33 @@ const STRENGTH_BADGE_CLASS: Record<string, string> = {
   strong: 'bg-orange-500/10 text-orange-200 border-orange-400/40',
 }
 
+const DIRECTION_BADGE_CLASS: Record<string, string> = {
+  bullish: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+  bearish: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  neutral: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+}
+
 type SignalsPanelProps = {
   signals: TradingSignal[]
+  snapshots: TimeframeSignalSnapshot[]
   isLoading: boolean
 }
 
-export function SignalsPanel({ signals, isLoading }: SignalsPanelProps) {
+export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   const normalizedSignals = useMemo(
     () => signals.slice().sort((a, b) => b.confluenceScore - a.confluenceScore),
     [signals],
   )
+
+  const normalizedSnapshots = useMemo(
+    () => snapshots.slice().sort((a, b) => a.timeframe.localeCompare(b.timeframe)),
+    [snapshots],
+  )
+
+  const formatDirection = (value: TimeframeSignalSnapshot['trend']) =>
+    value.toLowerCase()
 
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-900/60">
@@ -40,6 +55,65 @@ export function SignalsPanel({ signals, isLoading }: SignalsPanelProps) {
       </header>
       {!isCollapsed && (
         <div className="flex flex-col gap-4 px-6 py-5">
+          {normalizedSnapshots.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {normalizedSnapshots.map((snapshot) => {
+                const trendKey = formatDirection(snapshot.trend)
+                const momentumKey = formatDirection(snapshot.momentum)
+                const trendClass =
+                  DIRECTION_BADGE_CLASS[trendKey] ?? DIRECTION_BADGE_CLASS.neutral
+                const momentumClass =
+                  DIRECTION_BADGE_CLASS[momentumKey] ?? DIRECTION_BADGE_CLASS.neutral
+                const strengthKey = snapshot.strength?.toLowerCase()
+                const strengthClass =
+                  strengthKey != null
+                    ? STRENGTH_BADGE_CLASS[strengthKey] ?? STRENGTH_BADGE_CLASS.weak
+                    : null
+
+                return (
+                  <article
+                    key={`${snapshot.timeframe}-${snapshot.timeframeLabel}`}
+                    className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4"
+                  >
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400">
+                      <span>{snapshot.timeframeLabel}</span>
+                      <span>
+                        {snapshot.price != null && Number.isFinite(snapshot.price)
+                          ? snapshot.price.toFixed(5)
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+                      <span className={`rounded-full border px-3 py-1 ${trendClass}`}>
+                        Trend {formatDirection(snapshot.trend)}
+                      </span>
+                      <span className={`rounded-full border px-3 py-1 ${momentumClass}`}>
+                        Momentum {formatDirection(snapshot.momentum)}
+                      </span>
+                      <span className="rounded-full border border-slate-400/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                        Bias {snapshot.bias.toLowerCase()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span>Strength</span>
+                      {snapshot.strength && strengthClass ? (
+                        <span
+                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${strengthClass}`}
+                        >
+                          {snapshot.strength}
+                          {snapshot.confluenceScore != null
+                            ? ` • ${snapshot.confluenceScore}`
+                            : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
           {isLoading ? (
             <p className="text-sm text-slate-400">Calculating signals…</p>
           ) : normalizedSignals.length === 0 ? (
