@@ -6,6 +6,10 @@ export type {
   RiskConfig,
   AccountState,
   AtrRiskLevels,
+  RiskPlan,
+  RiskPlanResult,
+  RiskPlanStep,
+  RiskPlanTrailing,
 } from '../../core/risk.js'
 
 export {
@@ -18,6 +22,7 @@ export {
   drawdownThrottle,
   equityTierCap,
   portfolioOpenRiskPct,
+  computeRiskPlan,
   buildAtrRiskLevels,
   RISK_CONSTANTS,
 } from '../../core/risk.js'

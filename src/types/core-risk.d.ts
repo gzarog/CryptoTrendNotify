@@ -12,6 +12,11 @@ declare module '../../core/risk.js' {
   export type SignalContext = {
     votes: SignalVotes
     maSlopeOk?: boolean | null
+    strengthHint?: 'weak' | 'standard' | 'strong' | null
+    atrPct?: number | null
+    atr?: number | null
+    price?: number | null
+    side?: TradeSide | null
   }
 
   export type RiskConfig = {
@@ -34,6 +39,21 @@ declare module '../../core/risk.js' {
     atrMultSl?: number
     atrMultTp1?: number
     atrMultTp2?: number
+    instrumentRiskCapPct?: number
+    maxOpenRiskPctPortfolio?: number
+    maxOpenPositions?: number
+    maxDailyLossPct?: number
+    ladders?: {
+      steps?: number
+      weights?: number[]
+    }
+    slMultipliers?: number[]
+    tpMultipliers?: Array<[number, number]>
+    qtyStep?: number
+    contractRoundMode?: RoundMode
+    minOrderQty?: number
+    useHardTPs?: boolean
+    trailingAtrMultiplier?: number
   }
 
   export type AccountState = {
@@ -42,7 +62,37 @@ declare module '../../core/risk.js' {
     openPositions: Array<{
       riskAtOpenPct: number
     }>
+    todayRealizedPnLPct?: number
   }
+
+  export type RiskPlanStep = {
+    stepIndex: number
+    intent: 'ENTER' | 'ADD'
+    qty: number
+    entryTrigger: 'at_market' | 'breakout' | 'retest'
+    slPrice: number
+    tp1Price: number | null
+    tp2Price: number | null
+  }
+
+  export type RiskPlanTrailing = {
+    type: 'NONE' | 'ATR'
+    multiplier: number
+  }
+
+  export type RiskPlan = {
+    finalRiskPct: number
+    riskGrade: 'weak' | 'standard' | 'strong' | string
+    throttleFactor: number
+    positionSizeTotal: number
+    notional: number
+    steps: RiskPlanStep[]
+    trailingPlan: RiskPlanTrailing
+  }
+
+  export type RiskPlanResult =
+    | { ok: true; plan: RiskPlan }
+    | { ok: false; reason: string }
 
   export type RiskLeg = {
     SL: number | null
@@ -73,6 +123,11 @@ declare module '../../core/risk.js' {
   export function drawdownThrottle(account: AccountState, cfg: RiskConfig): number
   export function equityTierCap(account: AccountState, cfg: RiskConfig): number
   export function portfolioOpenRiskPct(account: AccountState): number
+  export function computeRiskPlan(
+    ctx: SignalContext,
+    cfg: RiskConfig,
+    account: AccountState,
+  ): RiskPlanResult
   export function buildAtrRiskLevels(
     price: number,
     atr: number,

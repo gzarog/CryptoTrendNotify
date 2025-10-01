@@ -188,6 +188,220 @@ export function portfolioOpenRiskPct(account) {
   }, 0)
 }
 
+function normalizeLadderConfig(ladders = {}) {
+  const { steps: rawSteps, weights: rawWeights } = ladders
+
+  const weights = Array.isArray(rawWeights) ? [...rawWeights] : []
+  let steps = Number.isFinite(rawSteps) ? Math.max(0, Math.floor(rawSteps)) : 0
+
+  if (steps <= 0) {
+    steps = weights.length > 0 ? weights.length : 1
+  }
+
+  if (weights.length < steps) {
+    while (weights.length < steps) {
+      weights.push(1)
+    }
+  }
+
+  const truncated = weights.slice(0, steps).map((value) => (Number.isFinite(value) && value > 0 ? value : 0))
+  const sum = truncated.reduce((acc, value) => acc + value, 0)
+
+  if (sum <= 0) {
+    return new Array(steps).fill(1 / steps)
+  }
+
+  return truncated.map((value) => value / sum)
+}
+
+function resolveMultiplier(multipliers, index) {
+  if (!Array.isArray(multipliers) || multipliers.length === 0) {
+    return null
+  }
+
+  const clampedIndex = Math.min(index, multipliers.length - 1)
+  return Number.isFinite(multipliers[clampedIndex]) ? multipliers[clampedIndex] : null
+}
+
+function resolveTakeProfitMultipliers(multipliers, index) {
+  if (!Array.isArray(multipliers) || multipliers.length === 0) {
+    return [null, null]
+  }
+
+  const clampedIndex = Math.min(index, multipliers.length - 1)
+  const pair = Array.isArray(multipliers[clampedIndex]) ? multipliers[clampedIndex] : []
+
+  const tp1 = Number.isFinite(pair[0]) ? pair[0] : null
+  const tp2 = Number.isFinite(pair[1]) ? pair[1] : tp1
+
+  return [tp1, tp2]
+}
+
+export function computeRiskPlan(ctx, cfg, account) {
+  if (!ctx || !cfg || !account) {
+    return { ok: false, reason: 'invalid_input' }
+  }
+
+  const grade = ctx.strengthHint ?? riskGradeFromSignal(ctx)
+  const baseRiskPct = baseRiskPctFromGrade(grade, cfg)
+
+  const volFactor = volatilityThrottle(ctx.atrPct, cfg)
+  if (volFactor === 0) {
+    return { ok: false, reason: 'blocked_by_volatility' }
+  }
+
+  const ddFactor = drawdownThrottle(account, cfg)
+  const throttle = volFactor * ddFactor
+
+  const tierCap = equityTierCap(account, cfg)
+
+  let finalRiskPct = baseRiskPct * throttle
+
+  if (Number.isFinite(tierCap)) {
+    finalRiskPct = Math.min(finalRiskPct, tierCap)
+  }
+
+  if (Number.isFinite(cfg.instrumentRiskCapPct)) {
+    finalRiskPct = Math.min(finalRiskPct, cfg.instrumentRiskCapPct)
+  }
+
+  const openRisk = portfolioOpenRiskPct(account)
+
+  if (
+    Number.isFinite(cfg.maxOpenRiskPctPortfolio) &&
+    openRisk + finalRiskPct > cfg.maxOpenRiskPctPortfolio
+  ) {
+    return { ok: false, reason: 'blocked_by_portfolio_risk_cap' }
+  }
+
+  const openPositionsCount = Array.isArray(account.openPositions)
+    ? account.openPositions.length
+    : 0
+  if (Number.isFinite(cfg.maxOpenPositions) && openPositionsCount >= cfg.maxOpenPositions) {
+    return { ok: false, reason: 'blocked_by_max_positions' }
+  }
+
+  const todayPnLPct = Number.isFinite(account.todayRealizedPnLPct)
+    ? account.todayRealizedPnLPct
+    : 0
+  if (Number.isFinite(cfg.maxDailyLossPct) && -todayPnLPct >= cfg.maxDailyLossPct) {
+    return { ok: false, reason: 'blocked_by_daily_loss_halt' }
+  }
+
+  const equity = Number.isFinite(account.equity) ? account.equity : null
+  if (equity === null || equity <= 0 || !Number.isFinite(finalRiskPct)) {
+    return { ok: false, reason: 'invalid_account_equity' }
+  }
+
+  const riskBudget = equity * (finalRiskPct / 100)
+
+  const normalizedWeights = normalizeLadderConfig(cfg.ladders)
+  const steps = normalizedWeights.length
+
+  const atr = Number.isFinite(ctx.atr) ? ctx.atr : null
+  const price = Number.isFinite(ctx.price) ? ctx.price : null
+  if (atr === null || price === null) {
+    return { ok: false, reason: 'invalid_market_context' }
+  }
+
+  const side = ctx.side === SIDES.SHORT ? SIDES.SHORT : SIDES.LONG
+  const qtyStep = Number.isFinite(cfg.qtyStep) && cfg.qtyStep > 0 ? cfg.qtyStep : 0
+  const roundMode = cfg.contractRoundMode ?? ROUND_MODES.NEAREST
+  const minOrderQty = Number.isFinite(cfg.minOrderQty) && cfg.minOrderQty > 0 ? cfg.minOrderQty : 0
+
+  const stepsOut = []
+  let totalQty = 0
+
+  for (let i = 0; i < steps; i += 1) {
+    const weight = normalizedWeights[i]
+    const stepRiskBudget = riskBudget * weight
+
+    if (!Number.isFinite(stepRiskBudget) || stepRiskBudget <= 0) {
+      // Skip steps that have no capital allocated
+      continue
+    }
+
+    const slMult = resolveMultiplier(cfg.slMultipliers, i) ?? 0
+    const slDelta = atr * Math.abs(slMult)
+    const slPrice = priceForSide(price, slDelta, side, OPERATIONS.SUBTRACT)
+
+    if (!Number.isFinite(slPrice)) {
+      return { ok: false, reason: 'invalid_stop_loss_price' }
+    }
+
+    const perUnitRisk = Math.abs(price - slPrice)
+    if (perUnitRisk <= 0 || !Number.isFinite(perUnitRisk)) {
+      return { ok: false, reason: 'invalid_per_unit_risk' }
+    }
+
+    const qtyRaw = stepRiskBudget / perUnitRisk
+    let qtyRounded = qtyRaw
+
+    if (qtyStep > 0) {
+      qtyRounded = roundQty(qtyRaw, qtyStep, roundMode)
+    }
+
+    if (!Number.isFinite(qtyRounded)) {
+      return { ok: false, reason: 'invalid_position_size' }
+    }
+
+    if (qtyRounded < minOrderQty) {
+      qtyRounded = minOrderQty
+    }
+
+    if (qtyRounded <= 0) {
+      return { ok: false, reason: 'position_size_below_minimum' }
+    }
+
+    const [tp1MultRaw, tp2MultRaw] = resolveTakeProfitMultipliers(cfg.tpMultipliers, i)
+    const tp1Delta = atr * (tp1MultRaw ?? 0)
+    const tp2Delta = atr * (tp2MultRaw ?? 0)
+
+    const tp1Price = priceForSide(price, Math.abs(tp1Delta), side, OPERATIONS.ADD)
+    const tp2Price = priceForSide(price, Math.abs(tp2Delta), side, OPERATIONS.ADD)
+
+    const stepIndex = i + 1
+    let entryTrigger = 'retest'
+    if (stepIndex === 1) {
+      entryTrigger = 'at_market'
+    } else if (stepIndex === 2) {
+      entryTrigger = 'breakout'
+    }
+
+    stepsOut.push({
+      stepIndex,
+      intent: stepIndex === 1 ? 'ENTER' : 'ADD',
+      qty: qtyRounded,
+      entryTrigger,
+      slPrice,
+      tp1Price,
+      tp2Price,
+    })
+
+    totalQty += qtyRounded
+  }
+
+  if (stepsOut.length === 0) {
+    return { ok: false, reason: 'no_viable_steps' }
+  }
+
+  const trailingPlan = cfg.useHardTPs
+    ? { type: 'NONE', multiplier: 0 }
+    : { type: 'ATR', multiplier: Number.isFinite(cfg.trailingAtrMultiplier) ? cfg.trailingAtrMultiplier : 1.5 }
+
+  const plan = {
+    finalRiskPct,
+    riskGrade: grade,
+    throttleFactor: throttle,
+    positionSizeTotal: totalQty,
+    notional: totalQty * price,
+    steps: stepsOut,
+    trailingPlan,
+  }
+
+  return { ok: true, plan }
+}
+
 export function buildAtrRiskLevels(price, atr, config) {
   if (!Number.isFinite(price) || !Number.isFinite(atr) || !config) {
     return null
