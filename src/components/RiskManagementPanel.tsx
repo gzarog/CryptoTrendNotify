@@ -83,17 +83,33 @@ export function RiskManagementPanel({
     .sort((a, b) => Number(a.entryTimeframe) - Number(b.entryTimeframe))
 
   return (
-    <section className="flex flex-col gap-4 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <h2 className="text-base font-semibold text-white">Risk management</h2>
+    <section
+      className={`flex h-full flex-col gap-4 rounded-3xl border border-white/5 bg-slate-900/60 transition-[padding,opacity,transform] duration-300 ${
+        isCollapsed ? 'items-center gap-3 px-3 py-4' : 'p-6'
+      }`}
+    >
+      <div
+        className={`flex w-full items-center ${
+          isCollapsed ? 'justify-center' : 'justify-between'
+        } gap-3`}
+      >
+        {!isCollapsed && <h2 className="text-base font-semibold text-white">Risk management</h2>}
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
+          className={`flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/60 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white ${
+            isCollapsed ? 'px-2 py-2' : 'px-3 py-1'
+          }`}
           aria-expanded={!isCollapsed}
         >
-          {isCollapsed ? 'Show' : 'Hide'}
-          <span aria-hidden="true">{isCollapsed ? '▾' : '▴'}</span>
+          <span className="sr-only">
+            {isCollapsed ? 'Show risk management panel' : 'Hide risk management panel'}
+          </span>
+          <span aria-hidden="true" className="text-lg leading-none">
+            {isCollapsed ? '⟨' : '⟩'}
+          </span>
+          {!isCollapsed && <span aria-hidden="true">Hide</span>}
+          {isCollapsed && <span aria-hidden="true" className="text-[11px]">Show</span>}
         </button>
       </div>
       {!isCollapsed && (
