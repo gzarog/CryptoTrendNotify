@@ -1,9 +1,21 @@
 import { calculateEMA, calculateRSI, calculateSMA, calculateStochasticRSI } from './indicators.js'
 import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
 
-const SYMBOLS = process.env.PUSH_WATCH_SYMBOLS
-  ? process.env.PUSH_WATCH_SYMBOLS.split(',').map((symbol) => symbol.trim()).filter(Boolean)
+function normalizeSymbol(value) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim().toUpperCase()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+const DEFAULT_SYMBOLS = (process.env.PUSH_WATCH_SYMBOLS
+  ? process.env.PUSH_WATCH_SYMBOLS.split(',')
   : ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
+)
+  .map((symbol) => normalizeSymbol(symbol))
+  .filter(Boolean)
 
 const MOMENTUM_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360']
 const MOVING_AVERAGE_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360']
@@ -201,6 +213,47 @@ export function startMarketWatch({ store }) {
   const momentumSignatures = new Map()
   const movingAverageSignatures = new Map()
   const allTimeframes = Array.from(new Set([...MOMENTUM_TIMEFRAMES, ...MOVING_AVERAGE_TIMEFRAMES]))
+
+  function collectSymbols() {
+    const seen = new Set()
+    const ordered = []
+
+    const addSymbol = (value) => {
+      const normalized = normalizeSymbol(value)
+      if (!normalized || seen.has(normalized)) {
+        return
+      }
+      seen.add(normalized)
+      ordered.push(normalized)
+    }
+
+    for (const symbol of DEFAULT_SYMBOLS) {
+      addSymbol(symbol)
+    }
+
+    for (const entry of store.list()) {
+      const filters = entry.filters
+      if (!filters || !Array.isArray(filters.symbols)) {
+        continue
+      }
+
+      for (const symbol of filters.symbols) {
+        addSymbol(symbol)
+      }
+    }
+
+    return ordered
+  }
+
+  function haveSameSymbols(previous, next) {
+    if (previous.length !== next.length) {
+      return false
+    }
+
+    return previous.every((symbol, index) => symbol === next[index])
+  }
+
+  let trackedSymbols = collectSymbols()
 
   async function evaluateSymbol(symbol) {
     const candleCache = new Map()
@@ -444,7 +497,22 @@ export function startMarketWatch({ store }) {
     running = true
 
     try {
-      for (const symbol of SYMBOLS) {
+      const nextSymbols = collectSymbols()
+
+      if (!haveSameSymbols(trackedSymbols, nextSymbols)) {
+        trackedSymbols = nextSymbols
+        console.log(
+          `[market-watch] Symbol watch list updated: ${
+            trackedSymbols.length > 0 ? trackedSymbols.join(', ') : 'none'
+          }`,
+        )
+      }
+
+      if (trackedSymbols.length === 0) {
+        return
+      }
+
+      for (const symbol of trackedSymbols) {
         try {
           await evaluateSymbol(symbol)
         } catch (symbolError) {
@@ -463,9 +531,11 @@ export function startMarketWatch({ store }) {
   }, Number.isFinite(POLL_INTERVAL_MS) && POLL_INTERVAL_MS > 0 ? POLL_INTERVAL_MS : 60000)
 
   console.log(
-    `Market watch started for ${SYMBOLS.join(', ')} (interval: ${
+    `Market watch started for ${
+      trackedSymbols.length > 0 ? trackedSymbols.join(', ') : 'none'
+    } (interval: ${
       Number.isFinite(POLL_INTERVAL_MS) && POLL_INTERVAL_MS > 0 ? POLL_INTERVAL_MS : 60000
-    }ms)`,
+    }ms)`
   )
 
   return () => clearInterval(interval)
