@@ -7,16 +7,31 @@ declare module '../../core/risk.js' {
     bull: number
     bear: number
     total: number
+    [key: string]: unknown
   }
 
   export type SignalContext = {
-    votes: SignalVotes
+    votes?: SignalVotes | null
     maSlopeOk?: boolean | null
     strengthHint?: 'weak' | 'standard' | 'strong' | null
     atrPct?: number | null
     atr?: number | null
     price?: number | null
     side?: TradeSide | null
+    signal?: TradeSide | null
+    symbol?: string | null
+    entryTF?: string | null
+    entry_tf?: string | null
+    bias?: string | null
+    rsiHTF?: unknown
+    rsi_htf?: unknown
+    rsiLTF?: unknown
+    rsi_ltf?: unknown
+    stochrsi?: unknown
+    stochRsi?: unknown
+    filters?: unknown
+    barTimeISO?: string | null
+    timestamp?: string | null
   }
 
   export type RiskConfig = {
@@ -90,9 +105,9 @@ declare module '../../core/risk.js' {
     trailingPlan: RiskPlanTrailing
   }
 
-  export type RiskPlanResult =
-    | { ok: true; plan: RiskPlan }
-    | { ok: false; reason: string }
+  export type RiskPlanError = { ok: false; reason: string }
+
+  export type RiskPlanResult = { ok: true; plan: RiskPlan } | RiskPlanError
 
   export type RiskLeg = {
     SL: number | null
@@ -107,6 +122,29 @@ declare module '../../core/risk.js' {
     risk$: null
     long: RiskLeg
     short: RiskLeg
+  }
+
+  export type AlertPortfolioCheck = {
+    allowed: boolean
+    reason: string | null
+    portfolioOpenRiskPct: number
+  }
+
+  export type AlertPayload = {
+    signal: TradeSide | string | null
+    symbol: string | null
+    entry_tf: string | null
+    strength: 'weak' | 'standard' | 'strong' | string | null
+    bias: string | null
+    votes: SignalVotes | null
+    rsi_htf: unknown
+    rsi_ltf: unknown
+    stochrsi: unknown
+    filters: unknown
+    risk_plan: RiskPlan | null
+    portfolio_check: AlertPortfolioCheck
+    timestamp: string | null
+    version: string
   }
 
   export function clamp(x: number, lo: number, hi: number): number
@@ -128,6 +166,11 @@ declare module '../../core/risk.js' {
     cfg: RiskConfig,
     account: AccountState,
   ): RiskPlanResult
+  export function buildAlert(
+    ctx: SignalContext,
+    cfg: RiskConfig,
+    account: AccountState,
+  ): AlertPayload
   export function buildAtrRiskLevels(
     price: number,
     atr: number,

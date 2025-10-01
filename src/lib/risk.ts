@@ -10,6 +10,9 @@ export type {
   RiskPlanResult,
   RiskPlanStep,
   RiskPlanTrailing,
+  RiskPlanError,
+  AlertPortfolioCheck,
+  AlertPayload,
 } from '../../core/risk.js'
 
 export {
@@ -23,6 +26,7 @@ export {
   equityTierCap,
   portfolioOpenRiskPct,
   computeRiskPlan,
+  buildAlert,
   buildAtrRiskLevels,
   RISK_CONSTANTS,
 } from '../../core/risk.js'

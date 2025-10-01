@@ -13,6 +13,8 @@ const OPERATIONS = {
   SUBTRACT: '-',
 }
 
+const ALERT_VERSION = 'risk-manager/v1.0'
+
 export function clamp(x, lo, hi) {
   if (!Number.isFinite(x)) {
     return lo
@@ -400,6 +402,57 @@ export function computeRiskPlan(ctx, cfg, account) {
   }
 
   return { ok: true, plan }
+}
+
+export function buildAlert(ctx, cfg, account) {
+  const context = ctx ?? {}
+  const config = cfg ?? null
+  const accountState = account ?? null
+
+  const portfolioRiskPct = portfolioOpenRiskPct(accountState)
+  const planResult = computeRiskPlan(context, config, accountState)
+
+  const defaultStrength = context.strengthHint ?? riskGradeFromSignal(context)
+
+  const basePayload = {
+    signal: context.side ?? context.signal ?? null,
+    symbol: context.symbol ?? null,
+    entry_tf: context.entryTF ?? context.entry_tf ?? null,
+    bias: context.bias ?? null,
+    votes: context.votes ?? null,
+    rsi_htf: context.rsiHTF ?? context.rsi_htf ?? null,
+    rsi_ltf: context.rsiLTF ?? context.rsi_ltf ?? null,
+    stochrsi: context.stochrsi ?? context.stochRsi ?? null,
+    filters: context.filters ?? null,
+    timestamp: context.barTimeISO ?? context.timestamp ?? null,
+    version: ALERT_VERSION,
+  }
+
+  if (!planResult?.ok) {
+    return {
+      ...basePayload,
+      strength: defaultStrength,
+      risk_plan: null,
+      portfolio_check: {
+        allowed: false,
+        reason: planResult?.reason ?? 'unknown',
+        portfolioOpenRiskPct: portfolioRiskPct,
+      },
+    }
+  }
+
+  const { plan } = planResult
+
+  return {
+    ...basePayload,
+    strength: plan?.riskGrade ?? defaultStrength,
+    risk_plan: plan ?? null,
+    portfolio_check: {
+      allowed: true,
+      reason: null,
+      portfolioOpenRiskPct: portfolioRiskPct,
+    },
+  }
 }
 
 export function buildAtrRiskLevels(price, atr, config) {
