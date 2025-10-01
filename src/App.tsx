@@ -412,6 +412,7 @@ const STORAGE_KEYS = {
   rsiUpperBound: 'ctn:rsiUpperBound',
   stochasticLowerBound: 'ctn:stochasticLowerBound',
   stochasticUpperBound: 'ctn:stochasticUpperBound',
+  currentEquity: 'ctn:currentEquity',
 } as const
 
 const isBrowser = typeof window !== 'undefined'
@@ -827,6 +828,9 @@ function App() {
       readLocalStorage(STORAGE_KEYS.stochasticUpperBound) ??
       DEFAULT_MOMENTUM_BOUNDS.stochasticUpper.toString(),
   )
+  const [currentEquityInput, setCurrentEquityInput] = useState(
+    () => readLocalStorage(STORAGE_KEYS.currentEquity) ?? '',
+  )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
@@ -894,6 +898,10 @@ function App() {
   useEffect(() => {
     writeLocalStorage(STORAGE_KEYS.stochasticUpperBound, stochasticUpperBoundInput)
   }, [stochasticUpperBoundInput])
+
+  useEffect(() => {
+    writeLocalStorage(STORAGE_KEYS.currentEquity, currentEquityInput)
+  }, [currentEquityInput])
 
   const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
 
@@ -2283,6 +2291,8 @@ function App() {
       onStochasticLowerBoundInputChange={setStochasticLowerBoundInput}
       stochasticUpperBoundInput={stochasticUpperBoundInput}
       onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
+      currentEquity={currentEquityInput}
+      onCurrentEquityChange={setCurrentEquityInput}
       momentumThresholds={momentumThresholds}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}

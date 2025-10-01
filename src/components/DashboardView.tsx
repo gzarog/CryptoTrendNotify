@@ -6,6 +6,7 @@ import type {
   MovingAverageMarker,
 } from '../App'
 import { LineChart } from './LineChart'
+import { RiskManagementPanel } from './RiskManagementPanel'
 import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
 import type { HeatmapResult } from '../types/heatmap'
 
@@ -69,6 +70,8 @@ type DashboardViewProps = {
   onStochasticLowerBoundInputChange: Dispatch<SetStateAction<string>>
   stochasticUpperBoundInput: string
   onStochasticUpperBoundInputChange: Dispatch<SetStateAction<string>>
+  currentEquity: string
+  onCurrentEquityChange: Dispatch<SetStateAction<string>>
   momentumThresholds: {
     longRsi: number
     shortRsi: number
@@ -146,6 +149,8 @@ export function DashboardView({
   onStochasticLowerBoundInputChange,
   stochasticUpperBoundInput,
   onStochasticUpperBoundInputChange,
+  currentEquity,
+  onCurrentEquityChange,
   momentumThresholds,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
@@ -176,6 +181,7 @@ export function DashboardView({
 
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isRiskPanelCollapsed, setIsRiskPanelCollapsed] = useState(false)
 
   const allNotifications = useMemo(
     () =>
@@ -417,6 +423,12 @@ export function DashboardView({
           className={`${isSidebarOpen ? 'flex lg:flex' : 'hidden lg:hidden'} w-full flex-col gap-6 lg:w-80 lg:flex-shrink-0 lg:sticky lg:top-28`}
           aria-label="Dashboard filters and market snapshot"
         >
+          <RiskManagementPanel
+            currentEquity={currentEquity}
+            onCurrentEquityChange={onCurrentEquityChange}
+            isCollapsed={isRiskPanelCollapsed}
+            onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
+          />
           <section className="flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="flex flex-col gap-3">
