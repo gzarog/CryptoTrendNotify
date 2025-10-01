@@ -71,6 +71,21 @@ const MA_DISTANCE_META = {
   },
 } satisfies Record<HeatmapResult['filters']['maDistanceStatus'], { label: string; className: string }>
 
+type BadgeProps = {
+  className?: string
+  children: ReactNode
+}
+
+function Badge({ className = '', children }: BadgeProps) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${className}`}
+    >
+      {children}
+    </span>
+  )
+}
+
 function formatNumber(value: number | null, digits = 2): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? value.toFixed(digits)
@@ -146,13 +161,64 @@ function CollapsibleSection({
 }
 
 export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
+  const hasResults = results.length > 0
+  const signalCounts = results.reduce(
+    (acc, result) => {
+      acc[result.signal] += 1
+      return acc
+    },
+    { LONG: 0, SHORT: 0, NONE: 0 } as Record<HeatmapResult['signal'], number>,
+  )
+
+  const latestClosedAt = results.reduce<number | null>((latest, result) => {
+    if (result.closedAt == null) {
+      return latest
+    }
+    if (latest == null || result.closedAt > latest) {
+      return result.closedAt
+    }
+    return latest
+  }, null)
+
+  const STRENGTH_PRIORITY: Record<HeatmapResult['strength'], number> = {
+    weak: 0,
+    standard: 1,
+    strong: 2,
+  }
+
+  const strongestStrength = hasResults
+    ? results.reduce<HeatmapResult['strength']>((current, result) => {
+        return STRENGTH_PRIORITY[result.strength] > STRENGTH_PRIORITY[current]
+          ? result.strength
+          : current
+      }, results[0].strength)
+    : null
+
   return (
     <div className="flex w-full flex-col gap-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-300">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <h2 className="text-base font-semibold text-white">RSI + StochRSI Heatmap</h2>
-        <p className="text-xs text-slate-400">
-          Live evaluation of the RSI + StochRSI pseudocode — bias votes, filter gates, and signal strength per entry timeframe.
-        </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <h2 className="text-base font-semibold text-white">RSI + StochRSI Heatmap</h2>
+          <p className="text-xs text-slate-400">
+            Live evaluation of the RSI + StochRSI pseudocode — bias votes, filter gates, and signal strength per entry timeframe.
+          </p>
+        </div>
+
+        {hasResults && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge className="border-white/10 bg-white/5 text-slate-200">
+              Latest close · {formatTimestamp(latestClosedAt)}
+            </Badge>
+            <Badge className="border-white/10 bg-white/5 text-slate-200">
+              Signals · Long {signalCounts.LONG} · Short {signalCounts.SHORT} · None {signalCounts.NONE}
+            </Badge>
+            {strongestStrength && (
+              <Badge className={STRENGTH_STYLES[strongestStrength]}>
+                Strongest · {strongestStrength}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       {results.length === 0 ? (
@@ -183,21 +249,9 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${SIGNAL_STYLES[result.signal]}`}
-                    >
-                      {SIGNAL_LABELS[result.signal]}
-                    </span>
-                    <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STRENGTH_STYLES[result.strength]}`}
-                    >
-                      Strength · {result.strength}
-                    </span>
-                    <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BIAS_STYLES[result.bias]}`}
-                    >
-                      Bias · {result.bias}
-                    </span>
+                    <Badge className={SIGNAL_STYLES[result.signal]}>{SIGNAL_LABELS[result.signal]}</Badge>
+                    <Badge className={STRENGTH_STYLES[result.strength]}>Strength · {result.strength}</Badge>
+                    <Badge className={BIAS_STYLES[result.bias]}>Bias · {result.bias}</Badge>
                   </div>
                 </header>
 
