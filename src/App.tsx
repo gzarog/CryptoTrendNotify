@@ -590,7 +590,7 @@ function App() {
     setNotificationPermission(Notification.permission)
   }, [supportsNotifications])
 
-  const notificationsEnabled = supportsNotifications && notificationPermission === 'granted'
+  const pushNotificationsEnabled = supportsNotifications && notificationPermission === 'granted'
 
   useEffect(() => {
     let cancelled = false
@@ -611,7 +611,7 @@ function App() {
   }, [fetchPushServerStatus])
 
   useEffect(() => {
-    if (!notificationsEnabled) {
+    if (!pushNotificationsEnabled) {
       return
     }
 
@@ -636,7 +636,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [notificationsEnabled, subscriptionFilters, updatePushServerStatus])
+  }, [pushNotificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
   const handleEnableNotifications = async () => {
     if (!supportsNotifications) {
@@ -677,7 +677,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!notificationsEnabled) {
+    if (!pushNotificationsEnabled) {
       return
     }
 
@@ -700,7 +700,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [notificationsEnabled, subscriptionFilters, updatePushServerStatus])
+  }, [pushNotificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
   useEffect(() => {
     const handler = (event: BeforeInstallPromptEvent) => {
@@ -725,7 +725,6 @@ function App() {
     queries: notificationTimeframes.map((value) => ({
       queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
-      enabled: notificationsEnabled,
       refetchInterval: refreshInterval,
       refetchIntervalInBackground: true,
       retry: 1,
@@ -738,7 +737,6 @@ function App() {
     queries: movingAverageNotificationTimeframes.map((value) => ({
       queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
       queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
-      enabled: notificationsEnabled,
       refetchInterval: refreshInterval,
       refetchIntervalInBackground: true,
       retry: 1,
@@ -767,11 +765,11 @@ function App() {
   }, [symbol])
 
   useEffect(() => {
-    if (!notificationsEnabled) {
+    if (!pushNotificationsEnabled) {
       lastMomentumTriggerRef.current = null
       lastMovingAverageTriggersRef.current = {}
     }
-  }, [notificationsEnabled])
+  }, [pushNotificationsEnabled])
 
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
@@ -1019,10 +1017,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!notificationsEnabled) {
-      return
-    }
-
     movingAverageNotificationTimeframes.forEach((timeframeValue, index) => {
       const query = movingAverageNotificationQueries[index]
       const candles = query?.data
@@ -1128,15 +1122,10 @@ function App() {
     lastMovingAverageTriggersRef,
     movingAverageNotificationQueries,
     movingAverageNotificationTimeframes,
-    notificationsEnabled,
     symbol,
   ])
 
   useEffect(() => {
-    if (!notificationsEnabled) {
-      return
-    }
-
     const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
@@ -1289,7 +1278,6 @@ function App() {
   }, [
     notificationQueries,
     notificationTimeframes,
-    notificationsEnabled,
     momentumThresholds,
     symbol,
   ])
@@ -1342,16 +1330,14 @@ function App() {
   const handleManualRefresh = async () => {
     await refetch()
 
-    if (notificationsEnabled) {
-      await Promise.all([
-        ...notificationQueries.map((query) =>
-          query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
-        ),
-        ...movingAverageNotificationQueries.map((query) =>
-          query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
-        ),
-      ])
-    }
+    await Promise.all([
+      ...notificationQueries.map((query) =>
+        query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
+      ),
+      ...movingAverageNotificationQueries.map((query) =>
+        query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
+      ),
+    ])
   }
 
   return (
