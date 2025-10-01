@@ -6,6 +6,8 @@ import type {
   MovingAverageMarker,
 } from '../App'
 import { LineChart } from './LineChart'
+import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
+import type { HeatmapResult } from '../types/heatmap'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   green: '🟢',
@@ -93,6 +95,7 @@ type DashboardViewProps = {
     ma200: Array<number | null>
     markers: MovingAverageMarker[]
   }
+  heatmapResults: HeatmapResult[]
   rsiLengthDescription: string
   rsiValues: Array<number | null>
   labels: string[]
@@ -159,6 +162,7 @@ export function DashboardView({
   isMarketSummaryCollapsed,
   onToggleMarketSummary,
   movingAverageSeries,
+  heatmapResults,
   rsiLengthDescription,
   rsiValues,
   labels,
@@ -730,6 +734,7 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
+              <RsiStochRsiHeatmap results={heatmapResults} />
             </>
           )}
         </section>

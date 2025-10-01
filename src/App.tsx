@@ -3,7 +3,14 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { DashboardView } from './components/DashboardView'
-import { calculateEMA, calculateRSI, calculateSMA, calculateStochasticRSI } from './lib/indicators'
+import {
+  calculateATR,
+  calculateEMA,
+  calculateRSI,
+  calculateSMA,
+  calculateStochasticRSI,
+} from './lib/indicators'
+import type { HeatmapResult } from './types/heatmap'
 import {
   checkPushServerConnection,
   ensurePushSubscription,
@@ -127,6 +134,181 @@ const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
 const MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES = TIMEFRAMES.map((option) => option.value)
 const MOVING_AVERAGE_PAIR_TAGS = ['ema10-ema50', 'ema10-ma200', 'ema50-ma200'] as const
 
+const HEATMAP_ENTRY_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360'] as const
+type HeatmapEntryTimeframe = (typeof HEATMAP_ENTRY_TIMEFRAMES)[number]
+
+const HEATMAP_CONFIGS: Record<HeatmapEntryTimeframe, {
+  entryLabel: string
+  htfList: string[]
+  rsiLenHtf: Record<string, number>
+  rsiLenLtf: number
+  stochLenLtf: number
+  kSmooth: number
+  dSmooth: number
+  requireAllHtf: boolean
+  confirmHtfClose: boolean
+  coolDownBars: number
+  useMa200Filter: boolean
+  minDistToMa200: number
+  atrLength: number
+  atrMultSl: number
+  atrMultTp1: number
+  atrMultTp2: number
+  riskPctPerTrade: number
+  volMinAtrPct: number
+  volMaxAtrPct: number
+}> = {
+  '5': {
+    entryLabel: '5m',
+    htfList: ['60', '120', '240'],
+    rsiLenHtf: { '60': 14, '120': 16, '240': 21 },
+    rsiLenLtf: 7,
+    stochLenLtf: 7,
+    kSmooth: 2,
+    dSmooth: 2,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '15': {
+    entryLabel: '15m',
+    htfList: ['60', '120', '240'],
+    rsiLenHtf: { '60': 15, '120': 17, '240': 21 },
+    rsiLenLtf: 9,
+    stochLenLtf: 9,
+    kSmooth: 2,
+    dSmooth: 3,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '30': {
+    entryLabel: '30m',
+    htfList: ['60', '120', '240'],
+    rsiLenHtf: { '60': 15, '120': 17, '240': 21 },
+    rsiLenLtf: 12,
+    stochLenLtf: 12,
+    kSmooth: 3,
+    dSmooth: 3,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '60': {
+    entryLabel: '60m (1h)',
+    htfList: ['120', '240', '360'],
+    rsiLenHtf: { '120': 16, '240': 21, '360': 24 },
+    rsiLenLtf: 14,
+    stochLenLtf: 14,
+    kSmooth: 3,
+    dSmooth: 3,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '120': {
+    entryLabel: '120m (2h)',
+    htfList: ['240', '360'],
+    rsiLenHtf: { '240': 21, '360': 24 },
+    rsiLenLtf: 16,
+    stochLenLtf: 16,
+    kSmooth: 3,
+    dSmooth: 3,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '240': {
+    entryLabel: '240m (4h)',
+    htfList: ['360'],
+    rsiLenHtf: { '360': 24 },
+    rsiLenLtf: 21,
+    stochLenLtf: 21,
+    kSmooth: 4,
+    dSmooth: 4,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+  '360': {
+    entryLabel: '360m (6h)',
+    htfList: [],
+    rsiLenHtf: {},
+    rsiLenLtf: 24,
+    stochLenLtf: 24,
+    kSmooth: 4,
+    dSmooth: 4,
+    requireAllHtf: false,
+    confirmHtfClose: true,
+    coolDownBars: 6,
+    useMa200Filter: true,
+    minDistToMa200: 0.25,
+    atrLength: 14,
+    atrMultSl: 1.2,
+    atrMultTp1: 1.0,
+    atrMultTp2: 1.8,
+    riskPctPerTrade: 0.0075,
+    volMinAtrPct: 0.15,
+    volMaxAtrPct: 3.0,
+  },
+}
+
+const HEATMAP_NEUTRAL_BAND = { lower: 45, upper: 55 }
+
 const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
   '5': { period: 8, label: '7–9' },
   '15': { period: 11, label: '9–12' },
@@ -141,7 +323,7 @@ const DEFAULT_RSI_SETTING = { period: 14, label: '14' }
 
 const STOCHASTIC_SETTINGS: Record<string, StochasticSetting> = {
   '5': { rsiLength: 7, stochLength: 7, kSmoothing: 2, dSmoothing: 2, label: 'RSI 7 • Stoch 7 • %K 2 • %D 2' },
-  '15': { rsiLength: 9, stochLength: 9, kSmoothing: 3, dSmoothing: 3, label: 'RSI 9 • Stoch 9 • %K 3 (2–3) • %D 3' },
+  '15': { rsiLength: 9, stochLength: 9, kSmoothing: 2, dSmoothing: 3, label: 'RSI 9 • Stoch 9 • %K 2 • %D 3' },
   '30': { rsiLength: 12, stochLength: 12, kSmoothing: 3, dSmoothing: 3, label: 'RSI 12 • Stoch 12 • %K 3 • %D 3' },
   '60': { rsiLength: 14, stochLength: 14, kSmoothing: 3, dSmoothing: 3, label: 'RSI 14 • Stoch 14 • %K 3 • %D 3' },
   '120': { rsiLength: 16, stochLength: 16, kSmoothing: 3, dSmoothing: 3, label: 'RSI 16 • Stoch 16 • %K 3 • %D 3' },
@@ -410,6 +592,160 @@ function formatTriggeredAt(timestamp: number): string {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
 }
 
+function timeframeToMillis(value: string): number | null {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null
+  }
+  return parsed * 60_000
+}
+
+function isCandleClosed(candle: Candle | undefined, timeframe: string): boolean {
+  if (!candle) {
+    return false
+  }
+
+  const duration = timeframeToMillis(timeframe)
+  if (!Number.isFinite(duration)) {
+    return false
+  }
+
+  const closeTime = candle.openTime + duration
+  return Number.isFinite(closeTime) && Date.now() >= closeTime
+}
+
+function extractClosedCloses(
+  candles: Candle[] | undefined,
+  timeframe: string,
+  confirmClose: boolean,
+): number[] {
+  if (!candles || candles.length === 0) {
+    return []
+  }
+
+  const result = candles.slice()
+
+  if (confirmClose && result.length > 0) {
+    const lastCandle = result[result.length - 1]
+    if (!isCandleClosed(lastCandle, timeframe)) {
+      result.pop()
+    }
+  }
+
+  return result.map((candle) => candle.close)
+}
+
+function findPreviousIndex(series: Array<number | null>, start: number): number | null {
+  for (let i = start; i >= 0; i -= 1) {
+    const value = series[i]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return i
+    }
+  }
+  return null
+}
+
+function findAlignedIndex(
+  seriesA: Array<number | null>,
+  seriesB: Array<number | null>,
+  start: number,
+): number | null {
+  const length = Math.min(seriesA.length, seriesB.length)
+  for (let i = Math.min(start, length - 1); i >= 0; i -= 1) {
+    const valueA = seriesA[i]
+    const valueB = seriesB[i]
+    if (
+      typeof valueA === 'number' &&
+      Number.isFinite(valueA) &&
+      typeof valueB === 'number' &&
+      Number.isFinite(valueB)
+    ) {
+      return i
+    }
+  }
+  return null
+}
+
+function computeRecentAverage(values: Array<number | null>, length: number): number | null {
+  if (!Array.isArray(values) || length <= 0) {
+    return null
+  }
+
+  const collected: number[] = []
+
+  for (let i = values.length - 1; i >= 0 && collected.length < length; i -= 1) {
+    const value = values[i]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      collected.push(value)
+    }
+  }
+
+  if (collected.length < length) {
+    return null
+  }
+
+  const sum = collected.reduce((accumulator, entry) => accumulator + entry, 0)
+  return sum / collected.length
+}
+
+function gradeStrength({
+  bullVotes,
+  bearVotes,
+  totalVotes,
+  ma200Slope,
+  direction,
+}: {
+  bullVotes: number
+  bearVotes: number
+  totalVotes: number
+  ma200Slope: number | null
+  direction: 'long' | 'short' | null
+}): 'weak' | 'standard' | 'strong' {
+  if (totalVotes <= 0) {
+    return 'weak'
+  }
+
+  const allBull = bullVotes === totalVotes
+  const allBear = bearVotes === totalVotes
+
+  if (direction === 'long' && allBull && (ma200Slope ?? 0) >= 0) {
+    return 'strong'
+  }
+
+  if (direction === 'short' && allBear && (ma200Slope ?? 0) <= 0) {
+    return 'strong'
+  }
+
+  if (bullVotes !== bearVotes) {
+    return 'standard'
+  }
+
+  return 'weak'
+}
+
+function buildRiskBlock(
+  price: number | null,
+  atr: number | null,
+  config: (typeof HEATMAP_CONFIGS)[HeatmapEntryTimeframe],
+) {
+  if (!Number.isFinite(price) || !Number.isFinite(atr)) {
+    return null
+  }
+
+  const slLong = price - config.atrMultSl * atr
+  const t1Long = price + config.atrMultTp1 * atr
+  const t2Long = price + config.atrMultTp2 * atr
+  const slShort = price + config.atrMultSl * atr
+  const t1Short = price - config.atrMultTp1 * atr
+  const t2Short = price - config.atrMultTp2 * atr
+
+  return {
+    atr,
+    long: { SL: slLong, T1: t1Long, T2: t2Long },
+    short: { SL: slShort, T1: t1Short, T2: t2Short },
+  }
+}
+
 function resolveBarLimit(selection: string, customValue: string): number | null {
   const parseValue = (value: string) => {
     const parsed = Number.parseInt(value, 10)
@@ -494,6 +830,16 @@ function App() {
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
+  const heatmapStateRef = useRef<
+    Record<
+      string,
+      {
+        lastSignalOpenTime: number | null
+        lastExtremeMarker: 'longExtremeSeen' | 'shortExtremeSeen' | null
+        lastAlertSide: 'LONG' | 'SHORT' | null
+      }
+    >
+  >({})
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [movingAverageNotifications, setMovingAverageNotifications] =
     useState<MovingAverageCrossNotification[]>([])
@@ -785,6 +1131,10 @@ function App() {
   }, [normalizedSymbol])
 
   useEffect(() => {
+    heatmapStateRef.current = {}
+  }, [normalizedSymbol])
+
+  useEffect(() => {
     if (!pushNotificationsEnabled) {
       lastMomentumTriggerRef.current = null
       lastMovingAverageTriggersRef.current = {}
@@ -916,6 +1266,533 @@ function App() {
     }),
     [ema10Values, ema50Values, sma200Values, movingAverageMarkers],
   )
+
+  const heatmapResults = useMemo<HeatmapResult[]>(() => {
+    if (!canStreamSymbol) {
+      heatmapStateRef.current = {}
+      return []
+    }
+
+    const baseState = { ...heatmapStateRef.current }
+    const timeframeCandles = new Map<string, Candle[]>()
+
+    notificationTimeframes.forEach((timeframeValue, index) => {
+      const candles = notificationQueries[index]?.data
+      if (candles && candles.length > 0) {
+        timeframeCandles.set(timeframeValue, candles)
+      }
+    })
+
+    const results: HeatmapResult[] = []
+
+    for (const entryTimeframe of HEATMAP_ENTRY_TIMEFRAMES) {
+      const config = HEATMAP_CONFIGS[entryTimeframe]
+      const existingState =
+        baseState[entryTimeframe] ?? {
+          lastSignalOpenTime: null,
+          lastExtremeMarker: null,
+          lastAlertSide: null,
+        }
+      const state = { ...existingState }
+
+      const votesBreakdown: HeatmapResult['votes']['breakdown'] = []
+      let bullVotes = 0
+      let bearVotes = 0
+      let totalVotes = 0
+
+      const appendVote = (timeframeValue: string) => {
+        const label = formatIntervalLabel(timeframeValue)
+        const htfCloses = extractClosedCloses(
+          timeframeCandles.get(timeframeValue),
+          timeframeValue,
+          config.confirmHtfClose,
+        )
+
+        let rsiValue: number | null = null
+        if (htfCloses.length > 0) {
+          const htfLength = config.rsiLenHtf[timeframeValue] ?? config.rsiLenLtf
+          const rsiSeries = calculateRSI(htfCloses, htfLength)
+          const lastIndex = findPreviousIndex(rsiSeries, rsiSeries.length - 1)
+          if (lastIndex != null) {
+            const candidate = rsiSeries[lastIndex]
+            if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+              rsiValue = candidate
+            }
+          }
+        }
+
+        let vote: HeatmapResult['votes']['breakdown'][number]['vote'] = 'na'
+
+        if (rsiValue != null) {
+          totalVotes += 1
+          if (rsiValue > HEATMAP_NEUTRAL_BAND.upper) {
+            bullVotes += 1
+            vote = 'bull'
+          } else if (rsiValue < HEATMAP_NEUTRAL_BAND.lower) {
+            bearVotes += 1
+            vote = 'bear'
+          } else {
+            vote = 'neutral'
+          }
+        }
+
+        votesBreakdown.push({ timeframe: timeframeValue, label, value: rsiValue, vote })
+      }
+
+      config.htfList.forEach((timeframeValue) => appendVote(timeframeValue))
+
+      let bias: 'BULL' | 'BEAR' | 'NEUTRAL' = 'NEUTRAL'
+      if (totalVotes > 0) {
+        if (config.requireAllHtf) {
+          if (bullVotes === totalVotes) {
+            bias = 'BULL'
+          } else if (bearVotes === totalVotes) {
+            bias = 'BEAR'
+          }
+        } else if (bullVotes > bearVotes) {
+          bias = 'BULL'
+        } else if (bearVotes > bullVotes) {
+          bias = 'BEAR'
+        }
+      }
+
+      const entryCandles = timeframeCandles.get(entryTimeframe)
+
+      if (!entryCandles || entryCandles.length === 0) {
+        results.push({
+          entryTimeframe,
+          entryLabel: config.entryLabel,
+          symbol: normalizedSymbol,
+          evaluatedAt: null,
+          closedAt: null,
+          bias,
+          strength: 'weak',
+          signal: 'NONE',
+          stochEvent: null,
+          votes: {
+            bull: bullVotes,
+            bear: bearVotes,
+            total: totalVotes,
+            mode: config.requireAllHtf ? 'all' : 'majority',
+            breakdown: votesBreakdown,
+          },
+          stochRsi: { k: null, d: null, rawNormalized: null },
+          rsiLtf: { value: null, sma5: null, okLong: false, okShort: false },
+          filters: {
+            atrPct: null,
+            atrBounds: { min: config.volMinAtrPct, max: config.volMaxAtrPct },
+            atrStatus: 'missing',
+            maSide: 'unknown',
+            maLongOk: !config.useMa200Filter,
+            maShortOk: !config.useMa200Filter,
+            distPctToMa200: null,
+            maDistanceStatus: config.useMa200Filter ? 'missing' : 'ok',
+            useMa200Filter: config.useMa200Filter,
+          },
+          gating: {
+            long: { timing: false, blockers: ['Awaiting data'] },
+            short: { timing: false, blockers: ['Awaiting data'] },
+          },
+          cooldown: {
+            requiredBars: config.coolDownBars,
+            barsSinceSignal: null,
+            ok: true,
+            lastAlertSide: state.lastAlertSide,
+            lastExtremeMarker: state.lastExtremeMarker,
+          },
+          risk: {
+            atr: null,
+            slLong: null,
+            t1Long: null,
+            t2Long: null,
+            slShort: null,
+            t1Short: null,
+            t2Short: null,
+          },
+          price: null,
+          ma200: { value: null, slope: null },
+        })
+        baseState[entryTimeframe] = state
+        continue
+      }
+
+      const closesEntry = entryCandles.map((candle) => candle.close)
+      const rsiSeries = calculateRSI(closesEntry, config.rsiLenLtf)
+      const stochasticSeries = calculateStochasticRSI(rsiSeries, {
+        stochLength: config.stochLenLtf,
+        kSmoothing: config.kSmooth,
+        dSmoothing: config.dSmooth,
+      })
+      const atrSeries = calculateATR(entryCandles, config.atrLength)
+      const ma200Series = calculateSMA(closesEntry, 200)
+
+      const latest = entryCandles[entryCandles.length - 1]
+      const timeframeMs = timeframeToMillis(entryTimeframe)
+      const latestRsiIndex = findPreviousIndex(rsiSeries, rsiSeries.length - 1)
+      const latestRsi =
+        latestRsiIndex != null ? rsiSeries[latestRsiIndex] ?? null : null
+      const rsiSma5 = computeRecentAverage(rsiSeries, 5)
+
+      const kValues = stochasticSeries.kValues
+      const dValues = stochasticSeries.dValues
+      const rawValues = stochasticSeries.rawValues
+      const currentIndex = findAlignedIndex(kValues, dValues, kValues.length - 1)
+
+      let currentK: number | null = null
+      let currentD: number | null = null
+      let rawNormalized: number | null = null
+      let stochEvent: HeatmapResult['stochEvent'] = null
+      let longTiming = false
+      let shortTiming = false
+
+      if (currentIndex != null && currentIndex > 0) {
+        const previousIndex = findAlignedIndex(kValues, dValues, currentIndex - 1)
+        if (previousIndex != null) {
+          const candidateK = kValues[currentIndex]
+          const candidateD = dValues[currentIndex]
+          const prevK = kValues[previousIndex]
+          const prevD = dValues[previousIndex]
+          const rawValue = rawValues[currentIndex]
+
+          if (
+            typeof candidateK === 'number' &&
+            Number.isFinite(candidateK) &&
+            typeof candidateD === 'number' &&
+            Number.isFinite(candidateD) &&
+            typeof prevK === 'number' &&
+            Number.isFinite(prevK) &&
+            typeof prevD === 'number' &&
+            Number.isFinite(prevD) &&
+            typeof rawValue === 'number' &&
+            Number.isFinite(rawValue)
+          ) {
+            currentK = candidateK
+            currentD = candidateD
+            rawNormalized = rawValue / 100
+
+            const crossUp = prevK <= prevD && candidateK > candidateD
+            const crossDown = prevK >= prevD && candidateK < candidateD
+
+            longTiming = crossUp && rawNormalized < 0.2
+            shortTiming = crossDown && rawNormalized > 0.8
+
+            if (longTiming) {
+              stochEvent = 'cross_up_from_oversold'
+            } else if (shortTiming) {
+              stochEvent = 'cross_down_from_overbought'
+            }
+          }
+        }
+      }
+
+      if (longTiming && rawNormalized != null && rawNormalized < 0.2) {
+        state.lastExtremeMarker = 'longExtremeSeen'
+      }
+
+      if (shortTiming && rawNormalized != null && rawNormalized > 0.8) {
+        state.lastExtremeMarker = 'shortExtremeSeen'
+      }
+
+      const atrIndex = findPreviousIndex(atrSeries, atrSeries.length - 1)
+      const latestAtr = atrIndex != null ? atrSeries[atrIndex] ?? null : null
+      const maIndex = findPreviousIndex(ma200Series, ma200Series.length - 1)
+      const latestMa200 = maIndex != null ? ma200Series[maIndex] ?? null : null
+      const prevMaIndex =
+        maIndex != null ? findPreviousIndex(ma200Series, maIndex - 1) : null
+      const prevMa200 = prevMaIndex != null ? ma200Series[prevMaIndex] ?? null : null
+      const ma200Slope =
+        typeof latestMa200 === 'number' &&
+        Number.isFinite(latestMa200) &&
+        typeof prevMa200 === 'number' &&
+        Number.isFinite(prevMa200)
+          ? latestMa200 - prevMa200
+          : null
+
+      const price = latest?.close ?? null
+      const atrPct =
+        typeof latestAtr === 'number' &&
+        Number.isFinite(latestAtr) &&
+        typeof price === 'number' &&
+        Number.isFinite(price)
+          ? (100 * latestAtr) / price
+          : null
+
+      const atrStatus = atrPct == null
+        ? 'missing'
+        : atrPct < config.volMinAtrPct
+        ? 'too-low'
+        : atrPct > config.volMaxAtrPct
+        ? 'too-high'
+        : 'ok'
+
+      const distToMa200 =
+        typeof price === 'number' &&
+        Number.isFinite(price) &&
+        typeof latestMa200 === 'number' &&
+        Number.isFinite(latestMa200)
+          ? (Math.abs(price - latestMa200) / latestMa200) * 100
+          : null
+
+      const maSide: 'above' | 'below' | 'unknown' =
+        typeof price === 'number' &&
+        Number.isFinite(price) &&
+        typeof latestMa200 === 'number' &&
+        Number.isFinite(latestMa200)
+          ? price >= latestMa200
+            ? 'above'
+            : 'below'
+          : 'unknown'
+
+      const maDistanceStatus: 'ok' | 'too-close' | 'missing' =
+        !config.useMa200Filter || config.minDistToMa200 <= 0
+          ? 'ok'
+          : distToMa200 == null
+          ? 'missing'
+          : distToMa200 >= config.minDistToMa200
+          ? 'ok'
+          : 'too-close'
+
+      const maLongOk = !config.useMa200Filter || maSide === 'above'
+      const maShortOk = !config.useMa200Filter || maSide === 'below'
+
+      const rsiOkLong =
+        typeof latestRsi === 'number' && Number.isFinite(latestRsi)
+          ? latestRsi > 50 || (rsiSma5 != null && latestRsi > rsiSma5)
+          : false
+
+      const rsiOkShort =
+        typeof latestRsi === 'number' && Number.isFinite(latestRsi)
+          ? latestRsi < 50 || (rsiSma5 != null && latestRsi < rsiSma5)
+          : false
+
+      const barsSinceSignalBefore =
+        timeframeMs &&
+        typeof timeframeMs === 'number' &&
+        state.lastSignalOpenTime != null &&
+        latest
+          ? Math.floor((latest.openTime - state.lastSignalOpenTime) / timeframeMs)
+          : null
+
+      const coolDownOk =
+        state.lastSignalOpenTime == null ||
+        (barsSinceSignalBefore != null && barsSinceSignalBefore >= config.coolDownBars)
+
+      const atrFilterOk = atrStatus === 'ok'
+      const distanceFilterOk =
+        !config.useMa200Filter || maDistanceStatus === 'ok'
+
+      const longSignal =
+        longTiming &&
+        bias === 'BULL' &&
+        rsiOkLong &&
+        maLongOk &&
+        coolDownOk &&
+        atrFilterOk &&
+        distanceFilterOk
+
+      const shortSignal =
+        shortTiming &&
+        bias === 'BEAR' &&
+        rsiOkShort &&
+        maShortOk &&
+        coolDownOk &&
+        atrFilterOk &&
+        distanceFilterOk
+
+      if (longSignal && latest) {
+        state.lastSignalOpenTime = latest.openTime
+        state.lastAlertSide = 'LONG'
+      } else if (shortSignal && latest) {
+        state.lastSignalOpenTime = latest.openTime
+        state.lastAlertSide = 'SHORT'
+      }
+
+      const barsSinceSignalAfter =
+        timeframeMs &&
+        typeof timeframeMs === 'number' &&
+        state.lastSignalOpenTime != null &&
+        latest
+          ? Math.floor((latest.openTime - state.lastSignalOpenTime) / timeframeMs)
+          : null
+
+      const cooldownOkAfter =
+        state.lastSignalOpenTime == null ||
+        (barsSinceSignalAfter != null && barsSinceSignalAfter >= config.coolDownBars)
+
+      const longBlockers: string[] = []
+      if (!longTiming) {
+        longBlockers.push('No bullish cross')
+      }
+      if (bias !== 'BULL') {
+        longBlockers.push('Bias not bullish')
+      }
+      if (!rsiOkLong) {
+        longBlockers.push('RSI guard')
+      }
+      if (!maLongOk) {
+        longBlockers.push('Price below MA200')
+      }
+      if (config.useMa200Filter) {
+        if (maDistanceStatus === 'too-close') {
+          longBlockers.push('Inside MA200 buffer')
+        }
+        if (maDistanceStatus === 'missing') {
+          longBlockers.push('MA200 distance unavailable')
+        }
+      }
+      if (atrStatus === 'too-low') {
+        longBlockers.push('ATR below minimum')
+      } else if (atrStatus === 'too-high') {
+        longBlockers.push('ATR above maximum')
+      } else if (atrStatus === 'missing') {
+        longBlockers.push('ATR unavailable')
+      }
+      if (!coolDownOk) {
+        longBlockers.push(
+          `Cooldown ${barsSinceSignalBefore ?? 0}/${config.coolDownBars}`,
+        )
+      }
+
+      const shortBlockers: string[] = []
+      if (!shortTiming) {
+        shortBlockers.push('No bearish cross')
+      }
+      if (bias !== 'BEAR') {
+        shortBlockers.push('Bias not bearish')
+      }
+      if (!rsiOkShort) {
+        shortBlockers.push('RSI guard')
+      }
+      if (!maShortOk) {
+        shortBlockers.push('Price above MA200')
+      }
+      if (config.useMa200Filter) {
+        if (maDistanceStatus === 'too-close') {
+          shortBlockers.push('Inside MA200 buffer')
+        }
+        if (maDistanceStatus === 'missing') {
+          shortBlockers.push('MA200 distance unavailable')
+        }
+      }
+      if (atrStatus === 'too-low') {
+        shortBlockers.push('ATR below minimum')
+      } else if (atrStatus === 'too-high') {
+        shortBlockers.push('ATR above maximum')
+      } else if (atrStatus === 'missing') {
+        shortBlockers.push('ATR unavailable')
+      }
+      if (!coolDownOk) {
+        shortBlockers.push(
+          `Cooldown ${barsSinceSignalBefore ?? 0}/${config.coolDownBars}`,
+        )
+      }
+
+      const direction = longSignal ? 'long' : shortSignal ? 'short' : null
+      const strength = gradeStrength({
+        bullVotes,
+        bearVotes,
+        totalVotes,
+        ma200Slope,
+        direction,
+      })
+
+      const riskBlock = buildRiskBlock(price, latestAtr, config)
+
+      const signal: 'LONG' | 'SHORT' | 'NONE' = longSignal
+        ? 'LONG'
+        : shortSignal
+        ? 'SHORT'
+        : 'NONE'
+
+      const evaluatedAt = latest?.openTime ?? null
+      const closedAt =
+        timeframeMs && typeof timeframeMs === 'number' && latest
+          ? latest.openTime + timeframeMs
+          : null
+
+      results.push({
+        entryTimeframe,
+        entryLabel: config.entryLabel,
+        symbol: normalizedSymbol,
+        evaluatedAt,
+        closedAt,
+        bias,
+        strength,
+        signal,
+        stochEvent,
+        votes: {
+          bull: bullVotes,
+          bear: bearVotes,
+          total: totalVotes,
+          mode: config.requireAllHtf ? 'all' : 'majority',
+          breakdown: votesBreakdown,
+        },
+        stochRsi: {
+          k: typeof currentK === 'number' ? currentK : null,
+          d: typeof currentD === 'number' ? currentD : null,
+          rawNormalized,
+        },
+        rsiLtf: {
+          value:
+            typeof latestRsi === 'number' && Number.isFinite(latestRsi)
+              ? latestRsi
+              : null,
+          sma5: rsiSma5,
+          okLong: rsiOkLong,
+          okShort: rsiOkShort,
+        },
+        filters: {
+          atrPct,
+          atrBounds: { min: config.volMinAtrPct, max: config.volMaxAtrPct },
+          atrStatus,
+          maSide,
+          maLongOk,
+          maShortOk,
+          distPctToMa200: distToMa200,
+          maDistanceStatus,
+          useMa200Filter: config.useMa200Filter,
+        },
+        gating: {
+          long: { timing: longTiming, blockers: longBlockers },
+          short: { timing: shortTiming, blockers: shortBlockers },
+        },
+        cooldown: {
+          requiredBars: config.coolDownBars,
+          barsSinceSignal: barsSinceSignalAfter,
+          ok: cooldownOkAfter,
+          lastAlertSide: state.lastAlertSide,
+          lastExtremeMarker: state.lastExtremeMarker,
+        },
+        risk: {
+          atr: riskBlock?.atr ?? null,
+          slLong: riskBlock?.long.SL ?? null,
+          t1Long: riskBlock?.long.T1 ?? null,
+          t2Long: riskBlock?.long.T2 ?? null,
+          slShort: riskBlock?.short.SL ?? null,
+          t1Short: riskBlock?.short.T1 ?? null,
+          t2Short: riskBlock?.short.T2 ?? null,
+        },
+        price: typeof price === 'number' && Number.isFinite(price) ? price : null,
+        ma200: {
+          value:
+            typeof latestMa200 === 'number' && Number.isFinite(latestMa200)
+              ? latestMa200
+              : null,
+          slope: ma200Slope,
+        },
+      })
+
+      baseState[entryTimeframe] = state
+    }
+
+    heatmapStateRef.current = baseState
+    return results
+  }, [
+    canStreamSymbol,
+    notificationQueries,
+    notificationTimeframes,
+    normalizedSymbol,
+  ])
 
   const momentumThresholds = useMemo(() => {
     const clamp = (value: string, fallback: number) => {
@@ -1422,6 +2299,7 @@ function App() {
       isMarketSummaryCollapsed={isMarketSummaryCollapsed}
       onToggleMarketSummary={toggleMarketSummary}
       movingAverageSeries={movingAverageSeries}
+      heatmapResults={heatmapResults}
       rsiLengthDescription={rsiLengthDescription}
       rsiValues={rsiValues}
       labels={labels}
