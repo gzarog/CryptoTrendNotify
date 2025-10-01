@@ -142,7 +142,75 @@ export function calculateStochasticRSI(rsiValues, options = {}) {
   return {
     kValues,
     dValues,
+    rawValues,
   }
+}
+
+export function calculateATR(candles, period = DEFAULT_PERIOD) {
+  const normalizedPeriod = Math.max(1, Math.floor(period))
+  const result = new Array(candles.length).fill(null)
+
+  if (candles.length < 1) {
+    return result
+  }
+
+  const trueRanges = new Array(candles.length).fill(null)
+
+  for (let i = 0; i < candles.length; i += 1) {
+    const candle = candles[i]
+    if (!candle) {
+      continue
+    }
+
+    const high = candle.high
+    const low = candle.low
+    const close = candle.close
+
+    if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+      continue
+    }
+
+    if (i === 0) {
+      trueRanges[i] = high - low
+      continue
+    }
+
+    const previousClose = candles[i - 1]?.close
+
+    if (!Number.isFinite(previousClose)) {
+      trueRanges[i] = high - low
+      continue
+    }
+
+    const highLow = high - low
+    const highPreviousClose = Math.abs(high - previousClose)
+    const lowPreviousClose = Math.abs(low - previousClose)
+    trueRanges[i] = Math.max(highLow, highPreviousClose, lowPreviousClose)
+  }
+
+  if (candles.length < normalizedPeriod) {
+    return result
+  }
+
+  let windowSum = 0
+  for (let i = 0; i < normalizedPeriod; i += 1) {
+    windowSum += trueRanges[i] ?? 0
+  }
+
+  let previousAtr = windowSum / normalizedPeriod
+  result[normalizedPeriod - 1] = previousAtr
+
+  for (let i = normalizedPeriod; i < candles.length; i += 1) {
+    const trueRange = trueRanges[i]
+    if (trueRange == null) {
+      continue
+    }
+
+    previousAtr = ((previousAtr * (normalizedPeriod - 1)) + trueRange) / normalizedPeriod
+    result[i] = previousAtr
+  }
+
+  return result
 }
 
 function applySimpleMovingAverage(values, period) {
