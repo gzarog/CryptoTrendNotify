@@ -34,11 +34,20 @@ const parseNumericInput = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-const formatNumber = (value: number | null, maximumFractionDigits = 2) =>
+const formatNumber = (
+  value: number | null,
+  {
+    minimumFractionDigits = 0,
+    maximumFractionDigits = 2,
+  }: {
+    minimumFractionDigits?: number
+    maximumFractionDigits?: number
+  } = {},
+) =>
   value == null || !Number.isFinite(value)
     ? '—'
     : value.toLocaleString(undefined, {
-        minimumFractionDigits: 0,
+        minimumFractionDigits,
         maximumFractionDigits,
       })
 
@@ -262,7 +271,10 @@ export function RiskManagementPanel({
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-400">Price</p>
                           <p className="text-sm font-medium text-slate-200">
-                            {formatNumber(result.price)}
+                            {formatNumber(result.price, {
+                              minimumFractionDigits: 4,
+                              maximumFractionDigits: 4,
+                            })}
                           </p>
                         </div>
                         <div className="text-right">
