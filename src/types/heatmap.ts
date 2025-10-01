@@ -32,6 +32,10 @@ export type HeatmapResult = {
   strength: 'weak' | 'standard' | 'strong'
   signal: 'LONG' | 'SHORT' | 'NONE'
   stochEvent: 'cross_up_from_oversold' | 'cross_down_from_overbought' | null
+  ema: {
+    ema10: number | null
+    ema50: number | null
+  }
   votes: {
     bull: number
     bear: number
