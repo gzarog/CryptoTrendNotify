@@ -423,12 +423,6 @@ export function DashboardView({
           className={`${isSidebarOpen ? 'flex lg:flex' : 'hidden lg:hidden'} w-full flex-col gap-6 lg:w-80 lg:flex-shrink-0 lg:sticky lg:top-28`}
           aria-label="Dashboard filters and market snapshot"
         >
-          <RiskManagementPanel
-            currentEquity={currentEquity}
-            onCurrentEquityChange={onCurrentEquityChange}
-            isCollapsed={isRiskPanelCollapsed}
-            onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
-          />
           <section className="flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 p-6">
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="flex flex-col gap-3">
@@ -750,6 +744,14 @@ export function DashboardView({
             </>
           )}
         </section>
+        <aside className="flex w-full flex-col gap-6 lg:w-80 lg:flex-shrink-0 lg:sticky lg:top-28">
+          <RiskManagementPanel
+            currentEquity={currentEquity}
+            onCurrentEquityChange={onCurrentEquityChange}
+            isCollapsed={isRiskPanelCollapsed}
+            onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
+          />
+        </aside>
       </main>
 
       <footer className="border-t border-white/5 bg-slate-950/80">
