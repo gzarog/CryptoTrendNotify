@@ -118,13 +118,15 @@ export type MovingAverageCrossNotification = {
 
 export type HeatmapNotification = {
   id: string
+  kind: 'signal' | 'status'
   symbol: string
   entryTimeframe: string
   entryLabel: string
-  direction: 'LONG' | 'SHORT'
+  direction: HeatmapResult['signal']
   bias: 'BULL' | 'BEAR' | 'NEUTRAL'
-  strength: AlertPayload['strength']
-  alert: AlertPayload
+  strength: AlertPayload['strength'] | null
+  alert?: AlertPayload
+  statusSummary?: string
   triggeredAt: number
 }
 
@@ -158,6 +160,18 @@ const MOVING_AVERAGE_PAIR_TAGS = ['ema10-ema50', 'ema10-ma200', 'ema50-ma200'] a
 
 const HEATMAP_ENTRY_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360'] as const
 type HeatmapEntryTimeframe = (typeof HEATMAP_ENTRY_TIMEFRAMES)[number]
+
+const HEATMAP_SIGNAL_LABELS: Record<HeatmapResult['signal'], string> = {
+  LONG: 'Long signal',
+  SHORT: 'Short signal',
+  NONE: 'No signal',
+}
+
+const HEATMAP_STATUS_EMOJI_BY_BIAS: Record<HeatmapResult['bias'], string> = {
+  BULL: '🟢',
+  BEAR: '🔴',
+  NEUTRAL: '⚪️',
+}
 
 const HEATMAP_CONFIGS: Record<HeatmapEntryTimeframe, {
   entryLabel: string
@@ -808,6 +822,7 @@ function App() {
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const lastHeatmapTriggersRef = useRef<Record<string, string>>({})
+  const lastHeatmapStatusRef = useRef<Record<string, string>>({})
   const heatmapStateRef = useRef<
     Record<
       string,
@@ -1905,6 +1920,7 @@ function App() {
 
   useEffect(() => {
     lastHeatmapTriggersRef.current = {}
+    lastHeatmapStatusRef.current = {}
   }, [normalizedSymbol])
 
   const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
@@ -2057,12 +2073,76 @@ function App() {
     }
 
     heatmapResults.forEach((result) => {
-      if (!result || result.signal === 'NONE') {
+      if (!result) {
         return
       }
 
       const signatureKey = `${result.symbol}-${result.entryTimeframe}`
       const triggerAt = result.closedAt ?? result.evaluatedAt ?? Date.now()
+      const statusSignature = `${result.signal}|${result.strength}|${result.bias}`
+      const previousStatusSignature = lastHeatmapStatusRef.current[signatureKey]
+
+      if (previousStatusSignature !== statusSignature) {
+        lastHeatmapStatusRef.current[signatureKey] = statusSignature
+
+        if (previousStatusSignature != null && result.signal === 'NONE') {
+          const statusLabel = HEATMAP_SIGNAL_LABELS[result.signal]
+          const statusSummary = `${statusLabel} · Strength · ${result.strength} · Bias · ${result.bias}`
+          const statusEmoji = HEATMAP_STATUS_EMOJI_BY_BIAS[result.bias] ?? '⚪️'
+
+          const statusNotificationId = `${signatureKey}-status-${triggerAt}`
+
+          void showAppNotification({
+            title: `${statusEmoji} Heatmap ${result.entryLabel} status ${result.symbol}`,
+            body: statusSummary,
+            tag: `${signatureKey}-status`,
+            data: {
+              type: 'heatmap-status',
+              source: 'client',
+              symbol: result.symbol,
+              entryTimeframe: result.entryTimeframe,
+              status: {
+                signal: result.signal,
+                strength: result.strength,
+                bias: result.bias,
+              },
+            },
+          })
+
+          const statusEntry: HeatmapNotification = {
+            id: statusNotificationId,
+            kind: 'status',
+            symbol: result.symbol,
+            entryTimeframe: result.entryTimeframe,
+            entryLabel: result.entryLabel,
+            direction: result.signal,
+            bias: result.bias,
+            strength: result.strength,
+            statusSummary,
+            triggeredAt: triggerAt,
+          }
+
+          setHeatmapNotifications((previous) => {
+            const filtered = previous.filter(
+              (item) =>
+                item.id !== statusEntry.id &&
+                !(
+                  item.kind === 'status' &&
+                  item.symbol === statusEntry.symbol &&
+                  item.entryTimeframe === statusEntry.entryTimeframe
+                ),
+            )
+
+            const next = [statusEntry, ...filtered]
+            return next.slice(0, MAX_HEATMAP_NOTIFICATIONS)
+          })
+        }
+      }
+
+      if (result.signal === 'NONE') {
+        return
+      }
+
       const signature = `${signatureKey}-${result.signal}-${triggerAt}`
 
       if (lastHeatmapTriggersRef.current[signatureKey] === signature) {
@@ -2159,6 +2239,7 @@ function App() {
 
       const entry: HeatmapNotification = {
         id: signature,
+        kind: 'signal',
         symbol: result.symbol,
         entryTimeframe: result.entryTimeframe,
         entryLabel: result.entryLabel,
@@ -2170,7 +2251,16 @@ function App() {
       }
 
       setHeatmapNotifications((previous) => {
-        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+        const filtered = previous.filter(
+          (item) =>
+            item.id !== entry.id &&
+            !(
+              item.kind === 'status' &&
+              item.symbol === entry.symbol &&
+              item.entryTimeframe === entry.entryTimeframe
+            ),
+        )
+        const next = [entry, ...filtered]
         return next.slice(0, MAX_HEATMAP_NOTIFICATIONS)
       })
     })

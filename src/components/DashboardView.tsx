@@ -39,9 +39,16 @@ const HEATMAP_CARD_CLASS_BY_STRENGTH: Record<string, string> = {
 const HEATMAP_DEFAULT_CARD_CLASS =
   'border-indigo-400/40 bg-indigo-500/10 text-indigo-100'
 
-const HEATMAP_EMOJI_BY_DIRECTION: Record<'LONG' | 'SHORT', string> = {
+const HEATMAP_EMOJI_BY_DIRECTION: Record<'LONG' | 'SHORT' | 'NONE', string> = {
   LONG: '🟢',
   SHORT: '🔴',
+  NONE: '⚪️',
+}
+
+const HEATMAP_STATUS_EMOJI_BY_BIAS: Record<'BULL' | 'BEAR' | 'NEUTRAL', string> = {
+  BULL: '🟢',
+  BEAR: '🔴',
+  NEUTRAL: '⚪️',
 }
 
 function getHeatmapCardClass(strength: string | null | undefined): string {
@@ -336,6 +343,41 @@ export function DashboardView({
                           const cardClasses = getHeatmapCardClass(
                             typeof entry.strength === 'string' ? entry.strength : null,
                           )
+                          if (entry.kind === 'status') {
+                            const emoji = HEATMAP_STATUS_EMOJI_BY_BIAS[entry.bias] ?? '⚪️'
+
+                            return (
+                              <div
+                                key={`heatmap-${entry.id}`}
+                                className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                    {emoji} Heatmap status
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => onDismissHeatmapNotification(entry.id)}
+                                    className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                    aria-label="Dismiss heatmap notification"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                                <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                                <span className="text-[11px] text-white/80">{entry.entryLabel}</span>
+                                {entry.statusSummary && (
+                                  <span className="text-[11px] text-white/80">{entry.statusSummary}</span>
+                                )}
+                                <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                              </div>
+                            )
+                          }
+
+                          if (!entry.alert) {
+                            return null
+                          }
+
                           const emoji = HEATMAP_EMOJI_BY_DIRECTION[entry.direction] ?? '🔥'
                           const riskPlan = entry.alert.risk_plan
                           const riskSummary = riskPlan
