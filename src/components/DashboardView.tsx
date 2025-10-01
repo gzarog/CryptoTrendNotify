@@ -467,7 +467,9 @@ export function DashboardView({
                   id="symbol"
                   type="text"
                   value={symbol}
-                  onChange={(event) => onSymbolChange(event.target.value.toUpperCase())}
+                  onChange={(event) =>
+                    onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
+                  }
                   placeholder="e.g. BTCUSDT"
                   className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium uppercase tracking-wide text-white shadow focus:border-indigo-400 focus:outline-none"
                 />

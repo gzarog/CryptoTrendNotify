@@ -10,10 +10,9 @@ function normalizeSymbol(value) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-const DEFAULT_SYMBOLS = (process.env.PUSH_WATCH_SYMBOLS
+const ENV_SYMBOLS = (process.env.PUSH_WATCH_SYMBOLS
   ? process.env.PUSH_WATCH_SYMBOLS.split(',')
-  : ['DOGEUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT']
-)
+  : [])
   .map((symbol) => normalizeSymbol(symbol))
   .filter(Boolean)
 
@@ -227,7 +226,7 @@ export function startMarketWatch({ store }) {
       ordered.push(normalized)
     }
 
-    for (const symbol of DEFAULT_SYMBOLS) {
+    for (const symbol of ENV_SYMBOLS) {
       addSymbol(symbol)
     }
 

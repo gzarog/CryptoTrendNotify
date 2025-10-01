@@ -99,8 +99,6 @@ export type MovingAverageCrossNotification = {
   triggeredAt: number
 }
 
-const DEFAULT_SYMBOL = 'BTCUSDT'
-
 const TIMEFRAMES: TimeframeOption[] = [
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
@@ -435,11 +433,11 @@ function App() {
 
   const [symbol, setSymbol] = useState(() => {
     const stored = readLocalStorage(STORAGE_KEYS.symbol)
-    if (typeof stored === 'string' && stored.trim().length > 0) {
-      return stored.toUpperCase()
+    if (typeof stored === 'string') {
+      return stored.trim().toUpperCase()
     }
 
-    return DEFAULT_SYMBOL
+    return ''
   })
   const [timeframe, setTimeframe] = useState(() => {
     const stored = readLocalStorage(STORAGE_KEYS.timeframe)
@@ -501,19 +499,12 @@ function App() {
     useState<MovingAverageCrossNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
-  const subscriptionFilters = useMemo<PushSubscriptionFilters>(
-    () => ({
-      symbols: [symbol],
-      momentumTimeframes: [...MOMENTUM_SIGNAL_TIMEFRAMES],
-      movingAverageTimeframes: [...MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES],
-      movingAveragePairs: [...MOVING_AVERAGE_PAIR_TAGS],
-    }),
-    [symbol],
-  )
+  const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
+  const symbolQueryEnabled = normalizedSymbol.length > 0
 
   useEffect(() => {
-    writeLocalStorage(STORAGE_KEYS.symbol, symbol)
-  }, [symbol])
+    writeLocalStorage(STORAGE_KEYS.symbol, normalizedSymbol)
+  }, [normalizedSymbol])
 
   useEffect(() => {
     writeLocalStorage(STORAGE_KEYS.timeframe, timeframe)
@@ -615,6 +606,73 @@ function App() {
   }, [fetchPushServerStatus])
 
   useEffect(() => {
+    const handler = (event: BeforeInstallPromptEvent) => {
+      event.preventDefault()
+      setInstallPromptEvent(event)
+    }
+
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<Candle[]>({
+    queryKey: ['bybit-kline', normalizedSymbol, timeframe, resolvedBarLimit],
+    queryFn: () => fetchBybitOHLCV(normalizedSymbol, timeframe, resolvedBarLimit),
+    refetchInterval: refreshInterval,
+    refetchIntervalInBackground: true,
+    retry: 1,
+    enabled: symbolQueryEnabled,
+    placeholderData: (previousData) => previousData,
+  })
+
+  const symbolErrorMessage = isError && error instanceof Error ? error.message : ''
+  const normalizedErrorMessage = symbolErrorMessage.toLowerCase()
+  const isSymbolRejected =
+    symbolQueryEnabled &&
+    (normalizedErrorMessage.includes('symbol') ||
+      normalizedErrorMessage.includes('instrument') ||
+      normalizedErrorMessage.includes('not found'))
+  const canStreamSymbol = symbolQueryEnabled && !isSymbolRejected
+
+  const notificationQueries = useQueries({
+    queries: notificationTimeframes.map((value) => ({
+      queryKey: ['bybit-kline', normalizedSymbol, value, resolvedBarLimit],
+      queryFn: () => fetchBybitOHLCV(normalizedSymbol, value, resolvedBarLimit),
+      refetchInterval: refreshInterval,
+      refetchIntervalInBackground: true,
+      retry: 1,
+      enabled: canStreamSymbol,
+      placeholderData: (previousData: Candle[] | undefined) => previousData,
+    })),
+  })
+
+  const movingAverageNotificationTimeframes = MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES
+  const movingAverageNotificationQueries = useQueries({
+    queries: movingAverageNotificationTimeframes.map((value) => ({
+      queryKey: ['bybit-kline', normalizedSymbol, value, resolvedBarLimit],
+      queryFn: () => fetchBybitOHLCV(normalizedSymbol, value, resolvedBarLimit),
+      refetchInterval: refreshInterval,
+      refetchIntervalInBackground: true,
+      retry: 1,
+      enabled: canStreamSymbol,
+      placeholderData: (previousData: Candle[] | undefined) => previousData,
+    })),
+  })
+
+  const subscriptionFilters = useMemo<PushSubscriptionFilters | undefined>(() => {
+    if (!canStreamSymbol) {
+      return undefined
+    }
+
+    return {
+      symbols: [normalizedSymbol],
+      momentumTimeframes: [...MOMENTUM_SIGNAL_TIMEFRAMES],
+      movingAverageTimeframes: [...MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES],
+      movingAveragePairs: [...MOVING_AVERAGE_PAIR_TAGS],
+    }
+  }, [canStreamSymbol, normalizedSymbol])
+
+  useEffect(() => {
     if (!pushNotificationsEnabled) {
       return
     }
@@ -706,48 +764,6 @@ function App() {
     }
   }, [pushNotificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
-  useEffect(() => {
-    const handler = (event: BeforeInstallPromptEvent) => {
-      event.preventDefault()
-      setInstallPromptEvent(event)
-    }
-
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<Candle[]>({
-    queryKey: ['bybit-kline', symbol, timeframe, resolvedBarLimit],
-    queryFn: () => fetchBybitOHLCV(symbol, timeframe, resolvedBarLimit),
-    refetchInterval: refreshInterval,
-    refetchIntervalInBackground: true,
-    retry: 1,
-    placeholderData: (previousData) => previousData,
-  })
-
-  const notificationQueries = useQueries({
-    queries: notificationTimeframes.map((value) => ({
-      queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
-      queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
-      refetchInterval: refreshInterval,
-      refetchIntervalInBackground: true,
-      retry: 1,
-      placeholderData: (previousData: Candle[] | undefined) => previousData,
-    })),
-  })
-
-  const movingAverageNotificationTimeframes = MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES
-  const movingAverageNotificationQueries = useQueries({
-    queries: movingAverageNotificationTimeframes.map((value) => ({
-      queryKey: ['bybit-kline', symbol, value, resolvedBarLimit],
-      queryFn: () => fetchBybitOHLCV(symbol, value, resolvedBarLimit),
-      refetchInterval: refreshInterval,
-      refetchIntervalInBackground: true,
-      retry: 1,
-      placeholderData: (previousData: Candle[] | undefined) => previousData,
-    })),
-  })
-
   const lastUpdatedLabel = useMemo(() => {
     if (!dataUpdatedAt) {
       return '—'
@@ -766,7 +782,7 @@ function App() {
     lastMovingAverageTriggersRef.current = {}
     setMomentumNotifications([])
     setMovingAverageNotifications([])
-  }, [symbol])
+  }, [normalizedSymbol])
 
   useEffect(() => {
     if (!pushNotificationsEnabled) {
@@ -1079,7 +1095,7 @@ function App() {
 
         const timeframeLabel = formatIntervalLabel(timeframeValue)
         const directionLabel = cross.direction === 'golden' ? 'Golden cross' : 'Death cross'
-        const signatureKey = `${symbol}-${timeframeValue}-${config.tag}`
+        const signatureKey = `${normalizedSymbol}-${timeframeValue}-${config.tag}`
         const signature = `${signatureKey}-${cross.direction}-${candle.openTime}`
 
         if (lastMovingAverageTriggersRef.current[signatureKey] === signature) {
@@ -1090,7 +1106,7 @@ function App() {
 
         const entry: MovingAverageCrossNotification = {
           id: signature,
-          symbol,
+          symbol: normalizedSymbol,
           timeframe: timeframeValue,
           timeframeLabel,
           pairLabel: config.pairLabel,
@@ -1110,11 +1126,11 @@ function App() {
         const bodyDirection = directionLabel.toLowerCase()
 
         void showAppNotification({
-          title: `${emoji} ${symbol} ${timeframeLabel} ${directionLabel}`,
+          title: `${emoji} ${normalizedSymbol} ${timeframeLabel} ${directionLabel}`,
           body: `${config.pairLabel} ${bodyDirection} at ${priceLabel}`,
           tag: signature,
           data: {
-            symbol,
+            symbol: normalizedSymbol,
             timeframe: timeframeValue,
             pair: config.tag,
             direction: cross.direction,
@@ -1126,7 +1142,7 @@ function App() {
     lastMovingAverageTriggersRef,
     movingAverageNotificationQueries,
     movingAverageNotificationTimeframes,
-    symbol,
+    normalizedSymbol,
   ])
 
   useEffect(() => {
@@ -1220,7 +1236,7 @@ function App() {
     const signatureParts = matchingReadings.map(
       (reading) => `${reading.timeframe}:${reading.openTime ?? '0'}`,
     )
-    const signature = `${symbol}-${primary.direction}-${signatureParts.join('|')}`
+    const signature = `${normalizedSymbol}-${primary.direction}-${signatureParts.join('|')}`
 
     if (lastMomentumTriggerRef.current === signature) {
       return
@@ -1253,7 +1269,7 @@ function App() {
 
     const entry: MomentumNotification = {
       id: signature,
-      symbol,
+      symbol: normalizedSymbol,
       direction: primary.direction,
       intensity,
       label: momentumLabel,
@@ -1271,10 +1287,10 @@ function App() {
 
     void showAppNotification({
       title: `${emoji} ${momentumLabel}`,
-      body: `${symbol} — Rsi ${rsiSummary} • Stoch Rsi (stochastic rsi %d ${stochasticSummary})`,
+      body: `${normalizedSymbol} — Rsi ${rsiSummary} • Stoch Rsi (stochastic rsi %d ${stochasticSummary})`,
       tag: signature,
       data: {
-        symbol,
+        symbol: normalizedSymbol,
         direction: primary.direction,
         timeframes: readings.map((reading) => reading.timeframe),
       },
@@ -1283,7 +1299,7 @@ function App() {
     notificationQueries,
     notificationTimeframes,
     momentumThresholds,
-    symbol,
+    normalizedSymbol,
   ])
 
   const canInstall = useMemo(() => !!installPromptEvent, [installPromptEvent])
@@ -1332,6 +1348,10 @@ function App() {
   }
 
   const handleManualRefresh = async () => {
+    if (!canStreamSymbol) {
+      return
+    }
+
     await refetch()
 
     await Promise.all([
