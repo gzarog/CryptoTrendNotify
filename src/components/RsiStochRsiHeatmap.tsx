@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 
 import type { HeatmapResult } from '../types/heatmap'
 
@@ -146,6 +146,23 @@ function CollapsibleSection({
 }
 
 export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
+  const [selectedTimeframe, setSelectedTimeframe] = useState<'all' | string>('all')
+  const entryTimeframes = useMemo(
+    () => dedupe(results.map((result) => result.entryTimeframe)),
+    [results],
+  )
+
+  useEffect(() => {
+    if (selectedTimeframe !== 'all' && !entryTimeframes.includes(selectedTimeframe)) {
+      setSelectedTimeframe('all')
+    }
+  }, [entryTimeframes, selectedTimeframe])
+
+  const filteredResults =
+    selectedTimeframe === 'all'
+      ? results
+      : results.filter((result) => result.entryTimeframe === selectedTimeframe)
+
   return (
     <div className="flex w-full flex-col gap-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-300">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -161,7 +178,33 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
         </div>
       ) : (
         <div className="grid gap-6">
-          {results.map((result) => {
+          <div className="flex flex-wrap gap-2">
+            {(['all', ...entryTimeframes] as const).map((timeframe) => {
+              const isActive = selectedTimeframe === timeframe
+
+              return (
+                <button
+                  key={timeframe}
+                  type="button"
+                  onClick={() => setSelectedTimeframe(timeframe)}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                    isActive
+                      ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {timeframe === 'all' ? 'All' : timeframe}
+                </button>
+              )
+            })}
+          </div>
+
+          {filteredResults.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-600/60 bg-slate-950/60 p-6 text-center text-xs text-slate-400">
+              No signals for this timeframe.
+            </div>
+          ) : (
+            filteredResults.map((result) => {
             const longBlockers = dedupe(result.gating.long.blockers)
             const shortBlockers = dedupe(result.gating.short.blockers)
             const atrMeta = ATR_STATUS_META[result.filters.atrStatus]
@@ -369,7 +412,8 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
                 </CollapsibleSection>
               </article>
             )
-          })}
+            })
+          )}
         </div>
       )}
     </div>
