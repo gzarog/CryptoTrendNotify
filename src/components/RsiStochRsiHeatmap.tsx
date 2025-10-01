@@ -1,279 +1,330 @@
-const CONFIG_SECTIONS = [
-  {
-    title: 'Core configuration',
-    items: [
-      { label: 'Symbol', value: 'BTCUSDT' },
-      { label: 'Entry timeframe', value: '5m (or 15m alternative)' },
-      { label: 'Higher timeframe stack', value: '1h · 2h · 4h' },
-      { label: 'RSI lengths', value: 'LTF: 9 · HTF: 14/16/21' },
-      { label: 'StochRSI', value: 'Len = RSI len · %K=3 · %D=3' },
-      { label: 'MA200 filter', value: 'Enabled · minimum distance 0.25%' },
-      { label: 'ATR & risk', value: 'ATR 14 · SL 1.2× · TP1 1.0× · TP2 1.8× · risk 0.75%' },
-    ],
-  },
-  {
-    title: 'Market regime guardrails',
-    items: [
-      { label: 'ATR volatility window', value: 'Reject <0.15% or >3.0%' },
-      { label: 'Neutral RSI band', value: '45 – 55 → no HTF vote' },
-      { label: 'HTF confirmation', value: 'Use closed bars, majority vote unless ALL required' },
-      { label: 'Cooldown', value: '6 bars on entry timeframe' },
-      { label: 'State tracking', value: 'Last signal index · last extreme marker · last alert side' },
-    ],
-  },
-] as const
+import type { HeatmapResult } from '../types/heatmap'
 
-const HEATMAP_FRAMES = [
-  {
-    tf: '5m',
-    rsi: '7 – 9',
-    stoch: '7 / 7 / %K2 / %D2',
-    role: 'Scalp timing — wait for StochRSI cross to confirm micro RSI move.',
-  },
-  {
-    tf: '15m',
-    rsi: '9 – 12',
-    stoch: '9 / 9 / %K2 / %D3',
-    role: 'Intraday scalp — sync with 30m–1h bias before acting.',
-  },
-  {
-    tf: '30m',
-    rsi: '12 – 14',
-    stoch: '12 / 12 / %K3 / %D3',
-    role: 'Intraday swings — use once higher TFs confirm direction.',
-  },
-  {
-    tf: '60m',
-    rsi: '14 – 16',
-    stoch: '14 / 14 / %K3 / %D3',
-    role: 'Trend filter — RSI > 50 bull, < 50 bear. Cross = trigger.',
-  },
-  {
-    tf: '120m',
-    rsi: '16 – 18',
-    stoch: '16 / 16 / %K3 / %D3',
-    role: 'Mini-swing filter — clears chop, pairs with 30m/1h entries.',
-  },
-  {
-    tf: '240m',
-    rsi: '18 – 21',
-    stoch: '21 / 21 / %K3-4 / %D3-4',
-    role: "Swing bias — only take lower TF setups in this direction.",
-  },
-  {
-    tf: '360m',
-    rsi: '21 – 24',
-    stoch: '24 / 24 / %K4 / %D4',
-    role: 'Position bias — sets backdrop for intraday plans.',
-  },
-] as const
+type RsiStochRsiHeatmapProps = {
+  results: HeatmapResult[]
+}
 
-const MAIN_LOOP_STEPS = [
-  {
-    title: '1.1 Fetch data',
-    details: [
-      'Pull the latest 500 OHLCV candles for entry TF + 1h/2h/4h stacks.',
-      'Synchronize timeframes to avoid partial HTF reads.',
-    ],
-  },
-  {
-    title: '1.2 Compute indicators',
-    details: [
-      'RSI on entry TF plus StochRSI (raw/k/d).',
-      'MA200 and ATR 14 used for structure + risk sizing.',
-      'HTF RSI values respect closed-bar confirmation flag.',
-    ],
-  },
-  {
-    title: '1.3 / 1.4 Filters & bias',
-    details: [
-      'Reject extremes via ATR% band + distance to MA200.',
-      'Vote system: HTF RSI above/below neutral band drives bull/bear bias.',
-      'Supports ALL or MAJORITY requirement.',
-    ],
-  },
-  {
-    title: '1.5 Timing triggers',
-    details: [
-      'Long: %K crosses up %D in oversold zone with RSI support.',
-      'Short: %K crosses down %D in overbought zone with RSI confirmation.',
-      'MA filter ensures trades align with MA200 slope preference.',
-    ],
-  },
-  {
-    title: '1.6 / 1.7 Signal gating',
-    details: [
-      'Cooldown prevents refiring until 6 bars pass.',
-      'Track oversold/overbought extremes to manage re-entries.',
-      'Final long/short signal requires bias, timing, RSI, MA, cooldown.',
-    ],
-  },
-  {
-    title: '1.8 Alert dispatch',
-    details: [
-      'Only emit on closed bars for non-repainting behaviour.',
-      'Payload includes bias votes, RSI/ATR metrics, MA context, and risk block.',
-    ],
-  },
-] as const
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
 
-const RISK_HELPERS = [
-  {
-    title: 'Build risk block',
-    callout: 'Translate ATR into SL/TP ladder + position sizing.',
-    bullets: [
-      'SL = price ± (ATR × 1.2).',
-      'TP1 = price ± (ATR × 1.0), TP2 = price ± (ATR × 1.8).',
-      'Risk capital = equity × 0.75%.',
-    ],
-  },
-  {
-    title: 'Grade strength',
-    callout: 'Qualitative score based on HTF unanimity + MA200 slope.',
-    bullets: [
-      'All votes aligned & MA slope ≥ 0 ⇒ strong.',
-      'Vote imbalance ⇒ standard, else weak.',
-    ],
-  },
-  {
-    title: 'Alert payload',
-    callout: 'Structured object for webhooks/bots.',
-    bullets: [
-      'Side · symbol · timeframe · bias votes.',
-      'RSI/ATR data, StochRSI event meta, MA context.',
-      'Risk block + ISO timestamp + strength score.',
-    ],
-  },
-] as const
+const SIGNAL_STYLES: Record<HeatmapResult['signal'], string> = {
+  LONG: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100',
+  SHORT: 'border-rose-400/40 bg-rose-500/15 text-rose-100',
+  NONE: 'border-slate-400/40 bg-slate-500/15 text-slate-100',
+}
 
-export function RsiStochRsiHeatmap() {
+const SIGNAL_LABELS: Record<HeatmapResult['signal'], string> = {
+  LONG: 'Long signal',
+  SHORT: 'Short signal',
+  NONE: 'No signal',
+}
+
+const STRENGTH_STYLES: Record<HeatmapResult['strength'], string> = {
+  strong: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100',
+  standard: 'border-amber-400/30 bg-amber-500/10 text-amber-100',
+  weak: 'border-slate-400/30 bg-slate-500/10 text-slate-100',
+}
+
+const BIAS_STYLES: Record<HeatmapResult['bias'], string> = {
+  BULL: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100',
+  BEAR: 'border-rose-400/30 bg-rose-500/10 text-rose-100',
+  NEUTRAL: 'border-slate-400/30 bg-slate-500/10 text-slate-100',
+}
+
+const ATR_STATUS_META = {
+  ok: {
+    label: 'ATR within range',
+    className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+  },
+  'too-low': {
+    label: 'ATR below minimum',
+    className: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
+  },
+  'too-high': {
+    label: 'ATR above maximum',
+    className: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+  },
+  missing: {
+    label: 'ATR unavailable',
+    className: 'border-slate-400/40 bg-slate-500/10 text-slate-100',
+  },
+} satisfies Record<HeatmapResult['filters']['atrStatus'], { label: string; className: string }>
+
+const MA_DISTANCE_META = {
+  ok: {
+    label: 'Distance satisfied',
+    className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+  },
+  'too-close': {
+    label: 'Too close to MA200',
+    className: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+  },
+  missing: {
+    label: 'Distance unavailable',
+    className: 'border-slate-400/40 bg-slate-500/10 text-slate-100',
+  },
+} satisfies Record<HeatmapResult['filters']['maDistanceStatus'], { label: string; className: string }>
+
+function formatNumber(value: number | null, digits = 2): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value.toFixed(digits)
+    : '—'
+}
+
+function formatPercent(value: number | null, digits = 2): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${value.toFixed(digits)}%`
+    : '—'
+}
+
+function formatRaw(value: number | null): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${(value * 100).toFixed(1)}%`
+    : '—'
+}
+
+function formatTimestamp(value: number | null): string {
+  if (value == null) {
+    return '—'
+  }
+  return TIMESTAMP_FORMATTER.format(new Date(value))
+}
+
+function formatEvent(event: HeatmapResult['stochEvent']): string {
+  if (!event) {
+    return '—'
+  }
+  return event.replace(/_/g, ' ')
+}
+
+function dedupe(values: string[]): string[] {
+  return values.filter((value, index) => values.indexOf(value) === index)
+}
+
+export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
   return (
     <div className="flex w-full flex-col gap-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-300">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <h2 className="text-base font-semibold text-white">RSI + StochRSI Execution Map</h2>
+        <h2 className="text-base font-semibold text-white">RSI + StochRSI Heatmap</h2>
         <p className="text-xs text-slate-400">
-          Visual decode of the pseudocode pipeline powering alerts — from configuration to risk blocks.
+          Live evaluation of the RSI + StochRSI pseudocode — bias votes, filter gates, and signal strength per entry timeframe.
         </p>
       </div>
 
-      <section className="grid gap-4">
-        <header className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-300">
-            0 · Configuration &amp; state
-          </h3>
-          <span className="text-[11px] uppercase text-emerald-200/70">what the engine expects</span>
-        </header>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {CONFIG_SECTIONS.map((section) => (
-            <div
-              key={section.title}
-              className="rounded-xl border border-white/5 bg-emerald-400/5 p-4 shadow-inner shadow-emerald-500/10"
-            >
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
-                {section.title}
-              </h4>
-              <dl className="mt-3 grid gap-2">
-                {section.items.map((item) => (
-                  <div key={item.label} className="flex flex-col gap-0.5">
-                    <dt className="text-[11px] uppercase tracking-wide text-emerald-100/70">
-                      {item.label}
-                    </dt>
-                    <dd className="text-sm text-emerald-50/90">{item.value}</dd>
+      {results.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-600/60 bg-slate-950/60 p-6 text-center text-xs text-slate-400">
+          Waiting for market data to build the heatmap. Confirm a valid symbol is selected above.
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          {results.map((result) => {
+            const longBlockers = dedupe(result.gating.long.blockers)
+            const shortBlockers = dedupe(result.gating.short.blockers)
+            const atrMeta = ATR_STATUS_META[result.filters.atrStatus]
+            const distanceMeta = MA_DISTANCE_META[result.filters.maDistanceStatus]
+
+            return (
+              <article
+                key={`${result.symbol}-${result.entryTimeframe}`}
+                className="flex flex-col gap-5 rounded-2xl border border-white/5 bg-slate-950/60 p-6 shadow-lg shadow-black/20"
+              >
+                <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-lg font-semibold text-white">
+                      {result.entryLabel} heatmap · {result.symbol || '—'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Closed at {formatTimestamp(result.closedAt)} · Votes {result.votes.bull}/{result.votes.total} bull ·{' '}
+                      {result.votes.bear}/{result.votes.total} bear
+                    </p>
                   </div>
-                ))}
-              </dl>
-            </div>
-          ))}
-        </div>
-      </section>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${SIGNAL_STYLES[result.signal]}`}
+                    >
+                      {SIGNAL_LABELS[result.signal]}
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STRENGTH_STYLES[result.strength]}`}
+                    >
+                      Strength · {result.strength}
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BIAS_STYLES[result.bias]}`}
+                    >
+                      Bias · {result.bias}
+                    </span>
+                  </div>
+                </header>
 
-      <section className="grid gap-4">
-        <header className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-sky-300">1 · Execution loop</h3>
-          <span className="text-[11px] uppercase text-sky-200/70">bar-by-bar routine</span>
-        </header>
-        <div className="grid gap-3">
-          {MAIN_LOOP_STEPS.map((step, index) => (
-            <div
-              key={step.title}
-              className="grid gap-3 rounded-xl border border-white/5 bg-sky-400/5 p-4 md:grid-cols-[auto_minmax(0,1fr)] md:items-start"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-400/40 bg-sky-500/10 text-xs font-semibold text-sky-200">
-                {index + 1}
-              </span>
-              <div className="flex flex-col gap-2">
-                <h4 className="text-sm font-semibold text-white">{step.title}</h4>
-                <ul className="grid gap-1 text-sm text-slate-100/90">
-                  {step.details.map((detail) => (
-                    <li key={detail} className="flex items-start gap-2">
-                      <span className="mt-[6px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-sky-300" />
-                      <span>{detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <div className="grid gap-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">RSI (entry timeframe)</p>
+                        <p className="mt-1 text-xl font-semibold text-white">{formatNumber(result.rsiLtf.value)}</p>
+                        <p className="text-xs text-slate-400">SMA 5: {formatNumber(result.rsiLtf.sma5)}</p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          Long guard: {result.rsiLtf.okLong ? 'passed' : 'blocked'} · Short guard:{' '}
+                          {result.rsiLtf.okShort ? 'passed' : 'blocked'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">StochRSI snapshot</p>
+                        <p className="mt-1 text-sm text-slate-200">
+                          %K {formatNumber(result.stochRsi.k)} · %D {formatNumber(result.stochRsi.d)}
+                        </p>
+                        <p className="text-xs text-slate-400">Raw: {formatRaw(result.stochRsi.rawNormalized)}</p>
+                        <p className="mt-2 text-xs text-slate-400">Event: {formatEvent(result.stochEvent)}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-400">Higher timeframe votes</p>
+                      <ul className="mt-3 grid gap-2 text-xs text-slate-200 sm:grid-cols-2">
+                        {result.votes.breakdown.map((vote) => {
+                          const voteLabel =
+                            vote.vote === 'na'
+                              ? 'n/a'
+                              : `${vote.vote.toUpperCase()} · ${formatNumber(vote.value)}`
+                          const voteColor =
+                            vote.vote === 'bull'
+                              ? 'text-emerald-200'
+                              : vote.vote === 'bear'
+                              ? 'text-rose-200'
+                              : vote.vote === 'neutral'
+                              ? 'text-amber-200'
+                              : 'text-slate-400'
+                          return (
+                            <li key={`${result.entryTimeframe}-${vote.timeframe}`} className="flex items-center justify-between gap-2">
+                              <span className="text-slate-300">{vote.label}</span>
+                              <span className={`text-[11px] font-semibold uppercase tracking-wide ${voteColor}`}>{voteLabel}</span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  </div>
 
-      <section className="grid gap-4">
-        <header className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-300">
-            Multi-timeframe oscillator map
-          </h3>
-          <span className="text-[11px] uppercase text-amber-200/70">RSI ↔ StochRSI pairings</span>
-        </header>
-        <div className="grid gap-3 lg:grid-cols-3">
-          {HEATMAP_FRAMES.map((frame) => (
-            <div
-              key={frame.tf}
-              className="flex flex-col gap-2 rounded-xl border border-white/5 bg-amber-400/5 p-4"
-            >
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                  {frame.tf}
-                </span>
-                <span className="text-[11px] text-amber-100/80">RSI {frame.rsi}</span>
-              </div>
-              <div className="rounded-lg border border-amber-400/30 bg-black/20 p-2 text-[13px] text-amber-100">
-                StochRSI {frame.stoch}
-              </div>
-              <p className="text-xs text-amber-50/90">{frame.role}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+                  <div className="grid gap-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">ATR filter</p>
+                        <p className="mt-1 text-sm text-slate-200">ATR% {formatPercent(result.filters.atrPct)}</p>
+                        <p className="text-xs text-slate-400">
+                          Bounds {formatPercent(result.filters.atrBounds.min)} – {formatPercent(result.filters.atrBounds.max)}
+                        </p>
+                        <span
+                          className={`mt-3 inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium ${atrMeta.className}`}
+                        >
+                          {atrMeta.label}
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">MA200 context</p>
+                        <p className="mt-1 text-sm text-slate-200">
+                          Price {formatNumber(result.price)} · MA200 {formatNumber(result.ma200.value)}
+                        </p>
+                        <p className="text-xs text-slate-400">Slope {formatNumber(result.ma200.slope, 4)}</p>
+                        <p className="text-xs text-slate-400">Distance {formatPercent(result.filters.distPctToMa200)}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="inline-flex items-center rounded-full border border-slate-400/40 bg-slate-500/10 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-200">
+                            Side · {result.filters.maSide}
+                          </span>
+                          {result.filters.useMa200Filter && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium ${distanceMeta.className}`}
+                            >
+                              {distanceMeta.label}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-400">Cooldown state</p>
+                      <p className="mt-1 text-sm text-slate-200">
+                        {result.cooldown.barsSinceSignal == null
+                          ? 'No signals yet'
+                          : `${result.cooldown.barsSinceSignal} / ${result.cooldown.requiredBars} bars elapsed`}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        Status: {result.cooldown.ok ? 'ready for next fire' : 'cooldown active'} · Last alert:{' '}
+                        {result.cooldown.lastAlertSide ?? '—'} · Last extreme:{' '}
+                        {result.cooldown.lastExtremeMarker ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+                </section>
 
-      <section className="grid gap-4">
-        <header className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-300">2 · Risk helpers</h3>
-          <span className="text-[11px] uppercase text-rose-200/70">automation glue</span>
-        </header>
-        <div className="grid gap-3 md:grid-cols-3">
-          {RISK_HELPERS.map((helper) => (
-            <div
-              key={helper.title}
-              className="flex flex-col gap-3 rounded-xl border border-white/5 bg-rose-400/5 p-4"
-            >
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wide text-rose-200/80">
-                  {helper.title}
-                </span>
-                <h4 className="text-sm font-semibold text-white">{helper.callout}</h4>
-              </div>
-              <ul className="grid gap-1 text-xs text-rose-50/80">
-                {helper.bullets.map((bullet) => (
-                  <li key={bullet} className="flex items-start gap-2">
-                    <span className="mt-[6px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-rose-300" />
-                    <span>{bullet}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+                      Risk ladder (ATR {formatNumber(result.risk.atr)})
+                    </h4>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                        <p className="text-[11px] uppercase tracking-wide text-emerald-200">Long plan</p>
+                        <ul className="mt-2 space-y-1">
+                          <li>SL {formatNumber(result.risk.slLong)}</li>
+                          <li>TP1 {formatNumber(result.risk.t1Long)}</li>
+                          <li>TP2 {formatNumber(result.risk.t2Long)}</li>
+                        </ul>
+                      </div>
+                      <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                        <p className="text-[11px] uppercase tracking-wide text-rose-200">Short plan</p>
+                        <ul className="mt-2 space-y-1">
+                          <li>SL {formatNumber(result.risk.slShort)}</li>
+                          <li>TP1 {formatNumber(result.risk.t1Short)}</li>
+                          <li>TP2 {formatNumber(result.risk.t2Short)}</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+                      Gating diagnostics
+                    </h4>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-emerald-200">
+                          Long pathway {result.gating.long.timing ? '· timing ready' : '· waiting for cross'}
+                        </p>
+                        <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                          {longBlockers.length === 0 ? (
+                            <li className="text-emerald-200">All conditions met</li>
+                          ) : (
+                            longBlockers.map((blocker) => (
+                              <li key={`long-${blocker}`}>• {blocker}</li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-rose-200">
+                          Short pathway {result.gating.short.timing ? '· timing ready' : '· waiting for cross'}
+                        </p>
+                        <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                          {shortBlockers.length === 0 ? (
+                            <li className="text-emerald-200">All conditions met</li>
+                          ) : (
+                            shortBlockers.map((blocker) => (
+                              <li key={`short-${blocker}`}>• {blocker}</li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </article>
+            )
+          })}
         </div>
-      </section>
+      )}
     </div>
   )
 }
