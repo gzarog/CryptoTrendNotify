@@ -29,6 +29,8 @@ import {
   createRiskConfigFromHeatmapConfig,
 } from './lib/risk-presets'
 import type { AlertPayload, RiskConfig } from './lib/risk'
+import { deriveSignalsFromHeatmap } from './lib/signals'
+import type { SignalNotification, TradingSignal } from './types/signals'
 
 export type Candle = {
   openTime: number
@@ -415,6 +417,8 @@ const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 const MAX_HEATMAP_NOTIFICATIONS = 6
+const MAX_SIGNAL_NOTIFICATIONS = 6
+const SIGNAL_NOTIFICATION_MIN_SCORE = 60
 
 const DEFAULT_MOMENTUM_BOUNDS = {
   rsiLower: 20,
@@ -632,7 +636,7 @@ function isCandleClosed(candle: Candle | undefined, timeframe: string): boolean 
   }
 
   const duration = timeframeToMillis(timeframe)
-  if (!Number.isFinite(duration)) {
+  if (duration == null || !Number.isFinite(duration)) {
     return false
   }
 
@@ -808,6 +812,7 @@ function App() {
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const lastHeatmapTriggersRef = useRef<Record<string, string>>({})
+  const lastSignalTriggersRef = useRef<Record<string, string>>({})
   const heatmapStateRef = useRef<
     Record<
       string,
@@ -823,6 +828,7 @@ function App() {
     useState<MovingAverageCrossNotification[]>([])
   const [heatmapNotifications, setHeatmapNotifications] =
     useState<HeatmapNotification[]>([])
+  const [signalNotifications, setSignalNotifications] = useState<SignalNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
@@ -1795,6 +1801,11 @@ function App() {
     normalizedSymbol,
   ])
 
+  const tradingSignals = useMemo<TradingSignal[]>(
+    () => deriveSignalsFromHeatmap(heatmapResults),
+    [heatmapResults],
+  )
+
   const momentumThresholds = useMemo(() => {
     const clamp = (value: string, fallback: number) => {
       const parsed = Number(value)
@@ -1907,6 +1918,10 @@ function App() {
     lastHeatmapTriggersRef.current = {}
   }, [normalizedSymbol])
 
+  useEffect(() => {
+    lastSignalTriggersRef.current = {}
+  }, [normalizedSymbol])
+
   const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
   const visibleMovingAverageNotifications = useMemo(
     () => movingAverageNotifications,
@@ -1916,11 +1931,16 @@ function App() {
     () => heatmapNotifications,
     [heatmapNotifications],
   )
+  const visibleSignalNotifications = useMemo(
+    () => signalNotifications,
+    [signalNotifications],
+  )
 
   const handleClearNotifications = useCallback(() => {
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setHeatmapNotifications([])
+    setSignalNotifications([])
   }, [])
 
   useEffect(() => {
@@ -2182,6 +2202,68 @@ function App() {
   ])
 
   useEffect(() => {
+    if (tradingSignals.length === 0) {
+      return
+    }
+
+    tradingSignals.forEach((signal) => {
+      if (signal.confluenceScore < SIGNAL_NOTIFICATION_MIN_SCORE) {
+        return
+      }
+
+      const signatureKey = signal.dedupeKey
+      const signature = `${signatureKey}-${signal.createdAt}`
+
+      if (lastSignalTriggersRef.current[signatureKey] === signature) {
+        return
+      }
+
+      lastSignalTriggersRef.current[signatureKey] = signature
+
+      const emoji = signal.side === 'Bullish' ? '🟢' : '🔴'
+      const title = `${emoji} Signal ${signal.symbol} ${signal.timeframeLabel}`
+      const reasonSummary = signal.reason[0] ?? 'Confluence threshold met'
+      const bodyParts = [
+        `Score ${signal.confluenceScore}`,
+        `Strength ${signal.strength}`,
+        reasonSummary,
+      ]
+      const body = bodyParts.filter(Boolean).join(' — ')
+
+      void showAppNotification({
+        title,
+        body,
+        tag: `signal-${signature}`,
+        data: {
+          type: 'signal',
+          symbol: signal.symbol,
+          timeframe: signal.tf,
+          side: signal.side,
+          score: signal.confluenceScore,
+        },
+      })
+
+      const entry: SignalNotification = {
+        id: signature,
+        symbol: signal.symbol,
+        timeframe: signal.tf,
+        timeframeLabel: signal.timeframeLabel,
+        side: signal.side,
+        strength: signal.strength,
+        confluenceScore: signal.confluenceScore,
+        price: signal.price,
+        reasons: signal.reason,
+        triggeredAt: signal.createdAt,
+      }
+
+      setSignalNotifications((previous) => {
+        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+        return next.slice(0, MAX_SIGNAL_NOTIFICATIONS)
+      })
+    })
+  }, [tradingSignals, lastSignalTriggersRef])
+
+  useEffect(() => {
     const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
@@ -2352,6 +2434,12 @@ function App() {
     setIsMarketSummaryCollapsed((previous) => !previous)
   }, [])
 
+  const dismissSignalNotification = useCallback((notificationId: string) => {
+    setSignalNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const dismissMomentumNotification = useCallback((notificationId: string) => {
     setMomentumNotifications((previous) =>
       previous.filter((notification) => notification.id !== notificationId),
@@ -2455,10 +2543,13 @@ function App() {
       atrMultiplier={atrMultiplierInput}
       onAtrMultiplierChange={setAtrMultiplierInput}
       momentumThresholds={momentumThresholds}
+      signals={tradingSignals}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       visibleHeatmapNotifications={visibleHeatmapNotifications}
+      visibleSignalNotifications={visibleSignalNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
+      onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}
       onDismissHeatmapNotification={dismissHeatmapNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}

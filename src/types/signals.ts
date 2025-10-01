@@ -1,0 +1,33 @@
+export type SignalDirection = 'Bullish' | 'Bearish'
+
+export type SignalStrength = 'Weak' | 'Medium' | 'Strong'
+
+export type TradingSignal = {
+  symbol: string
+  tf: string
+  timeframeLabel: string
+  side: SignalDirection
+  reason: string[]
+  confluenceScore: number
+  strength: SignalStrength
+  suggestedSL: number | null
+  suggestedTP: number | null
+  metadata: Record<string, unknown>
+  dedupeKey: string
+  createdAt: number
+  price: number | null
+  bias: 'BULL' | 'BEAR' | 'NEUTRAL'
+}
+
+export type SignalNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  side: SignalDirection
+  strength: SignalStrength
+  confluenceScore: number
+  price: number | null
+  reasons: string[]
+  triggeredAt: number
+}

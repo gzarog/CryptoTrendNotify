@@ -6,9 +6,11 @@ import type {
   MovingAverageMarker,
   HeatmapNotification,
 } from '../App'
+import type { SignalNotification, TradingSignal } from '../types/signals'
 import { LineChart } from './LineChart'
 import { RiskManagementPanel } from './RiskManagementPanel'
 import { RsiStochRsiHeatmap } from './RsiStochRsiHeatmap'
+import { SignalsPanel } from './SignalsPanel'
 import type { HeatmapResult } from '../types/heatmap'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
@@ -114,13 +116,16 @@ type DashboardViewProps = {
     longStochastic: number
     shortStochastic: number
   }
+  signals: TradingSignal[]
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
   visibleHeatmapNotifications: HeatmapNotification[]
+  visibleSignalNotifications: SignalNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   onDismissHeatmapNotification: (notificationId: string) => void
+  onDismissSignalNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -194,13 +199,16 @@ export function DashboardView({
   atrMultiplier,
   onAtrMultiplierChange,
   momentumThresholds,
+  signals,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
   visibleHeatmapNotifications,
+  visibleSignalNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   onDismissHeatmapNotification,
+  onDismissSignalNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -230,6 +238,11 @@ export function DashboardView({
   const allNotifications = useMemo(
     () =>
       [
+        ...visibleSignalNotifications.map((entry) => ({
+          type: 'signal' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
         ...visibleHeatmapNotifications.map((entry) => ({
           type: 'heatmap' as const,
           triggeredAt: entry.triggeredAt,
@@ -247,6 +260,7 @@ export function DashboardView({
         })),
       ].sort((a, b) => b.triggeredAt - a.triggeredAt),
     [
+      visibleSignalNotifications,
       visibleMomentumNotifications,
       visibleMovingAverageNotifications,
       visibleHeatmapNotifications,
@@ -254,6 +268,7 @@ export function DashboardView({
   )
 
   const totalNotificationCount =
+    visibleSignalNotifications.length +
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length +
     visibleHeatmapNotifications.length
@@ -347,11 +362,11 @@ export function DashboardView({
                             ? `${entry.alert.portfolio_check.portfolioOpenRiskPct.toFixed(2)}%`
                             : '—'
 
-                          return (
-                            <div
-                              key={`heatmap-${entry.id}`}
-                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                            >
+                      return (
+                        <div
+                          key={`heatmap-${entry.id}`}
+                          className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                        >
                               <div className="flex items-start justify-between gap-2">
                                 <span className="text-[11px] font-semibold uppercase tracking-wide">
                                   {emoji} Heatmap {entry.direction.toLowerCase()}
@@ -374,14 +389,55 @@ export function DashboardView({
                                 Portfolio open risk {portfolioRiskLabel}
                               </span>
                               <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
-                            </div>
-                          )
-                        }
+                          </div>
+                        )
+                      }
 
-                        if (notification.type === 'moving-average') {
-                          const entry = notification.payload
-                          const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
-                          const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
+                      if (notification.type === 'signal') {
+                        const entry = notification.payload
+                        const normalizedStrength = entry.strength.toLowerCase()
+                        const cardClasses = getHeatmapCardClass(normalizedStrength)
+                        const emoji = entry.side === 'Bullish' ? '🟢' : '🔴'
+                        const reasonSummary =
+                          entry.reasons.length > 0
+                            ? entry.reasons.slice(0, 2).join(' • ')
+                            : '—'
+
+                        return (
+                          <div
+                            key={`signal-${entry.id}`}
+                            className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                {emoji} {entry.side} signal
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onDismissSignalNotification(entry.id)}
+                                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                aria-label="Dismiss signal notification"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                            <span className="text-[11px] text-white/80">
+                              {entry.timeframeLabel} • Score {entry.confluenceScore} • Strength {entry.strength}
+                            </span>
+                            {entry.price != null && Number.isFinite(entry.price) && (
+                              <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
+                            )}
+                            <span className="text-[11px] text-white/80">Reasons: {reasonSummary}</span>
+                            <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                          </div>
+                        )
+                      }
+
+                      if (notification.type === 'moving-average') {
+                        const entry = notification.payload
+                        const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                        const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
                           const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
 
                           return (
@@ -768,6 +824,36 @@ export function DashboardView({
                   </div>
                   <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
                     <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Signal alerts
+                      </span>
+                      <button
+                        type="button"
+                        onClick={onClearNotifications}
+                        className="text-xs text-indigo-200 transition hover:text-white"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 text-xs text-slate-300">
+                      {visibleSignalNotifications.length === 0 ? (
+                        <p>No signal alerts.</p>
+                      ) : (
+                        visibleSignalNotifications.slice(0, 3).map((notification) => (
+                          <div key={notification.id} className="flex flex-col">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {notification.side} • {notification.timeframeLabel}
+                            </span>
+                            <span>
+                              {notification.symbol} — Score {notification.confluenceScore}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Momentum alerts</span>
                       <button
                         type="button"
@@ -926,6 +1012,7 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
+              <SignalsPanel signals={signals} isLoading={isFetching} />
               <RsiStochRsiHeatmap results={heatmapResults} />
             </>
           )}
