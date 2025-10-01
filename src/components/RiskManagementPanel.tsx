@@ -208,6 +208,31 @@ export function RiskManagementPanel({
                     ? result.risk.slShort - result.price
                     : null
 
+                const planMeta =
+                  result.signal === 'LONG'
+                    ? {
+                        label: 'Long plan',
+                        colorClasses:
+                          'border-emerald-400/30 bg-emerald-500/10 text-emerald-100',
+                        headerClasses: 'text-emerald-200',
+                        stop: result.risk.slLong,
+                        takeProfit1: result.risk.t1Long,
+                        takeProfit2: result.risk.t2Long,
+                        stopDistance: longStopDistance,
+                      }
+                    : result.signal === 'SHORT'
+                      ? {
+                          label: 'Short plan',
+                          colorClasses:
+                            'border-rose-400/30 bg-rose-500/10 text-rose-100',
+                          headerClasses: 'text-rose-200',
+                          stop: result.risk.slShort,
+                          takeProfit1: result.risk.t1Short,
+                          takeProfit2: result.risk.t2Short,
+                          stopDistance: shortStopDistance,
+                        }
+                      : null
+
                 return (
                   <article
                     key={`${result.entryTimeframe}-${result.symbol}`}
@@ -252,49 +277,40 @@ export function RiskManagementPanel({
                         </div>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
-                          <p className="text-[11px] uppercase tracking-wide text-emerald-200">Long plan</p>
-                          <dl className="mt-2 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <dt>SL</dt>
-                              <dd>{formatNumber(result.risk.slLong)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt>TP1</dt>
-                              <dd>{formatNumber(result.risk.t1Long)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt>TP2</dt>
-                              <dd>{formatNumber(result.risk.t2Long)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between text-xs text-emerald-200/80">
-                              <dt>Risk distance</dt>
-                              <dd>{formatNumber(longStopDistance)}</dd>
-                            </div>
-                          </dl>
-                        </div>
-                        <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
-                          <p className="text-[11px] uppercase tracking-wide text-rose-200">Short plan</p>
-                          <dl className="mt-2 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <dt>SL</dt>
-                              <dd>{formatNumber(result.risk.slShort)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt>TP1</dt>
-                              <dd>{formatNumber(result.risk.t1Short)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt>TP2</dt>
-                              <dd>{formatNumber(result.risk.t2Short)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between text-xs text-rose-200/80">
-                              <dt>Risk distance</dt>
-                              <dd>{formatNumber(shortStopDistance)}</dd>
-                            </div>
-                          </dl>
-                        </div>
+                      <div className="grid gap-3">
+                        {planMeta ? (
+                          <div
+                            className={`rounded-xl border p-3 text-sm ${planMeta.colorClasses}`}
+                          >
+                            <p
+                              className={`text-[11px] uppercase tracking-wide ${planMeta.headerClasses}`}
+                            >
+                              Suggested {planMeta.label}
+                            </p>
+                            <dl className="mt-2 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <dt>SL</dt>
+                                <dd>{formatNumber(planMeta.stop)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <dt>TP1</dt>
+                                <dd>{formatNumber(planMeta.takeProfit1)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <dt>TP2</dt>
+                                <dd>{formatNumber(planMeta.takeProfit2)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between text-xs opacity-80">
+                                <dt>Risk distance</dt>
+                                <dd>{formatNumber(planMeta.stopDistance)}</dd>
+                              </div>
+                            </dl>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400">
+                            No suggested plan for this timeframe.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </article>
