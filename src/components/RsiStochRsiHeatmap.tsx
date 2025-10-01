@@ -1,3 +1,5 @@
+import { useId, useState, type ReactNode } from 'react'
+
 import type { HeatmapResult } from '../types/heatmap'
 
 type RsiStochRsiHeatmapProps = {
@@ -105,6 +107,44 @@ function dedupe(values: string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) === index)
 }
 
+type CollapsibleSectionProps = {
+  title: string
+  defaultOpen?: boolean
+  children: ReactNode
+  contentClassName?: string
+}
+
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+  contentClassName = '',
+}: CollapsibleSectionProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+  const contentId = useId()
+
+  return (
+    <section className="flex flex-col gap-4">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left text-[13px] font-semibold uppercase tracking-wide text-slate-200 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+      >
+        <span>{title}</span>
+        <span aria-hidden className={`transition-transform ${isOpen ? 'rotate-90' : 'rotate-0'}`}>
+          ▶
+        </span>
+      </button>
+
+      <div id={contentId} className={`${isOpen ? 'grid' : 'hidden'} ${contentClassName}`}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
 export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
   return (
     <div className="flex w-full flex-col gap-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-300">
@@ -161,7 +201,11 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
                   </div>
                 </header>
 
-                <section className="grid gap-4 lg:grid-cols-2">
+                <CollapsibleSection
+                  title="RSI/StochRSI snapshot"
+                  defaultOpen
+                  contentClassName="gap-4 lg:grid-cols-2"
+                >
                   <div className="grid gap-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-white/5 bg-white/5 p-4">
@@ -258,9 +302,12 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
                       </p>
                     </div>
                   </div>
-                </section>
+                </CollapsibleSection>
 
-                <section className="grid gap-4 lg:grid-cols-2">
+                <CollapsibleSection
+                  title="Risk & gating diagnostics"
+                  contentClassName="gap-4 lg:grid-cols-2"
+                >
                   <div className="rounded-xl border border-white/5 bg-white/5 p-4">
                     <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
                       Risk ladder (ATR {formatNumber(result.risk.atr)})
@@ -319,7 +366,7 @@ export function RsiStochRsiHeatmap({ results }: RsiStochRsiHeatmapProps) {
                       </div>
                     </div>
                   </div>
-                </section>
+                </CollapsibleSection>
               </article>
             )
           })}
