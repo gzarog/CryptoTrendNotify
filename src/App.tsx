@@ -19,6 +19,7 @@ import {
   showAppNotification,
   type PushSubscriptionFilters,
 } from './lib/notifications'
+import { buildAtrRiskLevels, riskGradeFromSignal } from './lib/risk'
 
 export type Candle = {
   openTime: number
@@ -689,64 +690,6 @@ function computeRecentAverage(values: Array<number | null>, length: number): num
 
   const sum = collected.reduce((accumulator, entry) => accumulator + entry, 0)
   return sum / collected.length
-}
-
-function gradeStrength({
-  bullVotes,
-  bearVotes,
-  totalVotes,
-  ma200Slope,
-  direction,
-}: {
-  bullVotes: number
-  bearVotes: number
-  totalVotes: number
-  ma200Slope: number | null
-  direction: 'long' | 'short' | null
-}): 'weak' | 'standard' | 'strong' {
-  if (totalVotes <= 0) {
-    return 'weak'
-  }
-
-  const allBull = bullVotes === totalVotes
-  const allBear = bearVotes === totalVotes
-
-  if (direction === 'long' && allBull && (ma200Slope ?? 0) >= 0) {
-    return 'strong'
-  }
-
-  if (direction === 'short' && allBear && (ma200Slope ?? 0) <= 0) {
-    return 'strong'
-  }
-
-  if (bullVotes !== bearVotes) {
-    return 'standard'
-  }
-
-  return 'weak'
-}
-
-function buildRiskBlock(
-  price: number | null,
-  atr: number | null,
-  config: (typeof HEATMAP_CONFIGS)[HeatmapEntryTimeframe],
-) {
-  if (!Number.isFinite(price) || !Number.isFinite(atr)) {
-    return null
-  }
-
-  const slLong = price - config.atrMultSl * atr
-  const t1Long = price + config.atrMultTp1 * atr
-  const t2Long = price + config.atrMultTp2 * atr
-  const slShort = price + config.atrMultSl * atr
-  const t1Short = price - config.atrMultTp1 * atr
-  const t2Short = price - config.atrMultTp2 * atr
-
-  return {
-    atr,
-    long: { SL: slLong, T1: t1Long, T2: t2Long },
-    short: { SL: slShort, T1: t1Short, T2: t2Short },
-  }
 }
 
 function resolveBarLimit(selection: string, customValue: string): number | null {
@@ -1712,15 +1655,24 @@ function App() {
       }
 
       const direction = longSignal ? 'long' : shortSignal ? 'short' : null
-      const strength = gradeStrength({
-        bullVotes,
-        bearVotes,
-        totalVotes,
-        ma200Slope,
-        direction,
+      const maSlopeOk =
+        direction === 'long'
+          ? (ma200Slope ?? 0) >= 0
+          : direction === 'short'
+          ? (ma200Slope ?? 0) <= 0
+          : true
+      const strength = riskGradeFromSignal({
+        votes: { bull: bullVotes, bear: bearVotes, total: totalVotes },
+        maSlopeOk,
       })
 
-      const riskBlock = buildRiskBlock(price, latestAtr, config)
+      const priceValue =
+        typeof price === 'number' && Number.isFinite(price) ? price : NaN
+      const atrValue =
+        typeof latestAtr === 'number' && Number.isFinite(latestAtr)
+          ? latestAtr
+          : NaN
+      const riskBlock = buildAtrRiskLevels(priceValue, atrValue, config)
 
       const signal: 'LONG' | 'SHORT' | 'NONE' = longSignal
         ? 'LONG'

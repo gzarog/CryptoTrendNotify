@@ -6,6 +6,7 @@ import {
   calculateStochasticRSI,
 } from './indicators.js'
 import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
+import { buildAtrRiskLevels, riskGradeFromSignal } from '../core/risk.js'
 
 function normalizeSymbol(value) {
   if (typeof value !== 'string') {
@@ -456,51 +457,6 @@ export function startMarketWatch({ store }) {
     return sum / collected.length
   }
 
-  function gradeStrength({ bullVotes, bearVotes, totalVotes, ma200Slope, direction }) {
-    if (totalVotes <= 0) {
-      return 'weak'
-    }
-
-    const allBull = bullVotes === totalVotes
-    const allBear = bearVotes === totalVotes
-
-    if (direction === 'long' && allBull && ma200Slope >= 0) {
-      return 'strong'
-    }
-
-    if (direction === 'short' && allBear && ma200Slope <= 0) {
-      return 'strong'
-    }
-
-    if (bullVotes !== bearVotes) {
-      return 'standard'
-    }
-
-    return 'weak'
-  }
-
-  function buildRiskBlock(price, atr, config) {
-    if (!Number.isFinite(price) || !Number.isFinite(atr)) {
-      return null
-    }
-
-    const slLong = price - config.atrMultSl * atr
-    const t1Long = price + config.atrMultTp1 * atr
-    const t2Long = price + config.atrMultTp2 * atr
-    const slShort = price + config.atrMultSl * atr
-    const t1Short = price - config.atrMultTp1 * atr
-    const t2Short = price - config.atrMultTp2 * atr
-
-    return {
-      atr,
-      mSL: config.atrMultSl,
-      mTP: [config.atrMultTp1, config.atrMultTp2],
-      risk$: null,
-      long: { SL: slLong, T1: t1Long, T2: t2Long },
-      short: { SL: slShort, T1: t1Short, T2: t2Short },
-    }
-  }
-
   function collectSymbols() {
     const seen = new Set()
     const ordered = []
@@ -786,14 +742,28 @@ export function startMarketWatch({ store }) {
         ? 'cross_up_from_oversold'
         : 'cross_down_from_overbought'
 
-      const riskBlock = buildRiskBlock(price, latestAtr, config)
-      const strength = gradeStrength({
-        bullVotes: htfVotes.bull,
-        bearVotes: htfVotes.bear,
-        totalVotes: htfVotes.total,
-        ma200Slope,
-        direction,
+      const maSlopeOk =
+        direction === 'long'
+          ? (ma200Slope ?? 0) >= 0
+          : direction === 'short'
+          ? (ma200Slope ?? 0) <= 0
+          : true
+      const strength = riskGradeFromSignal({
+        votes: {
+          bull: htfVotes.bull,
+          bear: htfVotes.bear,
+          total: htfVotes.total,
+        },
+        maSlopeOk,
       })
+
+      const priceValue =
+        typeof price === 'number' && Number.isFinite(price) ? price : NaN
+      const atrValue =
+        typeof latestAtr === 'number' && Number.isFinite(latestAtr)
+          ? latestAtr
+          : NaN
+      const riskBlock = buildAtrRiskLevels(priceValue, atrValue, config)
 
       const votesPayload = {
         bull: htfVotes.bull,
