@@ -38,7 +38,6 @@ type DashboardViewProps = {
   onDismissOfflineReadyBanner: () => void
   symbol: string
   onSymbolChange: Dispatch<SetStateAction<string>>
-  cryptoOptions: string[]
   timeframe: string
   timeframeOptions: Array<{ value: string; label: string }>
   onTimeframeChange: Dispatch<SetStateAction<string>>
@@ -115,7 +114,6 @@ export function DashboardView({
   onDismissOfflineReadyBanner,
   symbol,
   onSymbolChange,
-  cryptoOptions,
   timeframe,
   timeframeOptions,
   onTimeframeChange,
@@ -465,18 +463,16 @@ export function DashboardView({
                 <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Crypto
                 </label>
-                <select
+                <input
                   id="symbol"
+                  type="text"
                   value={symbol}
-                  onChange={(event) => onSymbolChange(event.target.value)}
-                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                >
-                  {cryptoOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(event) =>
+                    onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
+                  }
+                  placeholder="e.g. BTCUSDT"
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium uppercase tracking-wide text-white shadow focus:border-indigo-400 focus:outline-none"
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
