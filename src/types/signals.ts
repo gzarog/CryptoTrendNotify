@@ -17,6 +17,21 @@ export type CombinedSignal = {
   breakdown: CombinedSignalBreakdown
 }
 
+export type MultiTimeframeSignalContribution = {
+  timeframe: string
+  timeframeLabel: string
+  weight: number
+  signal: CombinedSignal
+  bias: number
+}
+
+export type MultiTimeframeSignal = {
+  direction: CombinedSignalDirection
+  bias: number
+  strength: number
+  contributions: MultiTimeframeSignalContribution[]
+}
+
 export type CombinedSignalNotification = {
   id: string
   symbol: string

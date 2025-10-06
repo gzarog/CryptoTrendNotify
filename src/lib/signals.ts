@@ -2,6 +2,8 @@ import type { HeatmapResult } from '../types/heatmap'
 import type {
   CombinedSignal,
   CombinedSignalDirection,
+  MultiTimeframeSignal,
+  MultiTimeframeSignalContribution,
   SignalDirection,
   SignalStrength,
   TimeframeSignalSnapshot,
@@ -14,6 +16,19 @@ const STOCH_LOW = 20
 const STOCH_HIGH = 80
 
 const MAX_SCORE = 100
+
+const MULTI_TIMEFRAME_WEIGHTS: Record<string, number> = {
+  '5': 1,
+  '15': 1.5,
+  '30': 2,
+  '60': 3,
+  '120': 4,
+  '240': 5,
+  '360': 6,
+  '420': 7,
+}
+
+const DEFAULT_MULTI_TIMEFRAME_WEIGHT = 1
 
 type MacdSnapshot = {
   hist: number | null | undefined
@@ -106,6 +121,81 @@ export function deriveTimeframeSnapshots(
   results: HeatmapResult[],
 ): TimeframeSignalSnapshot[] {
   return results.map((result) => mapHeatmapResultToSnapshot(result))
+}
+
+export function getMultiTimeframeSignal(
+  snapshots: TimeframeSignalSnapshot[],
+): MultiTimeframeSignal | null {
+  if (snapshots.length === 0) {
+    return null
+  }
+
+  const contributions: MultiTimeframeSignalContribution[] = []
+
+  let weightedScore = 0
+  let totalWeight = 0
+
+  snapshots.forEach((snapshot) => {
+    const weight = resolveTimeframeWeight(snapshot.timeframe)
+    if (weight <= 0) {
+      return
+    }
+
+    const signal = snapshot.combined
+    const directionSign = signal.direction === 'Bullish' ? 1 : signal.direction === 'Bearish' ? -1 : 0
+    const bias = directionSign * signal.strength
+
+    contributions.push({
+      timeframe: snapshot.timeframe,
+      timeframeLabel: snapshot.timeframeLabel,
+      weight,
+      signal,
+      bias,
+    })
+
+    weightedScore += bias * weight
+    totalWeight += weight
+  })
+
+  if (totalWeight === 0) {
+    return {
+      direction: 'Neutral',
+      bias: 0,
+      strength: 0,
+      contributions,
+    }
+  }
+
+  const rawBias = weightedScore / totalWeight
+  let normalizedBias = Math.round(rawBias * 10) / 10
+  if (Object.is(normalizedBias, -0)) {
+    normalizedBias = 0
+  }
+
+  let globalDirection: CombinedSignalDirection = 'Neutral'
+  if (normalizedBias > 0) {
+    globalDirection = 'Bullish'
+  } else if (normalizedBias < 0) {
+    globalDirection = 'Bearish'
+  }
+
+  const strength = Math.min(Math.max(Math.abs(normalizedBias), 0), 100)
+
+  const sortedContributions = contributions
+    .slice()
+    .sort((a, b) => {
+      if (a.weight === b.weight) {
+        return a.timeframe.localeCompare(b.timeframe)
+      }
+      return a.weight - b.weight
+    })
+
+  return {
+    direction: globalDirection,
+    bias: normalizedBias,
+    strength,
+    contributions: sortedContributions,
+  }
 }
 
 function mapHeatmapResultToSnapshot(
@@ -402,4 +492,18 @@ function clamp01(value: number): number {
     return 1
   }
   return value
+}
+
+function resolveTimeframeWeight(timeframe: string): number {
+  const direct = MULTI_TIMEFRAME_WEIGHTS[timeframe]
+  if (typeof direct === 'number' && Number.isFinite(direct)) {
+    return direct
+  }
+
+  const numeric = Number(timeframe)
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return MULTI_TIMEFRAME_WEIGHTS[String(numeric)] ?? DEFAULT_MULTI_TIMEFRAME_WEIGHT
+  }
+
+  return DEFAULT_MULTI_TIMEFRAME_WEIGHT
 }
