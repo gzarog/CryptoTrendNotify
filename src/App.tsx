@@ -1778,7 +1778,6 @@ function App() {
       onRiskBudgetPercentChange={setRiskBudgetPercentInput}
       atrMultiplier={atrMultiplierInput}
       onAtrMultiplierChange={setAtrMultiplierInput}
-      momentumThresholds={momentumThresholds}
       signals={tradingSignals}
       timeframeSnapshots={timeframeSnapshots}
       visibleMomentumNotifications={visibleMomentumNotifications}

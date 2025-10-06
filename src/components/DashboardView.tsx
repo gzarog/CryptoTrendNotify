@@ -113,12 +113,6 @@ type DashboardViewProps = {
   onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
   atrMultiplier: string
   onAtrMultiplierChange: Dispatch<SetStateAction<string>>
-  momentumThresholds: {
-    longRsi: number
-    shortRsi: number
-    longStochastic: number
-    shortStochastic: number
-  }
   signals: TradingSignal[]
   timeframeSnapshots: TimeframeSignalSnapshot[]
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
@@ -210,7 +204,6 @@ export function DashboardView({
   onRiskBudgetPercentChange,
   atrMultiplier,
   onAtrMultiplierChange,
-  momentumThresholds,
   signals,
   timeframeSnapshots,
   visibleMovingAverageNotifications,
@@ -244,9 +237,6 @@ export function DashboardView({
   stochasticSeries,
   stochasticGuideLines,
 }: DashboardViewProps) {
-  const formatThreshold = (value: number) =>
-    Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
-
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isRiskPanelCollapsed, setIsRiskPanelCollapsed] = useState(false)
@@ -883,160 +873,9 @@ export function DashboardView({
                     />
                   </div>
                 </div>
-                <div className="grid gap-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">RSI thresholds</span>
-                      <span className="text-sm text-slate-300">
-                        Long ≤ {formatThreshold(momentumThresholds.longRsi)} · Short ≥ {formatThreshold(momentumThresholds.shortRsi)}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">Stoch RSI thresholds</span>
-                      <span className="text-sm text-slate-300">
-                        Long ≤ {formatThreshold(momentumThresholds.longStochastic)} · Short ≥ {formatThreshold(momentumThresholds.shortStochastic)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Signal alerts
-                      </span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleSignalNotifications.length === 0 ? (
-                        <p>No signal alerts.</p>
-                      ) : (
-                        visibleSignalNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.side} • {notification.timeframeLabel}
-                            </span>
-                            <span>
-                              {notification.symbol} — Score {notification.confluenceScore}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Combined signal alerts
-                      </span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleCombinedSignalNotifications.length === 0 &&
-                      visibleMultiTimeframeSignalNotifications.length === 0 ? (
-                        <p>No combined signal alerts.</p>
-                      ) : (
-                        <>
-                          {visibleMultiTimeframeSignalNotifications.slice(0, 3).map((notification) => {
-                            const normalizedBiasValue = Object.is(notification.bias, -0)
-                              ? 0
-                              : notification.bias
-                            const biasLabelRaw = normalizedBiasValue.toFixed(1).replace(/\.0$/, '')
-                            const biasLabel =
-                              normalizedBiasValue > 0 ? `+${biasLabelRaw}` : biasLabelRaw
-
-                            return (
-                              <div key={notification.id} className="flex flex-col">
-                                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                                  Multi-timeframe • {notification.direction}
-                                </span>
-                                <span>
-                                  Bias {biasLabel} • Strength {notification.strength}% • Timeframes
-                                  {' '}
-                                  {notification.contributions.length}
-                                </span>
-                              </div>
-                            )
-                          })}
-                          {visibleCombinedSignalNotifications.slice(0, 3).map((notification) => (
-                            <div key={notification.id} className="flex flex-col">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                                {notification.timeframeLabel} • {notification.direction}
-                              </span>
-                              <span>
-                                Strength {notification.strength}% • Bias {notification.bias.toLowerCase()}
-                              </span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Momentum alerts</span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleMomentumNotifications.length === 0 ? (
-                        <p>No recent momentum alerts.</p>
-                      ) : (
-                        visibleMomentumNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.label}
-                            </span>
-                            <span>{notification.symbol}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Moving average alerts</span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleMovingAverageNotifications.length === 0 ? (
-                        <p>No moving average alerts.</p>
-                      ) : (
-                        visibleMovingAverageNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.direction === 'golden' ? 'Golden cross' : 'Death cross'}
-                            </span>
-                            <span>{notification.symbol}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
               </>
             )}
+
           </section>
           {!isSidebarCollapsed && !isLoading && !isError && (
             <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
