@@ -45,6 +45,16 @@ export type CombinedSignalNotification = {
   triggeredAt: number
 }
 
+export type MultiTimeframeSignalNotification = {
+  id: string
+  symbol: string
+  direction: CombinedSignalDirection
+  bias: number
+  strength: number
+  contributions: MultiTimeframeSignalContribution[]
+  triggeredAt: number
+}
+
 export type TradingSignal = {
   symbol: string
   tf: string
