@@ -19,7 +19,12 @@ import {
   showAppNotification,
   type PushSubscriptionFilters,
 } from './lib/notifications'
-import type { SignalNotification, TimeframeSignalSnapshot, TradingSignal } from './types/signals'
+import type {
+  CombinedSignalNotification,
+  SignalNotification,
+  TimeframeSignalSnapshot,
+  TradingSignal,
+} from './types/signals'
 
 export type Candle = {
   openTime: number
@@ -235,6 +240,8 @@ const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 const MAX_SIGNAL_NOTIFICATIONS = 6
+const MAX_COMBINED_SIGNAL_NOTIFICATIONS = 6
+const MIN_COMBINED_SIGNAL_SCORE = 2
 const SIGNAL_NOTIFICATION_MIN_SCORE = 60
 
 const DEFAULT_MOMENTUM_BOUNDS = {
@@ -533,10 +540,13 @@ function App() {
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const lastSignalTriggersRef = useRef<Record<string, string>>({})
+  const lastCombinedSignalTriggersRef = useRef<Record<string, string>>({})
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [movingAverageNotifications, setMovingAverageNotifications] =
     useState<MovingAverageCrossNotification[]>([])
   const [signalNotifications, setSignalNotifications] = useState<SignalNotification[]>([])
+  const [combinedSignalNotifications, setCombinedSignalNotifications] =
+    useState<CombinedSignalNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
@@ -854,14 +864,17 @@ function App() {
   useEffect(() => {
     lastMomentumTriggerRef.current = null
     lastMovingAverageTriggersRef.current = {}
+    lastCombinedSignalTriggersRef.current = {}
     setMomentumNotifications([])
     setMovingAverageNotifications([])
+    setCombinedSignalNotifications([])
   }, [normalizedSymbol])
 
   useEffect(() => {
     if (!pushNotificationsEnabled) {
       lastMomentumTriggerRef.current = null
       lastMovingAverageTriggersRef.current = {}
+      lastCombinedSignalTriggersRef.current = {}
     }
   }, [pushNotificationsEnabled])
 
@@ -1118,11 +1131,16 @@ function App() {
     () => signalNotifications,
     [signalNotifications],
   )
+  const visibleCombinedSignalNotifications = useMemo(
+    () => combinedSignalNotifications,
+    [combinedSignalNotifications],
+  )
 
   const handleClearNotifications = useCallback(() => {
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setSignalNotifications([])
+    setCombinedSignalNotifications([])
   }, [])
 
   useEffect(() => {
@@ -1295,6 +1313,82 @@ function App() {
       })
     })
   }, [tradingSignals, lastSignalTriggersRef])
+
+  useEffect(() => {
+    if (timeframeSnapshots.length === 0) {
+      return
+    }
+
+    timeframeSnapshots.forEach((snapshot) => {
+      const signatureKey = `${normalizedSymbol}-${snapshot.timeframe}`
+      const { direction, breakdown, strength } = snapshot.combined
+      const signature = `${signatureKey}-${direction}-${breakdown.combinedScore}`
+
+      if (lastCombinedSignalTriggersRef.current[signatureKey] === signature) {
+        return
+      }
+
+      lastCombinedSignalTriggersRef.current[signatureKey] = signature
+
+      if (direction === 'Neutral' || Math.abs(breakdown.combinedScore) < MIN_COMBINED_SIGNAL_SCORE) {
+        return
+      }
+
+      const normalizedStrength = Math.round(Math.min(Math.max(strength ?? 0, 0), 100))
+      const formatBiasValue = (value: number) => (value > 0 ? `+${value}` : value.toString())
+      const triggeredAt = Date.now()
+      const entry: CombinedSignalNotification = {
+        id: signature,
+        symbol: normalizedSymbol,
+        timeframe: snapshot.timeframe,
+        timeframeLabel: snapshot.timeframeLabel,
+        direction,
+        strength: normalizedStrength,
+        breakdown,
+        price: snapshot.price ?? null,
+        bias: snapshot.bias,
+        triggeredAt,
+      }
+
+      setCombinedSignalNotifications((previous) => {
+        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
+        return next.slice(0, MAX_COMBINED_SIGNAL_NOTIFICATIONS)
+      })
+
+      const emoji = direction === 'Bullish' ? '🟢' : '🔴'
+      const biasSummary = [
+        `Trend ${formatBiasValue(breakdown.trendBias)}`,
+        `Momentum ${formatBiasValue(breakdown.momentumBias)}`,
+        `Confirm ${formatBiasValue(breakdown.confirmation)}`,
+        `Total ${formatBiasValue(breakdown.combinedScore)}`,
+      ].join(' • ')
+      const bodyParts = [
+        biasSummary,
+        `Strength ${normalizedStrength}%`,
+      ]
+
+      if (snapshot.price != null && Number.isFinite(snapshot.price)) {
+        bodyParts.push(`Price ${snapshot.price.toFixed(5)}`)
+      }
+
+      void showAppNotification({
+        title: `${emoji} ${snapshot.timeframeLabel} combined ${direction.toLowerCase()} bias`,
+        body: bodyParts.join(' — '),
+        tag: `combined-${signature}`,
+        data: {
+          type: 'combined-signal',
+          symbol: normalizedSymbol,
+          timeframe: snapshot.timeframe,
+          direction,
+          strength: normalizedStrength,
+        },
+      })
+    })
+  }, [
+    timeframeSnapshots,
+    normalizedSymbol,
+    lastCombinedSignalTriggersRef,
+  ])
 
   useEffect(() => {
     const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
@@ -1485,6 +1579,12 @@ function App() {
     )
   }, [])
 
+  const dismissCombinedSignalNotification = useCallback((notificationId: string) => {
+    setCombinedSignalNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
 
   const handleInstall = async () => {
@@ -1575,10 +1675,12 @@ function App() {
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       visibleSignalNotifications={visibleSignalNotifications}
+      visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}
+      onDismissCombinedSignalNotification={dismissCombinedSignalNotification}
       onClearNotifications={handleClearNotifications}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}

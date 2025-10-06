@@ -17,6 +17,19 @@ export type CombinedSignal = {
   breakdown: CombinedSignalBreakdown
 }
 
+export type CombinedSignalNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  direction: CombinedSignalDirection
+  strength: number
+  breakdown: CombinedSignalBreakdown
+  price: number | null
+  bias: 'BULL' | 'BEAR' | 'NEUTRAL'
+  triggeredAt: number
+}
+
 export type TradingSignal = {
   symbol: string
   tf: string
