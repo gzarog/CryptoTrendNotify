@@ -19,6 +19,12 @@ const COMBINED_STRENGTH_GRADIENT: Record<string, string> = {
   neutral: 'from-slate-500 to-slate-400',
 }
 
+const BIAS_STATUS_CLASS: Record<string, string> = {
+  bullish: 'border-emerald-400/40 bg-emerald-500/5 text-emerald-200',
+  bearish: 'border-rose-400/40 bg-rose-500/5 text-rose-200',
+  neutral: 'border-slate-400/30 bg-slate-700/20 text-slate-200',
+}
+
 type SignalsPanelProps = {
   signals: TradingSignal[]
   snapshots: TimeframeSignalSnapshot[]
@@ -138,6 +144,23 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                   snapshot.combined.breakdown
                 const formatBiasValue = (value: number) =>
                   value > 0 ? `+${value}` : value.toString()
+                const resolveBiasDirection = (value: number) => {
+                  if (value > 0) {
+                    return 'Bullish'
+                  }
+
+                  if (value < 0) {
+                    return 'Bearish'
+                  }
+
+                  return 'Neutral'
+                }
+                const biasStatuses = [
+                  { label: 'Trend', value: trendBias },
+                  { label: 'Momentum', value: momentumBias },
+                  { label: 'Confirmation', value: confirmation },
+                  { label: 'Total', value: combinedScore },
+                ]
 
                 return (
                   <article
@@ -186,21 +209,34 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                     </div>
                     <div className="flex flex-col gap-2 text-xs text-slate-300">
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                        Bias breakdown
+                        Current bias status
                       </span>
-                      <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
-                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
-                          Trend {formatBiasValue(trendBias)}
-                        </span>
-                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
-                          Momentum {formatBiasValue(momentumBias)}
-                        </span>
-                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
-                          Confirmation {formatBiasValue(confirmation)}
-                        </span>
-                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
-                          Total {formatBiasValue(combinedScore)}
-                        </span>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-4">
+                        {biasStatuses.map(({ label, value }) => {
+                          const direction = resolveBiasDirection(value)
+                          const directionKey = direction.toLowerCase()
+                          const badgeClass =
+                            BIAS_STATUS_CLASS[directionKey] ?? BIAS_STATUS_CLASS.neutral
+
+                          return (
+                            <div
+                              key={`${snapshot.timeframe}-${label}`}
+                              className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left ${badgeClass}`}
+                            >
+                              <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">
+                                {label}
+                              </span>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wide">
+                                  {direction.toLowerCase()}
+                                </span>
+                                <span className="font-mono text-[11px]">
+                                  {formatBiasValue(value)}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-slate-300">
