@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { getMultiTimeframeSignal } from '../lib/signals'
 import type { TimeframeSignalSnapshot, TradingSignal } from '../types/signals'
 
 const STRENGTH_BADGE_CLASS: Record<string, string> = {
@@ -25,6 +26,41 @@ const BIAS_STATUS_CLASS: Record<string, string> = {
   neutral: 'border-slate-400/30 bg-slate-700/20 text-slate-200',
 }
 
+const formatSignedValue = (value: number, decimalPlaces = 0): string => {
+  if (!Number.isFinite(value)) {
+    return '0'
+  }
+
+  const factor = 10 ** decimalPlaces
+  let normalized = decimalPlaces > 0 ? Math.round(value * factor) / factor : Math.round(value)
+
+  if (Object.is(normalized, -0)) {
+    normalized = 0
+  }
+
+  const formatted = decimalPlaces > 0
+    ? normalized.toFixed(decimalPlaces).replace(/\.0+$/, '')
+    : normalized.toString()
+
+  if (normalized > 0) {
+    return `+${formatted}`
+  }
+
+  return formatted
+}
+
+const resolveBiasDirection = (value: number) => {
+  if (value > 0) {
+    return 'Bullish'
+  }
+
+  if (value < 0) {
+    return 'Bearish'
+  }
+
+  return 'Neutral'
+}
+
 type SignalsPanelProps = {
   signals: TradingSignal[]
   snapshots: TimeframeSignalSnapshot[]
@@ -38,6 +74,8 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
     () => signals.slice().sort((a, b) => b.confluenceScore - a.confluenceScore),
     [signals],
   )
+
+  const multiTimeframeSignal = useMemo(() => getMultiTimeframeSignal(snapshots), [snapshots])
 
   const normalizedSnapshots = useMemo(() => {
     const UNIT_MULTIPLIERS: Record<string, number> = {
@@ -117,6 +155,94 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
       </header>
       {!isCollapsed && (
         <div className="flex flex-col gap-4 px-6 py-5">
+          {multiTimeframeSignal && (
+            <article className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Multi-timeframe bias
+                </span>
+                {(() => {
+                  const directionKey = multiTimeframeSignal.direction.toLowerCase()
+                  const badgeClass =
+                    DIRECTION_BADGE_CLASS[directionKey] ?? DIRECTION_BADGE_CLASS.neutral
+
+                  return (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${badgeClass}`}
+                    >
+                      {multiTimeframeSignal.direction.toLowerCase()}
+                    </span>
+                  )
+                })()}
+              </div>
+              {(() => {
+                const directionKey = multiTimeframeSignal.direction.toLowerCase()
+                const gradient =
+                  COMBINED_STRENGTH_GRADIENT[directionKey] ?? COMBINED_STRENGTH_GRADIENT.neutral
+                const strengthValue = Math.round(
+                  Math.min(Math.max(multiTimeframeSignal.strength, 0), 100),
+                )
+
+                return (
+                  <div className="flex items-center gap-2">
+                    <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className={`absolute inset-y-0 left-0 bg-gradient-to-r ${gradient}`}
+                        style={{ width: `${strengthValue}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-200">
+                      {strengthValue}%
+                    </span>
+                  </div>
+                )
+              })()}
+              <div className="flex flex-wrap gap-3 text-[11px] uppercase tracking-wide text-slate-400">
+                <span>Bias {formatSignedValue(multiTimeframeSignal.bias, 1)}</span>
+                <span>Timeframes {multiTimeframeSignal.contributions.length}</span>
+              </div>
+              {multiTimeframeSignal.contributions.length > 0 && (
+                <div className="flex flex-col gap-2 text-xs text-slate-300">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Timeframe contributions
+                  </span>
+                  <div className="grid gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-2 xl:grid-cols-3">
+                    {multiTimeframeSignal.contributions.map((entry) => {
+                      const directionKey = entry.signal.direction.toLowerCase()
+                      const badgeClass =
+                        DIRECTION_BADGE_CLASS[directionKey] ?? DIRECTION_BADGE_CLASS.neutral
+                      const formattedWeight = Number.isInteger(entry.weight)
+                        ? entry.weight.toString()
+                        : entry.weight.toFixed(1).replace(/\.0+$/, '')
+
+                      return (
+                        <div
+                          key={`multi-${entry.timeframe}`}
+                          className={`flex flex-col gap-1 rounded-xl border px-3 py-2 ${badgeClass}`}
+                        >
+                          <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
+                            <span>{entry.timeframeLabel}</span>
+                            <span>{Math.round(entry.signal.strength)}%</span>
+                          </div>
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="font-semibold uppercase tracking-wide">
+                              {entry.signal.direction.toLowerCase()}
+                            </span>
+                            <span className="font-mono text-[11px]">
+                              {formatSignedValue(entry.bias)}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-200/80">
+                            Weight ×{formattedWeight}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </article>
+          )}
           {normalizedSnapshots.length > 0 && (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {normalizedSnapshots.map((snapshot) => {
@@ -142,19 +268,6 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                   COMBINED_STRENGTH_GRADIENT.neutral
                 const { trendBias, momentumBias, confirmation, combinedScore } =
                   snapshot.combined.breakdown
-                const formatBiasValue = (value: number) =>
-                  value > 0 ? `+${value}` : value.toString()
-                const resolveBiasDirection = (value: number) => {
-                  if (value > 0) {
-                    return 'Bullish'
-                  }
-
-                  if (value < 0) {
-                    return 'Bearish'
-                  }
-
-                  return 'Neutral'
-                }
                 const biasStatuses = [
                   { label: 'Trend', value: trendBias },
                   { label: 'Momentum', value: momentumBias },
@@ -231,7 +344,7 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                                   {direction.toLowerCase()}
                                 </span>
                                 <span className="font-mono text-[11px]">
-                                  {formatBiasValue(value)}
+                                  {formatSignedValue(value)}
                                 </span>
                               </div>
                             </div>

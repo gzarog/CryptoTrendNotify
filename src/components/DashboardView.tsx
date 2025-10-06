@@ -7,6 +7,7 @@ import type {
 } from '../App'
 import type {
   CombinedSignalNotification,
+  MultiTimeframeSignalNotification,
   SignalNotification,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -112,23 +113,19 @@ type DashboardViewProps = {
   onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
   atrMultiplier: string
   onAtrMultiplierChange: Dispatch<SetStateAction<string>>
-  momentumThresholds: {
-    longRsi: number
-    shortRsi: number
-    longStochastic: number
-    shortStochastic: number
-  }
   signals: TradingSignal[]
   timeframeSnapshots: TimeframeSignalSnapshot[]
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
   visibleSignalNotifications: SignalNotification[]
   visibleCombinedSignalNotifications: CombinedSignalNotification[]
+  visibleMultiTimeframeSignalNotifications: MultiTimeframeSignalNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   onDismissSignalNotification: (notificationId: string) => void
   onDismissCombinedSignalNotification: (notificationId: string) => void
+  onDismissMultiTimeframeSignalNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -207,18 +204,19 @@ export function DashboardView({
   onRiskBudgetPercentChange,
   atrMultiplier,
   onAtrMultiplierChange,
-  momentumThresholds,
   signals,
   timeframeSnapshots,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
   visibleSignalNotifications,
   visibleCombinedSignalNotifications,
+  visibleMultiTimeframeSignalNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   onDismissSignalNotification,
   onDismissCombinedSignalNotification,
+  onDismissMultiTimeframeSignalNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -239,9 +237,6 @@ export function DashboardView({
   stochasticSeries,
   stochasticGuideLines,
 }: DashboardViewProps) {
-  const formatThreshold = (value: number) =>
-    Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)
-
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isRiskPanelCollapsed, setIsRiskPanelCollapsed] = useState(false)
@@ -251,6 +246,11 @@ export function DashboardView({
       [
         ...visibleSignalNotifications.map((entry) => ({
           type: 'signal' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
+        ...visibleMultiTimeframeSignalNotifications.map((entry) => ({
+          type: 'multi-timeframe' as const,
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
@@ -272,6 +272,7 @@ export function DashboardView({
       ].sort((a, b) => b.triggeredAt - a.triggeredAt),
     [
       visibleSignalNotifications,
+      visibleMultiTimeframeSignalNotifications,
       visibleMomentumNotifications,
       visibleMovingAverageNotifications,
       visibleCombinedSignalNotifications,
@@ -280,6 +281,7 @@ export function DashboardView({
 
   const totalNotificationCount =
     visibleSignalNotifications.length +
+    visibleMultiTimeframeSignalNotifications.length +
     visibleCombinedSignalNotifications.length +
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length
@@ -439,6 +441,59 @@ export function DashboardView({
                               <span className="text-[11px] text-white/80">{breakdownSummary}</span>
                               {entry.price != null && Number.isFinite(entry.price) && (
                                 <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
+                              )}
+                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                            </div>
+                          )
+                        }
+
+                        if (notification.type === 'multi-timeframe') {
+                          const entry = notification.payload
+                          const directionKey = entry.direction.toLowerCase()
+                          const cardClasses =
+                            COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
+                            COMBINED_DIRECTION_CARD_CLASSES.neutral
+                          const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
+                          const normalizedBiasValue = Object.is(entry.bias, -0) ? 0 : entry.bias
+                          const biasLabelRaw = normalizedBiasValue.toFixed(1).replace(/\.0$/, '')
+                          const biasLabel =
+                            normalizedBiasValue > 0 ? `+${biasLabelRaw}` : biasLabelRaw
+                          const contributionsSummary = entry.contributions
+                            .map((contribution) => {
+                              const contributionEmoji =
+                                contribution.signal.direction === 'Bullish'
+                                  ? '🟢'
+                                  : contribution.signal.direction === 'Bearish'
+                                  ? '🔴'
+                                  : '⚪️'
+                              return `${contributionEmoji} ${contribution.timeframeLabel} ${Math.round(contribution.signal.strength)}%`
+                            })
+                            .join(' • ')
+
+                          return (
+                            <div
+                              key={`multi-${entry.id}`}
+                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                  {emoji} Multi-timeframe {entry.direction.toLowerCase()} bias
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissMultiTimeframeSignalNotification(entry.id)}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                  aria-label="Dismiss multi-timeframe notification"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                              <span className="text-[11px] text-white/80">
+                                Bias {biasLabel} • Strength {entry.strength}% • Timeframes {entry.contributions.length}
+                              </span>
+                              {contributionsSummary && (
+                                <span className="text-[11px] text-white/80">{contributionsSummary}</span>
                               )}
                               <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
                             </div>
@@ -818,136 +873,9 @@ export function DashboardView({
                     />
                   </div>
                 </div>
-                <div className="grid gap-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">RSI thresholds</span>
-                      <span className="text-sm text-slate-300">
-                        Long ≤ {formatThreshold(momentumThresholds.longRsi)} · Short ≥ {formatThreshold(momentumThresholds.shortRsi)}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-wider text-slate-400">Stoch RSI thresholds</span>
-                      <span className="text-sm text-slate-300">
-                        Long ≤ {formatThreshold(momentumThresholds.longStochastic)} · Short ≥ {formatThreshold(momentumThresholds.shortStochastic)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Signal alerts
-                      </span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleSignalNotifications.length === 0 ? (
-                        <p>No signal alerts.</p>
-                      ) : (
-                        visibleSignalNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.side} • {notification.timeframeLabel}
-                            </span>
-                            <span>
-                              {notification.symbol} — Score {notification.confluenceScore}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Combined signal alerts
-                      </span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleCombinedSignalNotifications.length === 0 ? (
-                        <p>No combined signal alerts.</p>
-                      ) : (
-                        visibleCombinedSignalNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.timeframeLabel} • {notification.direction}
-                            </span>
-                            <span>
-                              Strength {notification.strength}% • Bias {notification.bias.toLowerCase()}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Momentum alerts</span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleMomentumNotifications.length === 0 ? (
-                        <p>No recent momentum alerts.</p>
-                      ) : (
-                        visibleMomentumNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.label}
-                            </span>
-                            <span>{notification.symbol}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Moving average alerts</span>
-                      <button
-                        type="button"
-                        onClick={onClearNotifications}
-                        className="text-xs text-indigo-200 transition hover:text-white"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      {visibleMovingAverageNotifications.length === 0 ? (
-                        <p>No moving average alerts.</p>
-                      ) : (
-                        visibleMovingAverageNotifications.slice(0, 3).map((notification) => (
-                          <div key={notification.id} className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {notification.direction === 'golden' ? 'Golden cross' : 'Death cross'}
-                            </span>
-                            <span>{notification.symbol}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
               </>
             )}
+
           </section>
           {!isSidebarCollapsed && !isLoading && !isError && (
             <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
@@ -1020,7 +948,7 @@ export function DashboardView({
               <p>{error instanceof Error ? error.message : 'Failed to load data.'}</p>
             </div>
           )}
-          {!isLoading && !isError && (
+          {!isError && (
             <>
               <LineChart
                 title="Moving averages (EMA 10 • EMA 50 • MA 200)"
@@ -1063,13 +991,13 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
-              <SignalsPanel
-                signals={signals}
-                snapshots={timeframeSnapshots}
-                isLoading={isFetching}
-              />
             </>
           )}
+          <SignalsPanel
+            signals={signals}
+            snapshots={timeframeSnapshots}
+            isLoading={isFetching}
+          />
         </section>
         <aside
           className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
