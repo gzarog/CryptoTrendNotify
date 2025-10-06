@@ -922,16 +922,6 @@ export function DashboardView({
           {!isLoading && !isError && (
             <>
               <LineChart
-                title={`MACD (${macdSeries.label})`}
-                labels={labels}
-                series={[
-                  { name: 'MACD', data: macdSeries.macdLine, color: '#60a5fa' },
-                  { name: 'Signal', data: macdSeries.signalLine, color: '#f97316' },
-                  { name: 'Histogram', data: macdSeries.histogram, color: '#34d399' },
-                ]}
-                isLoading={isFetching}
-              />
-              <LineChart
                 title="Moving averages (EMA 10 • EMA 50 • MA 200)"
                 labels={labels}
                 series={[
@@ -940,6 +930,16 @@ export function DashboardView({
                   { name: 'MA 200', data: movingAverageSeries.ma200, color: '#f97316' },
                 ]}
                 markers={movingAverageSeries.markers}
+                isLoading={isFetching}
+              />
+              <LineChart
+                title={`MACD (${macdSeries.label})`}
+                labels={labels}
+                series={[
+                  { name: 'MACD', data: macdSeries.macdLine, color: '#60a5fa' },
+                  { name: 'Signal', data: macdSeries.signalLine, color: '#f97316' },
+                  { name: 'Histogram', data: macdSeries.histogram, color: '#34d399' },
+                ]}
                 isLoading={isFetching}
               />
               <LineChart
