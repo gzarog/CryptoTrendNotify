@@ -32,6 +32,7 @@ import type {
   TimeframeSignalSnapshot,
   TradingSignal,
 } from './types/signals'
+import { TIMEFRAMES } from './constants/timeframes'
 
 export type Candle = {
   openTime: number
@@ -50,11 +51,6 @@ type BybitKlineResponse = {
   result?: {
     list?: string[][]
   }
-}
-
-type TimeframeOption = {
-  value: string
-  label: string
 }
 
 type RefreshOption = {
@@ -118,16 +114,6 @@ export type MovingAverageCrossNotification = {
   price: number
   triggeredAt: number
 }
-
-const TIMEFRAMES: TimeframeOption[] = [
-  { value: '5', label: '5m' },
-  { value: '15', label: '15m' },
-  { value: '30', label: '30m' },
-  { value: '60', label: '60m' },
-  { value: '120', label: '120m' },
-  { value: '240', label: '240m (4h)' },
-  { value: '360', label: '360m (6h)' },
-]
 
 const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360'] as const
 const MOMENTUM_INTENSITY_BY_LEVEL: Record<number, MomentumIntensity> = {

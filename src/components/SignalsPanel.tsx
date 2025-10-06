@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { getMultiTimeframeSignal } from '../lib/signals'
+import { TIMEFRAMES } from '../constants/timeframes'
 import type { TimeframeSignalSnapshot, TradingSignal } from '../types/signals'
 
 const STRENGTH_BADGE_CLASS: Record<string, string> = {
@@ -39,6 +40,9 @@ const BIAS_STATUS_CLASS: Record<string, string> = {
   bearish: 'border-rose-400/40 bg-rose-500/5 text-rose-200',
   neutral: 'border-slate-400/30 bg-slate-700/20 text-slate-200',
 }
+
+const DISABLED_CARD_CLASS = 'border-white/5 bg-slate-900/30 text-slate-500'
+const DISABLED_BADGE_CLASS = 'border-slate-600/40 bg-slate-800/40 text-slate-400'
 
 const formatSignedValue = (value: number, decimalPlaces = 0): string => {
   if (!Number.isFinite(value)) {
@@ -145,6 +149,16 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
         return aWeight - bWeight
       })
   }, [snapshots])
+
+  const snapshotsByTimeframe = useMemo(() => {
+    const map = new Map<string, TimeframeSignalSnapshot>()
+
+    for (const snapshot of normalizedSnapshots) {
+      map.set(snapshot.timeframe, snapshot)
+    }
+
+    return map
+  }, [normalizedSnapshots])
 
   const formatDirection = (value: TimeframeSignalSnapshot['trend']) =>
     value.toLowerCase()
@@ -257,144 +271,190 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
               )}
             </article>
           )}
-          {normalizedSnapshots.length > 0 && (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {normalizedSnapshots.map((snapshot) => {
-                const trendKey = formatDirection(snapshot.trend)
-                const momentumKey = formatDirection(snapshot.momentum)
-                const trendClass =
-                  DIRECTION_BADGE_CLASS[trendKey] ?? DIRECTION_BADGE_CLASS.neutral
-                const momentumClass =
-                  DIRECTION_BADGE_CLASS[momentumKey] ?? DIRECTION_BADGE_CLASS.neutral
-                const strengthKey = snapshot.strength?.toLowerCase()
-                const strengthClass =
-                  strengthKey != null
-                    ? STRENGTH_BADGE_CLASS[strengthKey] ?? STRENGTH_BADGE_CLASS.weak
-                    : null
-                const stageClass = STAGE_BADGE_CLASS[snapshot.stage]
-                const stageLabel = STAGE_LABEL[snapshot.stage]
-                const combinedDirectionKey = formatDirection(snapshot.combined.direction)
-                const combinedDirectionClass =
-                  DIRECTION_BADGE_CLASS[combinedDirectionKey] ?? DIRECTION_BADGE_CLASS.neutral
-                const combinedStrength = Math.round(
-                  Math.min(Math.max(snapshot.combined.strength ?? 0, 0), 100),
-                )
-                const combinedGradient =
-                  COMBINED_STRENGTH_GRADIENT[combinedDirectionKey] ??
-                  COMBINED_STRENGTH_GRADIENT.neutral
-                const { trendBias, momentumBias, confirmation, combinedScore } =
-                  snapshot.combined.breakdown
-                const biasStatuses = [
-                  { label: 'Trend', value: trendBias },
-                  { label: 'Momentum', value: momentumBias },
-                  { label: 'Confirmation', value: confirmation },
-                  { label: 'Total', value: combinedScore },
-                ]
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {TIMEFRAMES.map(({ value, label }) => {
+              const snapshot = snapshotsByTimeframe.get(value)
 
+              if (!snapshot) {
                 return (
                   <article
-                    key={`${snapshot.timeframe}-${snapshot.timeframeLabel}`}
-                    className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4"
+                    key={`placeholder-${value}`}
+                    className={`flex flex-col gap-3 rounded-2xl border p-4 ${DISABLED_CARD_CLASS}`}
                   >
-                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400">
-                      <span>{snapshot.timeframeLabel}</span>
-                      <div className="flex items-center gap-2">
-                        <span>
-                          {snapshot.price != null && Number.isFinite(snapshot.price)
-                            ? snapshot.price.toFixed(5)
-                            : '—'}
-                        </span>
-                        <span
-                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${stageClass}`}
-                        >
-                          Stage {stageLabel}
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
+                      <span>{label}</span>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${DISABLED_BADGE_CLASS}`}
+                      >
+                        Stage Unavailable
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
-                      <span className={`rounded-full border px-3 py-1 ${trendClass}`}>
-                        Trend {formatDirection(snapshot.trend)}
+                      <span className={`rounded-full border px-3 py-1 ${DISABLED_BADGE_CLASS}`}>
+                        Trend unavailable
                       </span>
-                      <span className={`rounded-full border px-3 py-1 ${momentumClass}`}>
-                        Momentum {formatDirection(snapshot.momentum)}
+                      <span className={`rounded-full border px-3 py-1 ${DISABLED_BADGE_CLASS}`}>
+                        Momentum unavailable
                       </span>
-                      <span className="rounded-full border border-slate-400/40 bg-slate-500/10 px-3 py-1 text-slate-200">
-                        Bias {snapshot.bias.toLowerCase()}
+                      <span className={`rounded-full border px-3 py-1 ${DISABLED_BADGE_CLASS}`}>
+                        Bias unavailable
                       </span>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between text-xs text-slate-300">
+                      <div className="flex items-center justify-between text-xs">
                         <span>Combined signal</span>
                         <span
-                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${combinedDirectionClass}`}
+                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${DISABLED_BADGE_CLASS}`}
                         >
-                          {formatDirection(snapshot.combined.direction)}
+                          Unavailable
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
-                          <div
-                            className={`absolute inset-y-0 left-0 bg-gradient-to-r ${combinedGradient}`}
-                            style={{ width: `${combinedStrength}%` }}
-                          />
+                      <div className="flex items-center gap-2 opacity-70">
+                        <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800/50">
+                          <div className="absolute inset-y-0 left-0 bg-slate-700/40" style={{ width: '0%' }} />
                         </div>
-                        <span className="text-xs font-semibold text-slate-200">
-                          {combinedStrength}%
-                        </span>
+                        <span className="text-xs font-semibold">0%</span>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2 text-xs text-slate-300">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                        Current bias status
-                      </span>
-                      <div className="grid grid-cols-2 gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-4">
-                        {biasStatuses.map(({ label, value }) => {
-                          const direction = resolveBiasDirection(value)
-                          const directionKey = direction.toLowerCase()
-                          const badgeClass =
-                            BIAS_STATUS_CLASS[directionKey] ?? BIAS_STATUS_CLASS.neutral
-
-                          return (
-                            <div
-                              key={`${snapshot.timeframe}-${label}`}
-                              className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left ${badgeClass}`}
-                            >
-                              <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">
-                                {label}
-                              </span>
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="text-xs font-semibold uppercase tracking-wide">
-                                  {direction.toLowerCase()}
-                                </span>
-                                <span className="font-mono text-[11px]">
-                                  {formatSignedValue(value)}
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-slate-300">
-                      <span>Confluence strength</span>
-                      {snapshot.strength && strengthClass ? (
-                        <span
-                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${strengthClass}`}
-                        >
-                          {snapshot.strength}
-                          {snapshot.confluenceScore != null
-                            ? ` • ${snapshot.confluenceScore}`
-                            : ''}
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
-                    </div>
+                    <p className="text-xs">No signal data for this timeframe yet.</p>
                   </article>
                 )
-              })}
-            </div>
-          )}
+              }
+
+              const trendKey = formatDirection(snapshot.trend)
+              const momentumKey = formatDirection(snapshot.momentum)
+              const trendClass =
+                DIRECTION_BADGE_CLASS[trendKey] ?? DIRECTION_BADGE_CLASS.neutral
+              const momentumClass =
+                DIRECTION_BADGE_CLASS[momentumKey] ?? DIRECTION_BADGE_CLASS.neutral
+              const strengthKey = snapshot.strength?.toLowerCase()
+              const strengthClass =
+                strengthKey != null
+                  ? STRENGTH_BADGE_CLASS[strengthKey] ?? STRENGTH_BADGE_CLASS.weak
+                  : null
+              const stageClass = STAGE_BADGE_CLASS[snapshot.stage]
+              const stageLabel = STAGE_LABEL[snapshot.stage]
+              const combinedDirectionKey = formatDirection(snapshot.combined.direction)
+              const combinedDirectionClass =
+                DIRECTION_BADGE_CLASS[combinedDirectionKey] ?? DIRECTION_BADGE_CLASS.neutral
+              const combinedStrength = Math.round(
+                Math.min(Math.max(snapshot.combined.strength ?? 0, 0), 100),
+              )
+              const combinedGradient =
+                COMBINED_STRENGTH_GRADIENT[combinedDirectionKey] ??
+                COMBINED_STRENGTH_GRADIENT.neutral
+              const { trendBias, momentumBias, confirmation, combinedScore } =
+                snapshot.combined.breakdown
+              const biasStatuses = [
+                { label: 'Trend', value: trendBias },
+                { label: 'Momentum', value: momentumBias },
+                { label: 'Confirmation', value: confirmation },
+                { label: 'Total', value: combinedScore },
+              ]
+
+              return (
+                <article
+                  key={`${snapshot.timeframe}-${snapshot.timeframeLabel}`}
+                  className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4"
+                >
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400">
+                    <span>{snapshot.timeframeLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <span>
+                        {snapshot.price != null && Number.isFinite(snapshot.price)
+                          ? snapshot.price.toFixed(5)
+                          : '—'}
+                      </span>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${stageClass}`}
+                      >
+                        Stage {stageLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+                    <span className={`rounded-full border px-3 py-1 ${trendClass}`}>
+                      Trend {formatDirection(snapshot.trend)}
+                    </span>
+                    <span className={`rounded-full border px-3 py-1 ${momentumClass}`}>
+                      Momentum {formatDirection(snapshot.momentum)}
+                    </span>
+                    <span className="rounded-full border border-slate-400/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                      Bias {snapshot.bias.toLowerCase()}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span>Combined signal</span>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${combinedDirectionClass}`}
+                      >
+                        {formatDirection(snapshot.combined.direction)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className={`absolute inset-y-0 left-0 bg-gradient-to-r ${combinedGradient}`}
+                          style={{ width: `${combinedStrength}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-200">
+                        {combinedStrength}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 text-xs text-slate-300">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Current bias status
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-4">
+                      {biasStatuses.map(({ label: biasLabel, value }) => {
+                        const direction = resolveBiasDirection(value)
+                        const directionKey = direction.toLowerCase()
+                        const badgeClass =
+                          BIAS_STATUS_CLASS[directionKey] ?? BIAS_STATUS_CLASS.neutral
+
+                        return (
+                          <div
+                            key={`${snapshot.timeframe}-${biasLabel}`}
+                            className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left ${badgeClass}`}
+                          >
+                            <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">
+                              {biasLabel}
+                            </span>
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide">
+                                {direction.toLowerCase()}
+                              </span>
+                              <span className="font-mono text-[11px]">
+                                {formatSignedValue(value)}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-300">
+                    <span>Confluence strength</span>
+                    {snapshot.strength && strengthClass ? (
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${strengthClass}`}
+                      >
+                        {snapshot.strength}
+                        {snapshot.confluenceScore != null
+                          ? ` • ${snapshot.confluenceScore}`
+                          : ''}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
           {isLoading ? (
             <p className="text-sm text-slate-400">Calculating signals…</p>
           ) : normalizedSignals.length === 0 ? (
