@@ -10,7 +10,12 @@ import {
   calculateSMA,
   calculateStochasticRSI,
 } from './lib/indicators'
-import { getMultiTimeframeSignal } from './lib/signals'
+import {
+  deriveSignalsFromHeatmap,
+  deriveTimeframeSnapshots,
+  getMultiTimeframeSignal,
+} from './lib/signals'
+import { fetchHeatmapResults } from './lib/heatmap'
 import type { HeatmapResult } from './types/heatmap'
 import {
   checkPushServerConnection,
@@ -1013,16 +1018,38 @@ function App() {
     [ema10Values, ema50Values, sma200Values, movingAverageMarkers],
   )
 
-  const heatmapResults = useMemo<HeatmapResult[]>(() => [], [])
+  const heatmapQuery = useQuery<HeatmapResult[]>({
+    queryKey: ['heatmap-results', normalizedSymbol],
+    queryFn: () => fetchHeatmapResults(normalizedSymbol),
+    enabled: canStreamSymbol,
+    refetchInterval: refreshInterval,
+    refetchIntervalInBackground: true,
+    retry: 1,
+    placeholderData: (previousData) => previousData,
+  })
 
-  const tradingSignals = useMemo<TradingSignal[]>(() => [], [])
+  const heatmapResults = useMemo<HeatmapResult[]>(() => {
+    if (!canStreamSymbol) {
+      return []
+    }
+    return heatmapQuery.data ?? []
+  }, [canStreamSymbol, heatmapQuery.data])
 
-  const timeframeSnapshots = useMemo<TimeframeSignalSnapshot[]>(() => [], [])
+  const tradingSignals = useMemo<TradingSignal[]>(() => deriveSignalsFromHeatmap(heatmapResults), [
+    heatmapResults,
+  ])
+
+  const timeframeSnapshots = useMemo<TimeframeSignalSnapshot[]>(
+    () => deriveTimeframeSnapshots(heatmapResults),
+    [heatmapResults],
+  )
 
   const multiTimeframeSignal = useMemo(
     () => getMultiTimeframeSignal(timeframeSnapshots),
     [timeframeSnapshots],
   )
+
+  const areSignalsLoading = heatmapQuery.isLoading || heatmapQuery.isFetching
 
   const momentumThresholds = useMemo(() => {
     const clamp = (value: string, fallback: number) => {
@@ -1779,6 +1806,7 @@ function App() {
       atrMultiplier={atrMultiplierInput}
       onAtrMultiplierChange={setAtrMultiplierInput}
       signals={tradingSignals}
+      signalsLoading={areSignalsLoading}
       timeframeSnapshots={timeframeSnapshots}
       visibleMomentumNotifications={visibleMomentumNotifications}
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}

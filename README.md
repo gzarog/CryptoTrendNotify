@@ -29,12 +29,14 @@ Create a `.env.local` (or export shell variables) with the following values:
 
 ```
 VITE_API_BASE_URL=http://localhost:4000
+VITE_HEATMAP_API_URL=http://localhost:4000/api/heatmap/snapshots   # optional; defaults to VITE_API_BASE_URL
+HEATMAP_SERVICE_URL=http://localhost:4000/api/heatmap/snapshots     # optional backend proxy target
 VAPID_PUBLIC_KEY=<your public key from the step above>
 VAPID_PRIVATE_KEY=<your private key from the step above>
 VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
 ```
 
-`VITE_API_BASE_URL` lets the frontend know where to reach the push API. Update it if you deploy the push server elsewhere. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
+`VITE_API_BASE_URL` lets the frontend know where to reach the push API. `VITE_HEATMAP_API_URL` overrides the default heatmap endpoint the dashboard queries (falls back to `VITE_API_BASE_URL` when omitted). The push server proxies heatmap traffic through `HEATMAP_SERVICE_URL`; leave it unset to use the built-in mock snapshots. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
 
 ## Available scripts
 

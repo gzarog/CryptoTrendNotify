@@ -5,6 +5,7 @@ import type {
   MultiTimeframeSignal,
   MultiTimeframeSignalContribution,
   SignalDirection,
+  SignalStage,
   SignalStrength,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -257,11 +258,14 @@ function mapHeatmapResultToSnapshot(
     null,
   )
 
+  const stage = resolveSnapshotStage(result, side)
+
   return {
     timeframe: result.entryTimeframe,
     timeframeLabel: result.entryLabel,
     trend,
     momentum,
+    stage,
     confluenceScore,
     strength,
     price: price,
@@ -270,6 +274,44 @@ function mapHeatmapResultToSnapshot(
     side,
     combined,
   }
+}
+
+function resolveSnapshotStage(
+  result: HeatmapResult,
+  resolvedSide: SignalDirection | null,
+): SignalStage {
+  if (result.signal === 'LONG' || result.signal === 'SHORT') {
+    return 'triggered'
+  }
+
+  if (!result.cooldown.ok) {
+    return 'cooldown'
+  }
+
+  const longOpen = Boolean(result.gating.long.timing)
+  const shortOpen = Boolean(result.gating.short.timing)
+
+  if (!longOpen && !shortOpen) {
+    return 'gated'
+  }
+
+  if (resolvedSide === 'Bullish' && !longOpen) {
+    return 'gated'
+  }
+
+  if (resolvedSide === 'Bearish' && !shortOpen) {
+    return 'gated'
+  }
+
+  if (result.bias === 'BULL' && !longOpen) {
+    return 'gated'
+  }
+
+  if (result.bias === 'BEAR' && !shortOpen) {
+    return 'gated'
+  }
+
+  return 'ready'
 }
 
 function mapHeatmapResultToSignal(result: HeatmapResult): TradingSignal | null {

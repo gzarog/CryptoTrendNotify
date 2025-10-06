@@ -5,6 +5,7 @@ import webpush from 'web-push'
 import { PushSubscriptionStore } from './push-subscription-store.js'
 import { broadcastNotification, normalizeNotificationPayload } from './push-delivery.js'
 import { startMarketWatch } from './market-watcher.js'
+import { getHeatmapSnapshots } from './heatmap-service.js'
 
 const PORT = Number.parseInt(process.env.PUSH_SERVER_PORT ?? process.env.PORT ?? '4000', 10)
 let vapidPublicKey = process.env.VAPID_PUBLIC_KEY
@@ -187,6 +188,18 @@ async function handleRequest(req, res, store) {
   }
 
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`)
+
+  if (req.method === 'GET' && url.pathname === '/api/heatmap/snapshots') {
+    try {
+      const symbol = url.searchParams.get('symbol') ?? undefined
+      const results = await getHeatmapSnapshots(symbol)
+      sendJson(res, 200, { results })
+    } catch (error) {
+      console.error('Failed to load heatmap snapshots', error)
+      sendJson(res, 500, { error: 'Unable to load heatmap snapshots' })
+    }
+    return
+  }
 
   if (req.method === 'GET' && url.pathname === '/api/push/public-key') {
     sendJson(res, 200, { publicKey: vapidPublicKey })

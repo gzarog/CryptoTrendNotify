@@ -4,6 +4,8 @@ export type SignalStrength = 'Weak' | 'Medium' | 'Strong'
 
 export type CombinedSignalDirection = SignalDirection | 'Neutral'
 
+export type SignalStage = 'ready' | 'cooldown' | 'gated' | 'triggered'
+
 export type CombinedSignalBreakdown = {
   trendBias: number
   momentumBias: number
@@ -90,6 +92,7 @@ export type TimeframeSignalSnapshot = {
   timeframeLabel: string
   trend: SignalDirection | 'Neutral'
   momentum: SignalDirection | 'Neutral'
+  stage: SignalStage
   confluenceScore: number | null
   strength: SignalStrength | null
   price: number | null

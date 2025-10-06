@@ -114,6 +114,7 @@ type DashboardViewProps = {
   atrMultiplier: string
   onAtrMultiplierChange: Dispatch<SetStateAction<string>>
   signals: TradingSignal[]
+  signalsLoading: boolean
   timeframeSnapshots: TimeframeSignalSnapshot[]
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
@@ -205,6 +206,7 @@ export function DashboardView({
   atrMultiplier,
   onAtrMultiplierChange,
   signals,
+  signalsLoading,
   timeframeSnapshots,
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
@@ -996,7 +998,7 @@ export function DashboardView({
           <SignalsPanel
             signals={signals}
             snapshots={timeframeSnapshots}
-            isLoading={isFetching}
+            isLoading={isFetching || signalsLoading}
           />
         </section>
         <aside
