@@ -13,6 +13,12 @@ const DIRECTION_BADGE_CLASS: Record<string, string> = {
   neutral: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
 }
 
+const COMBINED_STRENGTH_GRADIENT: Record<string, string> = {
+  bullish: 'from-emerald-400 to-emerald-500',
+  bearish: 'from-rose-400 to-rose-500',
+  neutral: 'from-slate-500 to-slate-400',
+}
+
 type SignalsPanelProps = {
   signals: TradingSignal[]
   snapshots: TimeframeSignalSnapshot[]
@@ -119,6 +125,15 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                   strengthKey != null
                     ? STRENGTH_BADGE_CLASS[strengthKey] ?? STRENGTH_BADGE_CLASS.weak
                     : null
+                const combinedDirectionKey = formatDirection(snapshot.combined.direction)
+                const combinedDirectionClass =
+                  DIRECTION_BADGE_CLASS[combinedDirectionKey] ?? DIRECTION_BADGE_CLASS.neutral
+                const combinedStrength = Math.round(
+                  Math.min(Math.max(snapshot.combined.strength ?? 0, 0), 100),
+                )
+                const combinedGradient =
+                  COMBINED_STRENGTH_GRADIENT[combinedDirectionKey] ??
+                  COMBINED_STRENGTH_GRADIENT.neutral
 
                 return (
                   <article
@@ -144,8 +159,29 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                         Bias {snapshot.bias.toLowerCase()}
                       </span>
                     </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span>Combined signal</span>
+                        <span
+                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${combinedDirectionClass}`}
+                        >
+                          {formatDirection(snapshot.combined.direction)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                          <div
+                            className={`absolute inset-y-0 left-0 bg-gradient-to-r ${combinedGradient}`}
+                            style={{ width: `${combinedStrength}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-200">
+                          {combinedStrength}%
+                        </span>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between text-xs text-slate-300">
-                      <span>Strength</span>
+                      <span>Confluence strength</span>
                       {snapshot.strength && strengthClass ? (
                         <span
                           className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${strengthClass}`}

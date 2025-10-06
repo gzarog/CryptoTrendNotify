@@ -2,6 +2,13 @@ export type SignalDirection = 'Bullish' | 'Bearish'
 
 export type SignalStrength = 'Weak' | 'Medium' | 'Strong'
 
+export type CombinedSignalDirection = SignalDirection | 'Neutral'
+
+export type CombinedSignal = {
+  direction: CombinedSignalDirection
+  strength: number
+}
+
 export type TradingSignal = {
   symbol: string
   tf: string
@@ -43,4 +50,5 @@ export type TimeframeSignalSnapshot = {
   bias: 'BULL' | 'BEAR' | 'NEUTRAL'
   slopeMa200: number | null
   side: SignalDirection | null
+  combined: CombinedSignal
 }
