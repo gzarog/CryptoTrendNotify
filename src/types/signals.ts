@@ -4,9 +4,17 @@ export type SignalStrength = 'Weak' | 'Medium' | 'Strong'
 
 export type CombinedSignalDirection = SignalDirection | 'Neutral'
 
+export type CombinedSignalBreakdown = {
+  trendBias: number
+  momentumBias: number
+  confirmation: number
+  combinedScore: number
+}
+
 export type CombinedSignal = {
   direction: CombinedSignalDirection
   strength: number
+  breakdown: CombinedSignalBreakdown
 }
 
 export type TradingSignal = {

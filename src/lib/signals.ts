@@ -83,7 +83,16 @@ export function getCombinedSignal(
     direction = 'Bearish'
   }
 
-  return { direction, strength }
+  return {
+    direction,
+    strength,
+    breakdown: {
+      trendBias,
+      momentumBias,
+      confirmation,
+      combinedScore,
+    },
+  }
 }
 
 export function deriveSignalsFromHeatmap(results: HeatmapResult[]): TradingSignal[] {

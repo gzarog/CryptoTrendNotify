@@ -134,6 +134,10 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                 const combinedGradient =
                   COMBINED_STRENGTH_GRADIENT[combinedDirectionKey] ??
                   COMBINED_STRENGTH_GRADIENT.neutral
+                const { trendBias, momentumBias, confirmation, combinedScore } =
+                  snapshot.combined.breakdown
+                const formatBiasValue = (value: number) =>
+                  value > 0 ? `+${value}` : value.toString()
 
                 return (
                   <article
@@ -177,6 +181,25 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                         </div>
                         <span className="text-xs font-semibold text-slate-200">
                           {combinedStrength}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 text-xs text-slate-300">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Bias breakdown
+                      </span>
+                      <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                          Trend {formatBiasValue(trendBias)}
+                        </span>
+                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                          Momentum {formatBiasValue(momentumBias)}
+                        </span>
+                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                          Confirmation {formatBiasValue(confirmation)}
+                        </span>
+                        <span className="rounded-full border border-slate-500/40 bg-slate-500/10 px-3 py-1 text-slate-200">
+                          Total {formatBiasValue(combinedScore)}
                         </span>
                       </div>
                     </div>
