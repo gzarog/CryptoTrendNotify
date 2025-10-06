@@ -1,5 +1,7 @@
 import type { HeatmapResult } from '../types/heatmap'
 import type {
+  CombinedSignal,
+  CombinedSignalDirection,
   SignalDirection,
   SignalStrength,
   TimeframeSignalSnapshot,
@@ -12,6 +14,86 @@ const STOCH_LOW = 20
 const STOCH_HIGH = 80
 
 const MAX_SCORE = 100
+
+type MacdSnapshot = {
+  hist: number | null | undefined
+  line: number | null | undefined
+  signal: number | null | undefined
+}
+
+export function getCombinedSignal(
+  _ohlcv: unknown,
+  ema10: number | null | undefined,
+  ema50: number | null | undefined,
+  ma200: number | null | undefined,
+  rsi: number | null | undefined,
+  stochRsi: number | null | undefined,
+  macd: MacdSnapshot | null | undefined,
+): CombinedSignal {
+  let trendBias = 0
+  let momentumBias = 0
+  let confirmation = 0
+
+  const ema10Value = toNumberOrNull(ema10)
+  const ema50Value = toNumberOrNull(ema50)
+  const ma200Value = toNumberOrNull(ma200)
+
+  if (ema10Value != null && ema50Value != null) {
+    if (ma200Value != null && ema10Value > ema50Value && ema50Value > ma200Value) {
+      trendBias += 2
+    } else if (ema10Value > ema50Value) {
+      trendBias += 1
+    } else if (ma200Value != null && ema10Value < ema50Value && ema50Value < ma200Value) {
+      trendBias -= 2
+    } else if (ema10Value < ema50Value) {
+      trendBias -= 1
+    }
+  }
+
+  const rsiValue = toNumberOrNull(rsi)
+  const stochRsiValue = toNumberOrNull(stochRsi)
+
+  if (rsiValue != null && stochRsiValue != null) {
+    if (rsiValue > 60 && stochRsiValue > 0.7) {
+      momentumBias += 1
+    } else if (rsiValue < 40 && stochRsiValue < 0.3) {
+      momentumBias -= 1
+    }
+  }
+
+  const macdHist = toNumberOrNull(macd?.hist)
+  const macdLine = toNumberOrNull(macd?.line)
+  const macdSignal = toNumberOrNull(macd?.signal)
+
+  if (macdHist != null && macdLine != null && macdSignal != null) {
+    if (macdHist > 0 && macdLine > macdSignal) {
+      confirmation += 1
+    } else if (macdHist < 0 && macdLine < macdSignal) {
+      confirmation -= 1
+    }
+  }
+
+  const combinedScore = trendBias + momentumBias + confirmation
+  const strength = Math.min(Math.abs(combinedScore) * 25, 100)
+
+  let direction: CombinedSignalDirection = 'Neutral'
+  if (combinedScore > 0) {
+    direction = 'Bullish'
+  } else if (combinedScore < 0) {
+    direction = 'Bearish'
+  }
+
+  return {
+    direction,
+    strength,
+    breakdown: {
+      trendBias,
+      momentumBias,
+      confirmation,
+      combinedScore,
+    },
+  }
+}
 
 export function deriveSignalsFromHeatmap(results: HeatmapResult[]): TradingSignal[] {
   return results
@@ -48,6 +130,8 @@ function mapHeatmapResultToSnapshot(
   const stochK = toNumberOrNull(result.stochRsi.k)
   const stochD = toNumberOrNull(result.stochRsi.d)
 
+  const normalizedStochRsi = resolveNormalizedStochRsi(result)
+
   let momentum: TimeframeSignalSnapshot['momentum'] = 'Neutral'
 
   if (rsi != null && stochK != null && stochD != null) {
@@ -73,6 +157,15 @@ function mapHeatmapResultToSnapshot(
   const reasons = side ? buildReasons(result, side) : []
   const confluenceScore = side ? scoreSignal(result, side, reasons) : null
   const strength = confluenceScore != null ? bucketSignal(confluenceScore) : null
+  const combined = getCombinedSignal(
+    null,
+    result.ema?.ema10,
+    result.ema?.ema50,
+    result.ma200.value,
+    result.rsiLtf.value,
+    normalizedStochRsi,
+    null,
+  )
 
   return {
     timeframe: result.entryTimeframe,
@@ -85,6 +178,7 @@ function mapHeatmapResultToSnapshot(
     bias: result.bias,
     slopeMa200: toNumberOrNull(result.ma200.slope),
     side,
+    combined,
   }
 }
 
@@ -263,6 +357,30 @@ function toNumberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function resolveNormalizedStochRsi(result: HeatmapResult): number | null {
+  const rawNormalized = toNumberOrNull(result.stochRsi.rawNormalized)
+  if (rawNormalized != null) {
+    if (rawNormalized >= 0 && rawNormalized <= 1) {
+      return rawNormalized
+    }
+    if (rawNormalized >= 0 && rawNormalized <= 100) {
+      return clamp01(rawNormalized / 100)
+    }
+  }
+
+  const kValue = toNumberOrNull(result.stochRsi.k)
+  if (kValue != null) {
+    return clamp01(kValue / 100)
+  }
+
+  const dValue = toNumberOrNull(result.stochRsi.d)
+  if (dValue != null) {
+    return clamp01(dValue / 100)
+  }
+
+  return null
+}
+
 function clampScore(score: number): number {
   if (score < 0) {
     return 0
@@ -271,4 +389,17 @@ function clampScore(score: number): number {
     return MAX_SCORE
   }
   return Math.round(score)
+}
+
+function clamp01(value: number): number {
+  if (Number.isNaN(value)) {
+    return 0
+  }
+  if (value < 0) {
+    return 0
+  }
+  if (value > 1) {
+    return 1
+  }
+  return value
 }

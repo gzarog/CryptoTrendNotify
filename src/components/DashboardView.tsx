@@ -6,6 +6,7 @@ import type {
   MovingAverageMarker,
 } from '../App'
 import type {
+  CombinedSignalNotification,
   SignalNotification,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -50,6 +51,18 @@ function getHeatmapCardClass(strength: string | null | undefined): string {
 
   const normalized = strength.toLowerCase()
   return HEATMAP_CARD_CLASS_BY_STRENGTH[normalized] ?? HEATMAP_DEFAULT_CARD_CLASS
+}
+
+const COMBINED_DIRECTION_CARD_CLASSES: Record<string, string> = {
+  bullish: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+  bearish: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+  neutral: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+}
+
+const COMBINED_DIRECTION_EMOJI: Record<'Bullish' | 'Bearish' | 'Neutral', string> = {
+  Bullish: '🟢',
+  Bearish: '🔴',
+  Neutral: '⚪️',
 }
 
 type DashboardViewProps = {
@@ -110,10 +123,12 @@ type DashboardViewProps = {
   visibleMovingAverageNotifications: MovingAverageCrossNotification[]
   visibleMomentumNotifications: MomentumNotification[]
   visibleSignalNotifications: SignalNotification[]
+  visibleCombinedSignalNotifications: CombinedSignalNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   onDismissSignalNotification: (notificationId: string) => void
+  onDismissCombinedSignalNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -198,10 +213,12 @@ export function DashboardView({
   visibleMovingAverageNotifications,
   visibleMomentumNotifications,
   visibleSignalNotifications,
+  visibleCombinedSignalNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   onDismissSignalNotification,
+  onDismissCombinedSignalNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -237,6 +254,11 @@ export function DashboardView({
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
+        ...visibleCombinedSignalNotifications.map((entry) => ({
+          type: 'combined' as const,
+          triggeredAt: entry.triggeredAt,
+          payload: entry,
+        })),
         ...visibleMovingAverageNotifications.map((entry) => ({
           type: 'moving-average' as const,
           triggeredAt: entry.triggeredAt,
@@ -252,11 +274,13 @@ export function DashboardView({
       visibleSignalNotifications,
       visibleMomentumNotifications,
       visibleMovingAverageNotifications,
+      visibleCombinedSignalNotifications,
     ],
   )
 
   const totalNotificationCount =
     visibleSignalNotifications.length +
+    visibleCombinedSignalNotifications.length +
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length
 
@@ -334,20 +358,20 @@ export function DashboardView({
                     ) : (
                       allNotifications.map((notification) => {
                         if (notification.type === 'signal') {
-                        const entry = notification.payload
-                        const normalizedStrength = entry.strength.toLowerCase()
-                        const cardClasses = getHeatmapCardClass(normalizedStrength)
-                        const emoji = entry.side === 'Bullish' ? '🟢' : '🔴'
-                        const reasonSummary =
-                          entry.reasons.length > 0
-                            ? entry.reasons.slice(0, 2).join(' • ')
-                            : '—'
+                          const entry = notification.payload
+                          const normalizedStrength = entry.strength.toLowerCase()
+                          const cardClasses = getHeatmapCardClass(normalizedStrength)
+                          const emoji = entry.side === 'Bullish' ? '🟢' : '🔴'
+                          const reasonSummary =
+                            entry.reasons.length > 0
+                              ? entry.reasons.slice(0, 2).join(' • ')
+                              : '—'
 
-                        return (
-                          <div
-                            key={`signal-${entry.id}`}
-                            className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                          >
+                          return (
+                            <div
+                              key={`signal-${entry.id}`}
+                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                            >
                             <div className="flex items-start justify-between gap-2">
                               <span className="text-[11px] font-semibold uppercase tracking-wide">
                                 {emoji} {entry.side} signal
@@ -370,14 +394,61 @@ export function DashboardView({
                             )}
                             <span className="text-[11px] text-white/80">Reasons: {reasonSummary}</span>
                             <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
-                          </div>
-                        )
-                      }
+                            </div>
+                          )
+                        }
 
-                      if (notification.type === 'moving-average') {
-                        const entry = notification.payload
-                        const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
-                        const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
+                        if (notification.type === 'combined') {
+                          const entry = notification.payload
+                          const directionKey = entry.direction.toLowerCase()
+                          const cardClasses =
+                            COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
+                            COMBINED_DIRECTION_CARD_CLASSES.neutral
+                          const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
+                          const formatBiasValue = (value: number) =>
+                            value > 0 ? `+${value}` : value.toString()
+                          const breakdownSummary = [
+                            `Trend ${formatBiasValue(entry.breakdown.trendBias)}`,
+                            `Momentum ${formatBiasValue(entry.breakdown.momentumBias)}`,
+                            `Confirm ${formatBiasValue(entry.breakdown.confirmation)}`,
+                            `Total ${formatBiasValue(entry.breakdown.combinedScore)}`,
+                          ].join(' • ')
+
+                          return (
+                            <div
+                              key={`combined-${entry.id}`}
+                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                  {emoji} {entry.timeframeLabel} combined {entry.direction.toLowerCase()} bias
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissCombinedSignalNotification(entry.id)}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                  aria-label="Dismiss combined signal notification"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                              <span className="text-[11px] text-white/80">
+                                Strength {entry.strength}% • Bias {entry.bias.toLowerCase()}
+                              </span>
+                              <span className="text-[11px] text-white/80">{breakdownSummary}</span>
+                              {entry.price != null && Number.isFinite(entry.price) && (
+                                <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
+                              )}
+                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                            </div>
+                          )
+                        }
+
+                        if (notification.type === 'moving-average') {
+                          const entry = notification.payload
+                          const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                          const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
                           const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
 
                           return (
@@ -786,6 +857,36 @@ export function DashboardView({
                             </span>
                             <span>
                               {notification.symbol} — Score {notification.confluenceScore}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Combined signal alerts
+                      </span>
+                      <button
+                        type="button"
+                        onClick={onClearNotifications}
+                        className="text-xs text-indigo-200 transition hover:text-white"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 text-xs text-slate-300">
+                      {visibleCombinedSignalNotifications.length === 0 ? (
+                        <p>No combined signal alerts.</p>
+                      ) : (
+                        visibleCombinedSignalNotifications.slice(0, 3).map((notification) => (
+                          <div key={notification.id} className="flex flex-col">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {notification.timeframeLabel} • {notification.direction}
+                            </span>
+                            <span>
+                              Strength {notification.strength}% • Bias {notification.bias.toLowerCase()}
                             </span>
                           </div>
                         ))

@@ -2,6 +2,34 @@ export type SignalDirection = 'Bullish' | 'Bearish'
 
 export type SignalStrength = 'Weak' | 'Medium' | 'Strong'
 
+export type CombinedSignalDirection = SignalDirection | 'Neutral'
+
+export type CombinedSignalBreakdown = {
+  trendBias: number
+  momentumBias: number
+  confirmation: number
+  combinedScore: number
+}
+
+export type CombinedSignal = {
+  direction: CombinedSignalDirection
+  strength: number
+  breakdown: CombinedSignalBreakdown
+}
+
+export type CombinedSignalNotification = {
+  id: string
+  symbol: string
+  timeframe: string
+  timeframeLabel: string
+  direction: CombinedSignalDirection
+  strength: number
+  breakdown: CombinedSignalBreakdown
+  price: number | null
+  bias: 'BULL' | 'BEAR' | 'NEUTRAL'
+  triggeredAt: number
+}
+
 export type TradingSignal = {
   symbol: string
   tf: string
@@ -43,4 +71,5 @@ export type TimeframeSignalSnapshot = {
   bias: 'BULL' | 'BEAR' | 'NEUTRAL'
   slopeMa200: number | null
   side: SignalDirection | null
+  combined: CombinedSignal
 }
