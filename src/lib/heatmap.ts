@@ -4,6 +4,7 @@ const DEFAULT_API_PATH = '/api/heatmap/snapshots'
 
 function buildHeatmapUrl(symbol: string): URL {
   const rawBase = import.meta.env.VITE_HEATMAP_API_URL
+  const apiBase = import.meta.env.VITE_API_BASE_URL
   const origin = typeof window !== 'undefined' && window.location?.origin
     ? window.location.origin
     : 'http://localhost'
@@ -14,6 +15,20 @@ function buildHeatmapUrl(symbol: string): URL {
         return new URL(rawBase)
       } catch {
         return new URL(rawBase, origin)
+      }
+    }
+
+    if (apiBase && typeof apiBase === 'string' && apiBase.length > 0) {
+      try {
+        const base = new URL(apiBase)
+        return new URL(DEFAULT_API_PATH, base)
+      } catch {
+        try {
+          const normalized = new URL(apiBase, origin)
+          return new URL(DEFAULT_API_PATH, normalized)
+        } catch {
+          // fall through to origin-based default
+        }
       }
     }
 
