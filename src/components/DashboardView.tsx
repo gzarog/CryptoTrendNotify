@@ -1109,7 +1109,7 @@ export function DashboardView({
               <p>{error instanceof Error ? error.message : 'Failed to load data.'}</p>
             </div>
           )}
-          {!isLoading && !isError && (
+          {!isError && (
             <>
               <LineChart
                 title="Moving averages (EMA 10 • EMA 50 • MA 200)"
@@ -1152,13 +1152,13 @@ export function DashboardView({
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
               />
-              <SignalsPanel
-                signals={signals}
-                snapshots={timeframeSnapshots}
-                isLoading={isFetching}
-              />
             </>
           )}
+          <SignalsPanel
+            signals={signals}
+            snapshots={timeframeSnapshots}
+            isLoading={isFetching}
+          />
         </section>
         <aside
           className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
