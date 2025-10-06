@@ -176,6 +176,7 @@ const MACD_SETTINGS: Record<
   '120': { fast: 16, slow: 36, signal: 9, label: 'EMA 16 • EMA 36 • Signal 9' },
   '240': { fast: 20, slow: 40, signal: 9, label: 'EMA 20 • EMA 40 • Signal 9' },
   '360': { fast: 22, slow: 44, signal: 10, label: 'EMA 22 • EMA 44 • Signal 10' },
+  '420': { fast: 24, slow: 48, signal: 10, label: 'EMA 24 • EMA 48 • Signal 10' },
 }
 
 const DEFAULT_MACD_SETTING = { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' }
