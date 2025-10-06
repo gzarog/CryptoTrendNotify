@@ -3,7 +3,13 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { DashboardView } from './components/DashboardView'
-import { calculateEMA, calculateRSI, calculateSMA, calculateStochasticRSI } from './lib/indicators'
+import {
+  calculateEMA,
+  calculateMACD,
+  calculateRSI,
+  calculateSMA,
+  calculateStochasticRSI,
+} from './lib/indicators'
 import type { HeatmapResult } from './types/heatmap'
 import {
   checkPushServerConnection,
@@ -158,6 +164,22 @@ const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
   dSmoothing: 3,
   label: 'RSI 14 • Stoch 14 • %K 3 • %D 3',
 }
+
+const MACD_SETTINGS: Record<
+  string,
+  { fast: number; slow: number; signal: number; label: string }
+> = {
+  '5': { fast: 8, slow: 21, signal: 5, label: 'EMA 8 • EMA 21 • Signal 5' },
+  '15': { fast: 10, slow: 24, signal: 7, label: 'EMA 10 • EMA 24 • Signal 7' },
+  '30': { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' },
+  '60': { fast: 12, slow: 30, signal: 9, label: 'EMA 12 • EMA 30 • Signal 9' },
+  '120': { fast: 16, slow: 36, signal: 9, label: 'EMA 16 • EMA 36 • Signal 9' },
+  '240': { fast: 20, slow: 40, signal: 9, label: 'EMA 20 • EMA 40 • Signal 9' },
+  '360': { fast: 22, slow: 44, signal: 10, label: 'EMA 22 • EMA 44 • Signal 10' },
+  '420': { fast: 24, slow: 48, signal: 10, label: 'EMA 24 • EMA 48 • Signal 10' },
+}
+
+const DEFAULT_MACD_SETTING = { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' }
 
 const REFRESH_OPTIONS: RefreshOption[] = [
   { value: '1', label: '1m' },
@@ -802,6 +824,28 @@ function App() {
   }, [dataUpdatedAt])
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
+
+  const macdSetting = useMemo(
+    () => MACD_SETTINGS[timeframe] ?? DEFAULT_MACD_SETTING,
+    [timeframe],
+  )
+
+  const macdSeries = useMemo(() => {
+    const { fast, slow, signal, label } = macdSetting
+    const { macdLine, signalLine, histogram } = calculateMACD(
+      closes,
+      fast,
+      slow,
+      signal,
+    )
+
+    return {
+      macdLine,
+      signalLine,
+      histogram,
+      label,
+    }
+  }, [closes, macdSetting])
 
   const ema10Values = useMemo(() => calculateEMA(closes, 10), [closes])
   const ema50Values = useMemo(() => calculateEMA(closes, 50), [closes])
@@ -1545,6 +1589,7 @@ function App() {
       isMarketSummaryCollapsed={isMarketSummaryCollapsed}
       onToggleMarketSummary={toggleMarketSummary}
       movingAverageSeries={movingAverageSeries}
+      macdSeries={macdSeries}
       heatmapResults={heatmapResults}
       rsiLengthDescription={rsiLengthDescription}
       rsiValues={rsiValues}

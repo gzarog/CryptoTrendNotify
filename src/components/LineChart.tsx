@@ -67,6 +67,32 @@ function formatAxisLabel(label: string): string {
   return label
 }
 
+function formatValue(value: number): string {
+  const abs = Math.abs(value)
+
+  if (abs >= 1000) {
+    return value.toFixed(0)
+  }
+
+  if (abs >= 100) {
+    return value.toFixed(1)
+  }
+
+  if (abs >= 1) {
+    return value.toFixed(2)
+  }
+
+  if (abs >= 0.01) {
+    return value.toFixed(4)
+  }
+
+  if (abs >= 0.0001) {
+    return value.toFixed(6)
+  }
+
+  return value.toExponential(2)
+}
+
 export function LineChart({
   title,
   data,
@@ -242,7 +268,7 @@ export function LineChart({
             <h2 className="text-base font-semibold text-white">{title}</h2>
             {hasSingleSeries && primaryLatestValue != null && (
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-indigo-200">
-                Current {primaryLatestValue.toFixed(2)}
+                Current {formatValue(primaryLatestValue)}
               </span>
             )}
           </div>
@@ -261,7 +287,7 @@ export function LineChart({
                     }}
                   >
                     <span>{name}</span>
-                    <span>{value != null ? value.toFixed(2) : '—'}</span>
+                    <span>{value != null ? formatValue(value) : '—'}</span>
                   </span>
                 )
               })}
