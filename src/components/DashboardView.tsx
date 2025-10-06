@@ -129,6 +129,12 @@ type DashboardViewProps = {
     ma200: Array<number | null>
     markers: MovingAverageMarker[]
   }
+  macdSeries: {
+    macdLine: Array<number | null>
+    signalLine: Array<number | null>
+    histogram: Array<number | null>
+    label: string
+  }
   heatmapResults: HeatmapResult[]
   rsiLengthDescription: string
   rsiValues: Array<number | null>
@@ -206,6 +212,7 @@ export function DashboardView({
   isMarketSummaryCollapsed,
   onToggleMarketSummary,
   movingAverageSeries,
+  macdSeries,
   heatmapResults,
   rsiLengthDescription,
   rsiValues,
@@ -914,6 +921,16 @@ export function DashboardView({
           )}
           {!isLoading && !isError && (
             <>
+              <LineChart
+                title={`MACD (${macdSeries.label})`}
+                labels={labels}
+                series={[
+                  { name: 'MACD', data: macdSeries.macdLine, color: '#60a5fa' },
+                  { name: 'Signal', data: macdSeries.signalLine, color: '#f97316' },
+                  { name: 'Histogram', data: macdSeries.histogram, color: '#34d399' },
+                ]}
+                isLoading={isFetching}
+              />
               <LineChart
                 title="Moving averages (EMA 10 • EMA 50 • MA 200)"
                 labels={labels}

@@ -90,6 +90,102 @@ export function calculateSMA(values: number[], period: number): Array<number | n
   return result
 }
 
+function calculateEMAFromSeries(
+  values: Array<number | null>,
+  period: number,
+): Array<number | null> {
+  const normalizedPeriod = Math.max(1, Math.floor(period))
+  const result: Array<number | null> = new Array(values.length).fill(null)
+
+  if (values.length === 0 || normalizedPeriod <= 0) {
+    return result
+  }
+
+  const multiplier = 2 / (normalizedPeriod + 1)
+  const window: number[] = []
+  let previousEma: number | null = null
+
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i]
+    if (value == null) {
+      continue
+    }
+
+    window.push(value)
+
+    if (window.length > normalizedPeriod) {
+      window.shift()
+    }
+
+    if (window.length < normalizedPeriod) {
+      continue
+    }
+
+    if (previousEma == null) {
+      const initialSum = window.reduce((sum, entry) => sum + entry, 0)
+      previousEma = initialSum / normalizedPeriod
+      result[i] = previousEma
+      continue
+    }
+
+    previousEma = (value - previousEma) * multiplier + previousEma
+    result[i] = previousEma
+  }
+
+  return result
+}
+
+export function calculateMACD(
+  values: number[],
+  fastPeriod: number,
+  slowPeriod: number,
+  signalPeriod: number,
+): {
+  macdLine: Array<number | null>
+  signalLine: Array<number | null>
+  histogram: Array<number | null>
+} {
+  const length = values.length
+  const macdLine: Array<number | null> = new Array(length).fill(null)
+
+  if (length === 0) {
+    return {
+      macdLine,
+      signalLine: new Array(length).fill(null),
+      histogram: new Array(length).fill(null),
+    }
+  }
+
+  const fastEma = calculateEMA(values, fastPeriod)
+  const slowEma = calculateEMA(values, slowPeriod)
+
+  for (let i = 0; i < length; i += 1) {
+    const fast = fastEma[i]
+    const slow = slowEma[i]
+
+    if (fast == null || slow == null) {
+      continue
+    }
+
+    macdLine[i] = fast - slow
+  }
+
+  const signalLine = calculateEMAFromSeries(macdLine, signalPeriod)
+  const histogram = macdLine.map((value, index) => {
+    const signal = signalLine[index]
+    if (value == null || signal == null) {
+      return null
+    }
+    return value - signal
+  })
+
+  return {
+    macdLine,
+    signalLine,
+    histogram,
+  }
+}
+
 type StochasticRSIOptions = {
   stochLength?: number
   kSmoothing?: number
