@@ -14,6 +14,20 @@ const DIRECTION_BADGE_CLASS: Record<string, string> = {
   neutral: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
 }
 
+const STAGE_BADGE_CLASS: Record<TimeframeSignalSnapshot['stage'], string> = {
+  ready: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+  cooldown: 'border-amber-400/40 bg-amber-500/10 text-amber-200',
+  gated: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+  triggered: 'border-sky-400/40 bg-sky-500/10 text-sky-200',
+}
+
+const STAGE_LABEL: Record<TimeframeSignalSnapshot['stage'], string> = {
+  ready: 'Ready',
+  cooldown: 'Cooldown',
+  gated: 'Gated',
+  triggered: 'Triggered',
+}
+
 const COMBINED_STRENGTH_GRADIENT: Record<string, string> = {
   bullish: 'from-emerald-400 to-emerald-500',
   bearish: 'from-rose-400 to-rose-500',
@@ -257,6 +271,8 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                   strengthKey != null
                     ? STRENGTH_BADGE_CLASS[strengthKey] ?? STRENGTH_BADGE_CLASS.weak
                     : null
+                const stageClass = STAGE_BADGE_CLASS[snapshot.stage]
+                const stageLabel = STAGE_LABEL[snapshot.stage]
                 const combinedDirectionKey = formatDirection(snapshot.combined.direction)
                 const combinedDirectionClass =
                   DIRECTION_BADGE_CLASS[combinedDirectionKey] ?? DIRECTION_BADGE_CLASS.neutral
@@ -282,11 +298,18 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
                   >
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400">
                       <span>{snapshot.timeframeLabel}</span>
-                      <span>
-                        {snapshot.price != null && Number.isFinite(snapshot.price)
-                          ? snapshot.price.toFixed(5)
-                          : '—'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {snapshot.price != null && Number.isFinite(snapshot.price)
+                            ? snapshot.price.toFixed(5)
+                            : '—'}
+                        </span>
+                        <span
+                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${stageClass}`}
+                        >
+                          Stage {stageLabel}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
                       <span className={`rounded-full border px-3 py-1 ${trendClass}`}>
