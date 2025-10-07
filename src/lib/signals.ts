@@ -354,6 +354,13 @@ function mapHeatmapResultToSignal(result: HeatmapResult): TradingSignal | null {
 function buildReasons(result: HeatmapResult, side: SignalDirection): string[] {
   const reasons: string[] = []
 
+  const crossReasons = collectMovingAverageCrossReasons(result, side)
+  for (const reason of crossReasons) {
+    if (!reasons.includes(reason)) {
+      reasons.push(reason)
+    }
+  }
+
   if (side === 'Bullish') {
     if (result.gating.long.timing && result.bias === 'BULL' && result.filters.maLongOk) {
       reasons.push('Trend & momentum aligned above MA200')
@@ -386,6 +393,88 @@ function buildReasons(result: HeatmapResult, side: SignalDirection): string[] {
 
   return reasons
 }
+
+function collectMovingAverageCrossReasons(
+  result: HeatmapResult,
+  side: SignalDirection,
+): string[] {
+  const crosses = Array.isArray(result.movingAverageCrosses)
+    ? result.movingAverageCrosses
+    : []
+
+  if (crosses.length === 0) {
+    return []
+  }
+
+  const crossReasons = new Set<string>()
+
+  for (const cross of crosses) {
+    if (!cross) {
+      continue
+    }
+
+    const normalizedDirection = normalizeCrossDirection(cross.direction)
+
+    if (!normalizedDirection) {
+      continue
+    }
+
+    if (cross.pair === 'ema10-ema50') {
+      if (side === 'Bullish' && isBullishCrossDirection(normalizedDirection)) {
+        crossReasons.add('EMA10 crossed above EMA50')
+      }
+      if (side === 'Bearish' && isBearishCrossDirection(normalizedDirection)) {
+        crossReasons.add('EMA10 crossed below EMA50')
+      }
+    }
+
+    if (cross.pair === 'ema50-ma200') {
+      if (side === 'Bullish' && isBullishCrossDirection(normalizedDirection)) {
+        crossReasons.add('Golden Cross')
+      }
+      if (side === 'Bearish' && isBearishCrossDirection(normalizedDirection)) {
+        crossReasons.add('Death Cross')
+      }
+    }
+  }
+
+  return Array.from(crossReasons)
+}
+
+function normalizeCrossDirection(direction: unknown): string | null {
+  if (typeof direction !== 'string') {
+    return null
+  }
+
+  const trimmed = direction.trim().toLowerCase()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function isBullishCrossDirection(direction: string): boolean {
+  return BULLISH_CROSS_DIRECTIONS.has(direction)
+}
+
+function isBearishCrossDirection(direction: string): boolean {
+  return BEARISH_CROSS_DIRECTIONS.has(direction)
+}
+
+const BULLISH_CROSS_DIRECTIONS = new Set([
+  'golden',
+  'bullish',
+  'cross_up',
+  'up',
+  'above',
+  'long',
+])
+
+const BEARISH_CROSS_DIRECTIONS = new Set([
+  'death',
+  'bearish',
+  'cross_down',
+  'down',
+  'below',
+  'short',
+])
 
 function scoreSignal(
   result: HeatmapResult,

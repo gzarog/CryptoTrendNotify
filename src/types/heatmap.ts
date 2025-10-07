@@ -22,6 +22,27 @@ export type HeatmapGating = {
   blockers: string[]
 }
 
+export type MovingAverageCrossPair = 'ema10-ema50' | 'ema10-ma200' | 'ema50-ma200'
+
+export type MovingAverageCrossDirection =
+  | 'golden'
+  | 'death'
+  | 'bullish'
+  | 'bearish'
+  | 'cross_up'
+  | 'cross_down'
+  | 'up'
+  | 'down'
+  | 'above'
+  | 'below'
+  | 'long'
+  | 'short'
+
+export type MovingAverageCrossEvent = {
+  pair: MovingAverageCrossPair
+  direction: MovingAverageCrossDirection
+}
+
 export type HeatmapResult = {
   entryTimeframe: string
   entryLabel: string
@@ -36,6 +57,7 @@ export type HeatmapResult = {
     ema10: number | null
     ema50: number | null
   }
+  movingAverageCrosses?: MovingAverageCrossEvent[] | null
   votes: {
     bull: number
     bear: number
