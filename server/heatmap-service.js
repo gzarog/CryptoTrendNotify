@@ -1,6 +1,73 @@
 import { URL } from 'node:url'
 
 const DEFAULT_SYMBOL = 'BTCUSDT'
+
+const BENCHMARK_PRICE_BY_BASE = {
+  BTC: 30000,
+  ETH: 2100,
+  BNB: 305,
+  SOL: 95,
+  XRP: 0.65,
+  DOGE: 0.078,
+  ADA: 0.38,
+  MATIC: 0.92,
+  LTC: 85,
+  AVAX: 36,
+  DOT: 5.7,
+  LINK: 7.4,
+}
+
+const QUOTE_SUFFIXES = ['USDT', 'USDC', 'USD', 'BTC', 'ETH']
+const DEFAULT_PRICE = BENCHMARK_PRICE_BY_BASE.BTC
+
+function resolveMockPrice(symbol) {
+  if (typeof symbol !== 'string') {
+    return DEFAULT_PRICE
+  }
+
+  const normalized = symbol.trim().toUpperCase()
+  if (!normalized) {
+    return DEFAULT_PRICE
+  }
+
+  if (BENCHMARK_PRICE_BY_BASE[normalized] != null) {
+    return BENCHMARK_PRICE_BY_BASE[normalized]
+  }
+
+  const matchingQuote = QUOTE_SUFFIXES.find((suffix) => normalized.endsWith(suffix))
+  const base = matchingQuote ? normalized.slice(0, -matchingQuote.length) : normalized
+
+  if (!base) {
+    return DEFAULT_PRICE
+  }
+
+  if (BENCHMARK_PRICE_BY_BASE[base] != null) {
+    return BENCHMARK_PRICE_BY_BASE[base]
+  }
+
+  const asciiSum = base.split('').reduce((total, char) => total + char.charCodeAt(0), 0)
+
+  let scale
+  if (base.length >= 5) {
+    scale = 10000
+  } else if (base.length === 4) {
+    scale = 1000
+  } else if (base.length === 3) {
+    scale = 50
+  } else if (base.length === 2) {
+    scale = 5
+  } else {
+    scale = 1
+  }
+
+  const fallback = asciiSum / scale
+
+  if (fallback >= 1) {
+    return Number(fallback.toFixed(2))
+  }
+
+  return Number(fallback.toFixed(4))
+}
 const MOCK_TIMEFRAMES = [
   {
     timeframe: '5',
@@ -92,7 +159,7 @@ const MOCK_BREAKDOWN = [
 ]
 
 function buildMockSnapshot(symbol, timeframe, label, template) {
-  const price = 30000
+  const price = resolveMockPrice(symbol)
   const evaluatedAt = Date.now()
 
   return {
