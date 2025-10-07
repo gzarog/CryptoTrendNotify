@@ -5,6 +5,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { DashboardView } from './components/DashboardView'
 import {
   calculateEMA,
+  calculateADX,
   calculateMACD,
   calculateRSI,
   calculateSMA,
@@ -162,6 +163,18 @@ const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
   dSmoothing: 3,
   label: 'RSI 14 • Stoch 14 • %K 3 • %D 3',
 }
+
+const ADX_SETTINGS: Record<string, { length: number; signal: number; label: string }> = {
+  '5': { length: 9, signal: 2, label: 'ADX 9 • Signal 2' },
+  '15': { length: 12, signal: 3, label: 'ADX 12 • Signal 3' },
+  '30': { length: 14, signal: 3, label: 'ADX 14 • Signal 3' },
+  '60': { length: 18, signal: 3, label: 'ADX 18 • Signal 3' },
+  '120': { length: 20, signal: 4, label: 'ADX 20 • Signal 4' },
+  '240': { length: 24, signal: 5, label: 'ADX 24 • Signal 5' },
+  '360': { length: 29, signal: 6, label: 'ADX 29 • Signal 6' },
+}
+
+const DEFAULT_ADX_SETTING = { length: 14, signal: 3, label: 'ADX 14 • Signal 3' }
 
 const MACD_SETTINGS: Record<
   string,
@@ -831,6 +844,8 @@ function App() {
   }, [dataUpdatedAt])
 
   const closes = useMemo(() => (data ? data.map((candle) => candle.close) : []), [data])
+  const highs = useMemo(() => (data ? data.map((candle) => candle.high) : []), [data])
+  const lows = useMemo(() => (data ? data.map((candle) => candle.low) : []), [data])
 
   const macdSetting = useMemo(
     () => MACD_SETTINGS[timeframe] ?? DEFAULT_MACD_SETTING,
@@ -853,6 +868,30 @@ function App() {
       label,
     }
   }, [closes, macdSetting])
+
+  const adxSetting = useMemo(
+    () => ADX_SETTINGS[timeframe] ?? DEFAULT_ADX_SETTING,
+    [timeframe],
+  )
+
+  const adxSeries = useMemo(() => {
+    const { length, signal, label } = adxSetting
+    const { adxLine, signalLine, plusDi, minusDi } = calculateADX(
+      highs,
+      lows,
+      closes,
+      length,
+      signal,
+    )
+
+    return {
+      adxLine,
+      signalLine,
+      plusDi,
+      minusDi,
+      label,
+    }
+  }, [adxSetting, closes, highs, lows])
 
   const ema10Values = useMemo(() => calculateEMA(closes, 10), [closes])
   const ema50Values = useMemo(() => calculateEMA(closes, 50), [closes])
@@ -1816,6 +1855,7 @@ function App() {
       onToggleMarketSummary={toggleMarketSummary}
       movingAverageSeries={movingAverageSeries}
       macdSeries={macdSeries}
+      adxSeries={adxSeries}
       heatmapResults={heatmapResults}
       rsiLengthDescription={rsiLengthDescription}
       rsiValues={rsiValues}

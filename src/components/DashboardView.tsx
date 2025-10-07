@@ -148,6 +148,13 @@ type DashboardViewProps = {
     histogram: Array<number | null>
     label: string
   }
+  adxSeries: {
+    adxLine: Array<number | null>
+    signalLine: Array<number | null>
+    plusDi: Array<number | null>
+    minusDi: Array<number | null>
+    label: string
+  }
   heatmapResults: HeatmapResult[]
   rsiLengthDescription: string
   rsiValues: Array<number | null>
@@ -230,6 +237,7 @@ export function DashboardView({
   onToggleMarketSummary,
   movingAverageSeries,
   macdSeries,
+  adxSeries,
   heatmapResults,
   rsiLengthDescription,
   rsiValues,
@@ -970,6 +978,17 @@ export function DashboardView({
                   { name: 'MACD', data: macdSeries.macdLine, color: '#60a5fa' },
                   { name: 'Signal', data: macdSeries.signalLine, color: '#f97316' },
                   { name: 'Histogram', data: macdSeries.histogram, color: '#34d399' },
+                ]}
+                isLoading={isFetching}
+              />
+              <LineChart
+                title={`ADX (${adxSeries.label})`}
+                labels={labels}
+                series={[
+                  { name: 'ADX', data: adxSeries.adxLine, color: '#facc15' },
+                  { name: 'Signal', data: adxSeries.signalLine, color: '#60a5fa' },
+                  { name: '+DI', data: adxSeries.plusDi, color: '#34d399' },
+                  { name: '-DI', data: adxSeries.minusDi, color: '#f87171' },
                 ]}
                 isLoading={isFetching}
               />
