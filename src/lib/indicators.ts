@@ -186,6 +186,167 @@ export function calculateMACD(
   }
 }
 
+export function calculateADX(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  adxPeriod: number,
+  signalPeriod: number,
+): {
+  adxLine: Array<number | null>
+  signalLine: Array<number | null>
+  plusDi: Array<number | null>
+  minusDi: Array<number | null>
+} {
+  const length = Math.min(highs.length, lows.length, closes.length)
+  const adxLine: Array<number | null> = new Array(length).fill(null)
+  const plusDi: Array<number | null> = new Array(length).fill(null)
+  const minusDi: Array<number | null> = new Array(length).fill(null)
+
+  const normalizedAdxPeriod = Math.max(1, Math.floor(adxPeriod))
+  const normalizedSignalPeriod = Math.max(1, Math.floor(signalPeriod))
+
+  if (length <= normalizedAdxPeriod) {
+    return {
+      adxLine,
+      signalLine: new Array(length).fill(null),
+      plusDi,
+      minusDi,
+    }
+  }
+
+  const trueRange: number[] = new Array(length).fill(0)
+  const positiveDM: number[] = new Array(length).fill(0)
+  const negativeDM: number[] = new Array(length).fill(0)
+
+  for (let i = 1; i < length; i += 1) {
+    const currentHigh = highs[i]
+    const previousHigh = highs[i - 1]
+    const currentLow = lows[i]
+    const previousLow = lows[i - 1]
+    const previousClose = closes[i - 1]
+
+    const upMove = currentHigh - previousHigh
+    const downMove = previousLow - currentLow
+
+    positiveDM[i] = upMove > downMove && upMove > 0 ? upMove : 0
+    negativeDM[i] = downMove > upMove && downMove > 0 ? downMove : 0
+
+    const rangeHighLow = currentHigh - currentLow
+    const rangeHighClose = Math.abs(currentHigh - previousClose)
+    const rangeLowClose = Math.abs(currentLow - previousClose)
+
+    trueRange[i] = Math.max(rangeHighLow, rangeHighClose, rangeLowClose)
+  }
+
+  let smoothedTR = 0
+  let smoothedPositiveDM = 0
+  let smoothedNegativeDM = 0
+
+  for (let i = 1; i <= normalizedAdxPeriod && i < length; i += 1) {
+    smoothedTR += trueRange[i]
+    smoothedPositiveDM += positiveDM[i]
+    smoothedNegativeDM += negativeDM[i]
+  }
+
+  if (smoothedTR === 0) {
+    return {
+      adxLine,
+      signalLine: calculateEMAFromSeries(adxLine, normalizedSignalPeriod),
+      plusDi,
+      minusDi,
+    }
+  }
+
+  const dxValues: Array<number | null> = new Array(length).fill(null)
+
+  const initialPlusDI = (smoothedPositiveDM / smoothedTR) * 100
+  const initialMinusDI = (smoothedNegativeDM / smoothedTR) * 100
+  plusDi[normalizedAdxPeriod] = initialPlusDI
+  minusDi[normalizedAdxPeriod] = initialMinusDI
+
+  const initialDISum = initialPlusDI + initialMinusDI
+
+  if (initialDISum !== 0) {
+    dxValues[normalizedAdxPeriod] =
+      (Math.abs(initialPlusDI - initialMinusDI) / initialDISum) * 100
+  }
+
+  for (let i = normalizedAdxPeriod + 1; i < length; i += 1) {
+    smoothedTR = smoothedTR - smoothedTR / normalizedAdxPeriod + trueRange[i]
+    smoothedPositiveDM =
+      smoothedPositiveDM - smoothedPositiveDM / normalizedAdxPeriod + positiveDM[i]
+    smoothedNegativeDM =
+      smoothedNegativeDM - smoothedNegativeDM / normalizedAdxPeriod + negativeDM[i]
+
+    if (smoothedTR === 0) {
+      continue
+    }
+
+    const currentPlusDI = (smoothedPositiveDM / smoothedTR) * 100
+    const currentMinusDI = (smoothedNegativeDM / smoothedTR) * 100
+
+    plusDi[i] = currentPlusDI
+    minusDi[i] = currentMinusDI
+
+    const diSum = currentPlusDI + currentMinusDI
+
+    if (diSum === 0) {
+      continue
+    }
+
+    dxValues[i] = (Math.abs(currentPlusDI - currentMinusDI) / diSum) * 100
+  }
+
+  const firstAdxIndex = normalizedAdxPeriod * 2 - 1
+
+  if (firstAdxIndex >= length) {
+    return {
+      adxLine,
+      signalLine: calculateEMAFromSeries(adxLine, normalizedSignalPeriod),
+      plusDi,
+      minusDi,
+    }
+  }
+
+  let dxSum = 0
+  let dxCount = 0
+
+  for (let i = normalizedAdxPeriod; i <= firstAdxIndex && i < length; i += 1) {
+    const value = dxValues[i]
+    if (value == null) {
+      continue
+    }
+    dxSum += value
+    dxCount += 1
+  }
+
+  if (dxCount > 0) {
+    const initialAdx = dxSum / dxCount
+    adxLine[firstAdxIndex] = initialAdx
+
+    for (let i = firstAdxIndex + 1; i < length; i += 1) {
+      const currentDX = dxValues[i]
+      const previousAdx = adxLine[i - 1]
+
+      if (currentDX == null || previousAdx == null) {
+        continue
+      }
+
+      adxLine[i] = ((previousAdx * (normalizedAdxPeriod - 1)) + currentDX) / normalizedAdxPeriod
+    }
+  }
+
+  const signalLine = calculateEMAFromSeries(adxLine, normalizedSignalPeriod)
+
+  return {
+    adxLine,
+    signalLine,
+    plusDi,
+    minusDi,
+  }
+}
+
 type StochasticRSIOptions = {
   stochLength?: number
   kSmoothing?: number
