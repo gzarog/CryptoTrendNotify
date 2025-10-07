@@ -32,6 +32,10 @@ function buildHeatmapUrl(symbol: string): URL {
       }
     }
 
+    if (import.meta.env.DEV && !rawBase && !apiBase) {
+      return new URL('http://localhost:4000/api/heatmap/snapshots')
+    }
+
     return new URL(DEFAULT_API_PATH, origin)
   })()
 
