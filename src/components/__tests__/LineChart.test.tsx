@@ -70,7 +70,11 @@ describe('LineChart', () => {
     )
 
     expect(screen.getByText('Neutral zone')).toBeInTheDocument()
-    expect(screen.getByText('MACD')).toBeInTheDocument()
-    expect(screen.getByText('Signal')).toBeInTheDocument()
+
+    const macdBadge = screen.getByText('MACD', { selector: 'span' })
+    const signalBadge = screen.getByText('Signal', { selector: 'span' })
+
+    expect(macdBadge).toBeInTheDocument()
+    expect(signalBadge).toBeInTheDocument()
   })
 })
