@@ -20,6 +20,57 @@ const BENCHMARK_PRICE_BY_BASE = {
 const QUOTE_SUFFIXES = ['USDT', 'USDC', 'USD', 'BTC', 'ETH']
 const DEFAULT_PRICE = BENCHMARK_PRICE_BY_BASE.BTC
 
+async function fetchSymbolPrice(symbol) {
+  if (!symbol) {
+    return null
+  }
+
+  const endpoints = [
+    (ticker) =>
+      `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(ticker)}`,
+    (ticker) =>
+      `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(ticker)}`,
+  ]
+
+  for (const buildUrl of endpoints) {
+    const url = buildUrl(symbol)
+
+    try {
+      const response = await fetch(url, { headers: { Accept: 'application/json' } })
+
+      if (!response.ok) {
+        continue
+      }
+
+      const payload = await response.json()
+
+      if (payload && typeof payload === 'object') {
+        if (typeof payload.price === 'string' || typeof payload.price === 'number') {
+          const value = Number(payload.price)
+          if (Number.isFinite(value)) {
+            return value
+          }
+        }
+
+        if (payload.data && Array.isArray(payload.data) && payload.data.length > 0) {
+          const first = payload.data[0]
+          const raw = first && (first.last || first.lastPrice)
+          if (typeof raw === 'string' || typeof raw === 'number') {
+            const value = Number(raw)
+            if (Number.isFinite(value)) {
+              return value
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch price from ${url}`, error)
+    }
+  }
+
+  return null
+}
+
 function resolveMockPrice(symbol) {
   if (typeof symbol !== 'string') {
     return DEFAULT_PRICE
@@ -158,8 +209,8 @@ const MOCK_BREAKDOWN = [
   { timeframe: '240', label: '4h', value: 1, vote: 'bear' },
 ]
 
-function buildMockSnapshot(symbol, timeframe, label, template) {
-  const price = resolveMockPrice(symbol)
+function buildMockSnapshot(symbol, timeframe, label, template, basePrice) {
+  const price = basePrice ?? resolveMockPrice(symbol)
   const evaluatedAt = Date.now()
 
   return {
@@ -224,9 +275,9 @@ function buildMockSnapshot(symbol, timeframe, label, template) {
   }
 }
 
-function buildMockSnapshots(symbol) {
+function buildMockSnapshots(symbol, price) {
   return MOCK_TIMEFRAMES.map(({ timeframe, label, template }) =>
-    buildMockSnapshot(symbol, timeframe, label, template),
+    buildMockSnapshot(symbol, timeframe, label, template, price),
   )
 }
 
@@ -303,5 +354,7 @@ export async function getHeatmapSnapshots(rawSymbol) {
     return upstreamResults
   }
 
-  return buildMockSnapshots(symbol)
+  const livePrice = await fetchSymbolPrice(symbol)
+
+  return buildMockSnapshots(symbol, livePrice ?? undefined)
 }
