@@ -18,7 +18,12 @@ export type CombinedSignalBreakdown = {
   emaFast: number | null
   emaSlow: number | null
   maLong: number | null
+  markov: {
+    priorScore: number
+    currentState: 'D' | 'R' | 'B' | 'U' | null
+  }
   signalStrength: number
+  signalStrengthRaw: number
   label:
     | 'STRONG_BUY'
     | 'BUY_FORMING'

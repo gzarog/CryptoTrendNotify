@@ -38,7 +38,9 @@ const TOTAL_TIMEFRAME_WEIGHT = Object.values(TIMEFRAME_WEIGHTS).reduce(
 
 const ADX_STRONG_THRESHOLD = 25
 const ADX_FORMING_LO = 20
-const ADX_FORMING_HI = 25
+const PRIOR_WEIGHT = 0.35
+const ADX_STRONG_BOOST_BY_PRIOR = 5
+const ADX_FORMING_RANGE_BOOST = 3
 const RSI_BULL_MIN = 55
 const RSI_BEAR_MAX = 45
 const STOCH_BULL_MIN = 60
@@ -54,19 +56,29 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   const plusDI = toNumberOrNull(result.adx?.plusDI)
   const minusDI = toNumberOrNull(result.adx?.minusDI)
   const adxSlope = toNumberOrNull(result.adx?.slope)
+  const markovPriorScoreRaw = toNumberOrNull(result.markov.priorScore)
+  const markovPriorScore = Math.min(Math.max(markovPriorScoreRaw ?? 0, -1), 1)
+  const markovState = result.markov.currentState ?? null
 
   const bias = computeBias(emaFast, emaSlow, maLong)
   const momentum = computeMomentum(bias, rsiValue, stochKValue)
-  const trendStrength = computeTrendStrength(adxValue)
+  const trendStrength = computeTrendStrength(adxValue, markovPriorScore)
   const adxDirection = computeAdxDirection(bias, plusDI, minusDI)
   const adxIsRising = isAdxRising(adxSlope)
 
-  const signalStrength = classifySignalStrength(
+  const signalStrengthRaw = classifySignalStrength(
     bias,
     momentum,
     trendStrength,
     adxDirection,
     adxIsRising,
+  )
+  const baseScaled = Math.min(Math.max(signalStrengthRaw / MAX_SIGNAL_STRENGTH, -1), 1)
+  const posteriorScaled =
+    (1 - PRIOR_WEIGHT) * baseScaled + PRIOR_WEIGHT * markovPriorScore
+  const signalStrength = Math.min(
+    Math.max(posteriorScaled * MAX_SIGNAL_STRENGTH, -MAX_SIGNAL_STRENGTH),
+    MAX_SIGNAL_STRENGTH,
   )
   const label = resolveSignalLabel(signalStrength)
 
@@ -92,7 +104,12 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
       emaFast,
       emaSlow,
       maLong,
+      markov: {
+        priorScore: markovPriorScore,
+        currentState: markovState,
+      },
       signalStrength,
+      signalStrengthRaw,
       label,
     },
   }
@@ -148,16 +165,21 @@ function computeMomentum(
 
 function computeTrendStrength(
   adxValue: number | null,
+  markovPriorScore: number,
 ): CombinedSignalBreakdown['trendStrength'] {
   if (adxValue == null) {
     return 'Weak'
   }
 
-  if (adxValue >= ADX_STRONG_THRESHOLD) {
+  const positivePrior = Math.max(0, markovPriorScore)
+  const strongThreshold = Math.max(10, ADX_STRONG_THRESHOLD - ADX_STRONG_BOOST_BY_PRIOR * positivePrior)
+  const formingLo = Math.max(10, ADX_FORMING_LO - ADX_FORMING_RANGE_BOOST * positivePrior)
+
+  if (adxValue >= strongThreshold) {
     return 'Strong'
   }
 
-  if (adxValue >= ADX_FORMING_LO && adxValue < ADX_FORMING_HI) {
+  if (adxValue >= formingLo && adxValue < strongThreshold) {
     return 'Forming'
   }
 
@@ -239,12 +261,13 @@ function classifySignalStrength(
 }
 
 function resolveSignalLabel(score: number): CombinedSignalBreakdown['label'] {
-  if (score >= 3) return 'STRONG_BUY'
-  if (score === 2) return 'BUY_FORMING'
-  if (score === 1) return 'BUY_WEAK'
-  if (score === -1) return 'SELL_WEAK'
-  if (score === -2) return 'SELL_FORMING'
-  if (score <= -3) return 'STRONG_SELL'
+  if (score >= 2.5) return 'STRONG_BUY'
+  if (score >= 1.5) return 'BUY_FORMING'
+  if (score >= 0.5) return 'BUY_WEAK'
+  if (score > -0.5) return 'NEUTRAL'
+  if (score > -1.5) return 'SELL_WEAK'
+  if (score > -2.5) return 'SELL_FORMING'
+  if (score <= -2.5) return 'STRONG_SELL'
   return 'NEUTRAL'
 }
 
