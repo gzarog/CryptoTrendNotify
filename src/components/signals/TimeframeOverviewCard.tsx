@@ -1,29 +1,17 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
 import {
-  BIAS_STATUS_CLASS,
   COMBINED_STRENGTH_GRADIENT,
   DIRECTION_BADGE_CLASS,
   STAGE_BADGE_CLASS,
   STAGE_LABEL,
   STRENGTH_BADGE_CLASS,
 } from './constants'
-import {
-  clampPercentage,
-  formatPrice,
-  formatSignedValue,
-  resolveBiasDirection,
-  toDirectionKey,
-} from './utils'
+import { clampPercentage, formatPrice, formatSignedValue, toDirectionKey } from './utils'
 import type { TimeframeSignalSnapshot } from '../../types/signals'
 
 type TimeframeOverviewCardProps = {
   snapshot: TimeframeSignalSnapshot
-}
-
-type BiasStatus = {
-  label: string
-  value: number
 }
 
 export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) {
@@ -40,12 +28,47 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     : null
   const gradient = COMBINED_STRENGTH_GRADIENT[directionKey] ?? COMBINED_STRENGTH_GRADIENT.neutral
   const combinedStrength = clampPercentage(snapshot.combined.strength ?? 0)
-  const { trendBias, momentumBias, confirmation, combinedScore } = snapshot.combined.breakdown
-  const biasStatuses: BiasStatus[] = [
-    { label: 'Trend', value: trendBias },
-    { label: 'Momentum', value: momentumBias },
-    { label: 'Confirmation', value: confirmation },
-    { label: 'Total', value: combinedScore },
+  const breakdown = snapshot.combined.breakdown
+  const momentumLabel =
+    breakdown.momentum === 'StrongBullish'
+      ? 'Strong bullish'
+      : breakdown.momentum === 'StrongBearish'
+      ? 'Strong bearish'
+      : 'Weak'
+  const adxDirectionLabel = (() => {
+    if (breakdown.adxDirection === 'ConfirmBull') {
+      return breakdown.adxIsRising ? 'Confirm bull (rising)' : 'Confirm bull'
+    }
+    if (breakdown.adxDirection === 'ConfirmBear') {
+      return breakdown.adxIsRising ? 'Confirm bear (rising)' : 'Confirm bear'
+    }
+    return breakdown.adxIsRising ? 'No confirmation (rising)' : 'No confirmation'
+  })()
+  const signalLabel = breakdown.label.replace(/_/g, ' ')
+
+  const classification = [
+    { label: 'Label', value: signalLabel },
+    { label: 'Score', value: formatSignedValue(breakdown.signalStrength) },
+    { label: 'Bias', value: breakdown.bias.toLowerCase() },
+    { label: 'Momentum', value: momentumLabel.toLowerCase() },
+    { label: 'Trend', value: breakdown.trendStrength.toLowerCase() },
+    { label: 'ADX', value: adxDirectionLabel.toLowerCase() },
+  ]
+
+  const formatIndicator = (value: number | null | undefined, decimals = 1) => {
+    if (value == null || !Number.isFinite(value)) {
+      return '—'
+    }
+    return value.toFixed(decimals)
+  }
+
+  const indicatorSnapshot = [
+    { label: 'RSI', value: formatIndicator(breakdown.rsiValue) },
+    { label: 'Stoch %K', value: formatIndicator(breakdown.stochKValue) },
+    { label: 'ADX', value: formatIndicator(breakdown.adxValue) },
+    { label: 'EMA fast', value: formatPrice(breakdown.emaFast, 5) },
+    { label: 'EMA slow', value: formatPrice(breakdown.emaSlow, 5) },
+    { label: 'MA long', value: formatPrice(breakdown.maLong, 5) },
   ]
 
   return (
@@ -74,26 +97,35 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
 
       <section className="flex flex-col gap-3 text-xs text-slate-200">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-          Bias contribution
+          Signal classification
         </span>
-        <div className="grid grid-cols-2 gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-4">
-          {biasStatuses.map(({ label, value }) => {
-            const statusDirection = toDirectionKey(resolveBiasDirection(value))
-            const statusClass = BIAS_STATUS_CLASS[statusDirection] ?? BIAS_STATUS_CLASS.neutral
+        <div className="grid gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-2">
+          {classification.map(({ label, value }) => (
+            <div
+              key={`${snapshot.timeframe}-${label}`}
+              className="flex flex-col gap-1 rounded-xl border border-white/10 bg-slate-900/40 px-3 py-2 text-left"
+            >
+              <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">{label}</span>
+              <span className="font-semibold text-white">{value}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
-            return (
-              <div
-                key={`${snapshot.timeframe}-${label}`}
-                className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left ${statusClass}`}
-              >
-                <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">{label}</span>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide">{statusDirection}</span>
-                  <span className="font-mono text-[11px]">{formatSignedValue(value)}</span>
-                </div>
-              </div>
-            )
-          })}
+      <section className="flex flex-col gap-3 text-xs text-slate-200">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          Indicator snapshot
+        </span>
+        <div className="grid gap-2 text-[11px] uppercase tracking-wide sm:grid-cols-3">
+          {indicatorSnapshot.map(({ label, value }) => (
+            <div
+              key={`${snapshot.timeframe}-${label}`}
+              className="flex flex-col gap-1 rounded-xl border border-white/10 bg-slate-900/30 px-3 py-2 text-left"
+            >
+              <span className="text-[10px] font-semibold tracking-wide text-slate-400/80">{label}</span>
+              <span className="font-mono text-[11px] text-slate-100">{value}</span>
+            </div>
+          ))}
         </div>
       </section>
 

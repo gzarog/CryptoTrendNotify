@@ -1393,7 +1393,7 @@ function App() {
     timeframeSnapshots.forEach((snapshot) => {
       const signatureKey = `${normalizedSymbol}-${snapshot.timeframe}`
       const { direction, breakdown, strength } = snapshot.combined
-      const signature = `${signatureKey}-${direction}-${breakdown.combinedScore}`
+      const signature = `${signatureKey}-${direction}-${breakdown.signalStrength}-${breakdown.label}`
 
       if (lastCombinedSignalTriggersRef.current[signatureKey] === signature) {
         return
@@ -1401,12 +1401,28 @@ function App() {
 
       lastCombinedSignalTriggersRef.current[signatureKey] = signature
 
-      if (direction === 'Neutral' || Math.abs(breakdown.combinedScore) < MIN_COMBINED_SIGNAL_SCORE) {
+      if (direction === 'Neutral' || Math.abs(breakdown.signalStrength) < MIN_COMBINED_SIGNAL_SCORE) {
         return
       }
 
       const normalizedStrength = Math.round(Math.min(Math.max(strength ?? 0, 0), 100))
-      const formatBiasValue = (value: number) => (value > 0 ? `+${value}` : value.toString())
+      const formatScore = (value: number) => (value > 0 ? `+${value}` : value.toString())
+      const momentumLabel =
+        breakdown.momentum === 'StrongBullish'
+          ? 'strong bullish'
+          : breakdown.momentum === 'StrongBearish'
+          ? 'strong bearish'
+          : 'weak'
+      const adxDirectionLabel = (() => {
+        if (breakdown.adxDirection === 'ConfirmBull') {
+          return breakdown.adxIsRising ? 'confirm bull (rising)' : 'confirm bull'
+        }
+        if (breakdown.adxDirection === 'ConfirmBear') {
+          return breakdown.adxIsRising ? 'confirm bear (rising)' : 'confirm bear'
+        }
+        return breakdown.adxIsRising ? 'no confirmation (rising)' : 'no confirmation'
+      })()
+      const signalLabel = breakdown.label.replace(/_/g, ' ').toLowerCase()
       const triggeredAt = Date.now()
       const entry: CombinedSignalNotification = {
         id: signature,
@@ -1427,14 +1443,13 @@ function App() {
       })
 
       const emoji = direction === 'Bullish' ? '🟢' : '🔴'
-      const biasSummary = [
-        `Trend ${formatBiasValue(breakdown.trendBias)}`,
-        `Momentum ${formatBiasValue(breakdown.momentumBias)}`,
-        `Confirm ${formatBiasValue(breakdown.confirmation)}`,
-        `Total ${formatBiasValue(breakdown.combinedScore)}`,
-      ].join(' • ')
+      const scoreSummary = `${signalLabel} • Score ${formatScore(breakdown.signalStrength)}`
+      const biasSummary = `${breakdown.bias.toLowerCase()} bias • ${momentumLabel}`
+      const trendSummary = `Trend ${breakdown.trendStrength.toLowerCase()} • ${adxDirectionLabel}`
       const bodyParts = [
+        scoreSummary,
         biasSummary,
+        trendSummary,
         `Strength ${normalizedStrength}%`,
       ]
 
@@ -1466,7 +1481,8 @@ function App() {
       return
     }
 
-    const { direction, bias, strength, contributions } = multiTimeframeSignal
+    const { direction, normalizedScore, combinedScore, strength, combinedBias, contributions } =
+      multiTimeframeSignal
 
     if (
       direction === 'Neutral' ||
@@ -1477,14 +1493,15 @@ function App() {
       return
     }
 
-    const normalizedBias = Math.round(bias * 10) / 10
-    const sanitizedBias = Object.is(normalizedBias, -0) ? 0 : normalizedBias
+    const normalizedScoreRounded = Math.round(normalizedScore * 10) / 10
+    const sanitizedNormalizedScore = Object.is(normalizedScoreRounded, -0) ? 0 : normalizedScoreRounded
+    const weightedScoreRounded = Math.round(combinedScore * 10) / 10
     const normalizedStrength = Math.round(Math.min(Math.max(strength ?? 0, 0), 100))
 
     const contributionSignature = contributions
       .map((entry) => `${entry.timeframe}:${entry.signal.direction}:${Math.round(entry.signal.strength)}`)
       .join('|')
-    const signature = `${normalizedSymbol}-${direction}-${sanitizedBias}-${normalizedStrength}-${contributionSignature}`
+    const signature = `${normalizedSymbol}-${direction}-${sanitizedNormalizedScore}-${weightedScoreRounded}-${normalizedStrength}-${contributionSignature}`
 
     if (lastMultiTimeframeTriggerRef.current === signature) {
       return
@@ -1492,8 +1509,12 @@ function App() {
 
     lastMultiTimeframeTriggerRef.current = signature
 
-    const formattedBiasRaw = sanitizedBias.toFixed(1).replace(/\.0$/, '')
-    const formattedBias = sanitizedBias > 0 ? `+${formattedBiasRaw}` : formattedBiasRaw
+    const formatSigned = (value: number) => {
+      const raw = value.toFixed(1).replace(/\.0$/, '')
+      return value > 0 ? `+${raw}` : raw
+    }
+    const formattedNormalized = formatSigned(sanitizedNormalizedScore)
+    const formattedWeighted = formatSigned(weightedScoreRounded)
     const topContributions = contributions
       .slice()
       .sort((a, b) => b.weight - a.weight)
@@ -1504,7 +1525,12 @@ function App() {
         return `${directionEmoji} ${entry.timeframeLabel} ${Math.round(entry.signal.strength)}%`
       })
 
-    const bodyParts = [`Bias ${formattedBias}`, `Strength ${normalizedStrength}%`]
+    const bodyParts = [
+      `Norm ${formattedNormalized}`,
+      `Weighted ${formattedWeighted}`,
+      `Strength ${normalizedStrength}%`,
+      `${combinedBias.strength.toLowerCase()} bias`,
+    ]
     if (topContributions.length > 0) {
       bodyParts.push(topContributions.join(' • '))
     }
@@ -1520,7 +1546,7 @@ function App() {
         symbol: normalizedSymbol,
         direction,
         strength: normalizedStrength,
-        bias: sanitizedBias,
+        normalizedScore: sanitizedNormalizedScore,
       },
     })
 
@@ -1529,9 +1555,10 @@ function App() {
       id: signature,
       symbol: normalizedSymbol,
       direction,
-      bias: sanitizedBias,
+      normalizedScore: sanitizedNormalizedScore,
       strength: normalizedStrength,
       contributions,
+      combinedBias,
       triggeredAt,
     }
 

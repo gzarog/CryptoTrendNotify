@@ -1,6 +1,7 @@
 import type { HeatmapResult } from '../types/heatmap'
 import type {
   CombinedSignal,
+  CombinedSignalBreakdown,
   CombinedSignalDirection,
   MultiTimeframeSignal,
   MultiTimeframeSignalContribution,
@@ -18,97 +19,233 @@ const STOCH_HIGH = 80
 
 const MAX_SCORE = 100
 
-const MULTI_TIMEFRAME_WEIGHTS: Record<string, number> = {
-  '5': 1,
-  '15': 1.5,
-  '30': 2,
-  '60': 3,
-  '120': 4,
-  '240': 5,
-  '360': 6,
-  '420': 7,
+const TIMEFRAME_WEIGHTS: Record<string, number> = {
+  '5': 0.5,
+  '15': 0.7,
+  '30': 1,
+  '60': 1.3,
+  '120': 1.5,
+  '240': 2,
+  '360': 2.5,
 }
 
 const DEFAULT_MULTI_TIMEFRAME_WEIGHT = 1
+const MAX_SIGNAL_STRENGTH = 3
+const TOTAL_TIMEFRAME_WEIGHT = Object.values(TIMEFRAME_WEIGHTS).reduce(
+  (sum, weight) => sum + weight,
+  0,
+)
 
-type MacdSnapshot = {
-  hist: number | null | undefined
-  line: number | null | undefined
-  signal: number | null | undefined
-}
+const ADX_STRONG_THRESHOLD = 25
+const ADX_FORMING_LO = 20
+const ADX_FORMING_HI = 25
+const RSI_BULL_MIN = 55
+const RSI_BEAR_MAX = 45
+const STOCH_BULL_MIN = 60
+const STOCH_BEAR_MAX = 40
 
-export function getCombinedSignal(
-  _ohlcv: unknown,
-  ema10: number | null | undefined,
-  ema50: number | null | undefined,
-  ma200: number | null | undefined,
-  rsi: number | null | undefined,
-  stochRsi: number | null | undefined,
-  macd: MacdSnapshot | null | undefined,
-): CombinedSignal {
-  let trendBias = 0
-  let momentumBias = 0
-  let confirmation = 0
+export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
+  const emaFast = toNumberOrNull(result.ema?.ema10)
+  const emaSlow = toNumberOrNull(result.ema?.ema50)
+  const maLong = toNumberOrNull(result.ma200.value)
+  const rsiValue = toNumberOrNull(result.rsiLtf.value)
+  const stochKValue = toNumberOrNull(result.stochRsi.k)
+  const adxValue = toNumberOrNull(result.adx?.value)
+  const plusDI = toNumberOrNull(result.adx?.plusDI)
+  const minusDI = toNumberOrNull(result.adx?.minusDI)
+  const adxSlope = toNumberOrNull(result.adx?.slope)
 
-  const ema10Value = toNumberOrNull(ema10)
-  const ema50Value = toNumberOrNull(ema50)
-  const ma200Value = toNumberOrNull(ma200)
+  const bias = computeBias(emaFast, emaSlow, maLong)
+  const momentum = computeMomentum(bias, rsiValue, stochKValue)
+  const trendStrength = computeTrendStrength(adxValue)
+  const adxDirection = computeAdxDirection(bias, plusDI, minusDI)
+  const adxIsRising = isAdxRising(adxSlope)
 
-  if (ema10Value != null && ema50Value != null) {
-    if (ma200Value != null && ema10Value > ema50Value && ema50Value > ma200Value) {
-      trendBias += 2
-    } else if (ema10Value > ema50Value) {
-      trendBias += 1
-    } else if (ma200Value != null && ema10Value < ema50Value && ema50Value < ma200Value) {
-      trendBias -= 2
-    } else if (ema10Value < ema50Value) {
-      trendBias -= 1
-    }
-  }
+  const signalStrength = classifySignalStrength(
+    bias,
+    momentum,
+    trendStrength,
+    adxDirection,
+    adxIsRising,
+  )
+  const label = resolveSignalLabel(signalStrength)
 
-  const rsiValue = toNumberOrNull(rsi)
-  const stochRsiValue = toNumberOrNull(stochRsi)
+  const direction: CombinedSignalDirection =
+    signalStrength > 0 ? 'Bullish' : signalStrength < 0 ? 'Bearish' : 'Neutral'
 
-  if (rsiValue != null && stochRsiValue != null) {
-    if (rsiValue > 60 && stochRsiValue > 0.7) {
-      momentumBias += 1
-    } else if (rsiValue < 40 && stochRsiValue < 0.3) {
-      momentumBias -= 1
-    }
-  }
-
-  const macdHist = toNumberOrNull(macd?.hist)
-  const macdLine = toNumberOrNull(macd?.line)
-  const macdSignal = toNumberOrNull(macd?.signal)
-
-  if (macdHist != null && macdLine != null && macdSignal != null) {
-    if (macdHist > 0 && macdLine > macdSignal) {
-      confirmation += 1
-    } else if (macdHist < 0 && macdLine < macdSignal) {
-      confirmation -= 1
-    }
-  }
-
-  const combinedScore = trendBias + momentumBias + confirmation
-  const strength = Math.min(Math.abs(combinedScore) * 25, 100)
-
-  let direction: CombinedSignalDirection = 'Neutral'
-  if (combinedScore > 0) {
-    direction = 'Bullish'
-  } else if (combinedScore < 0) {
-    direction = 'Bearish'
-  }
+  const strength = Math.round(
+    Math.min(Math.max(Math.abs(signalStrength) / MAX_SIGNAL_STRENGTH, 0), 1) * 100,
+  )
 
   return {
     direction,
     strength,
     breakdown: {
-      trendBias,
-      momentumBias,
-      confirmation,
-      combinedScore,
+      bias,
+      momentum,
+      trendStrength,
+      adxDirection,
+      adxIsRising,
+      adxValue,
+      rsiValue,
+      stochKValue,
+      emaFast,
+      emaSlow,
+      maLong,
+      signalStrength,
+      label,
     },
   }
+}
+
+function computeBias(
+  emaFast: number | null,
+  emaSlow: number | null,
+  maLong: number | null,
+): CombinedSignalBreakdown['bias'] {
+  if (
+    emaFast != null &&
+    emaSlow != null &&
+    maLong != null &&
+    emaFast > emaSlow &&
+    emaSlow > maLong
+  ) {
+    return 'Bullish'
+  }
+
+  if (
+    emaFast != null &&
+    emaSlow != null &&
+    maLong != null &&
+    emaFast < emaSlow &&
+    emaSlow < maLong
+  ) {
+    return 'Bearish'
+  }
+
+  return 'Neutral'
+}
+
+function computeMomentum(
+  bias: CombinedSignalBreakdown['bias'],
+  rsi: number | null,
+  stochK: number | null,
+): CombinedSignalBreakdown['momentum'] {
+  if (rsi == null || stochK == null) {
+    return 'Weak'
+  }
+
+  if (bias === 'Bullish' && rsi > RSI_BULL_MIN && stochK > STOCH_BULL_MIN) {
+    return 'StrongBullish'
+  }
+
+  if (bias === 'Bearish' && rsi < RSI_BEAR_MAX && stochK < STOCH_BEAR_MAX) {
+    return 'StrongBearish'
+  }
+
+  return 'Weak'
+}
+
+function computeTrendStrength(
+  adxValue: number | null,
+): CombinedSignalBreakdown['trendStrength'] {
+  if (adxValue == null) {
+    return 'Weak'
+  }
+
+  if (adxValue >= ADX_STRONG_THRESHOLD) {
+    return 'Strong'
+  }
+
+  if (adxValue >= ADX_FORMING_LO && adxValue < ADX_FORMING_HI) {
+    return 'Forming'
+  }
+
+  return 'Weak'
+}
+
+function computeAdxDirection(
+  bias: CombinedSignalBreakdown['bias'],
+  plusDI: number | null,
+  minusDI: number | null,
+): CombinedSignalBreakdown['adxDirection'] {
+  if (bias === 'Bullish' && plusDI != null && minusDI != null && plusDI > minusDI) {
+    return 'ConfirmBull'
+  }
+
+  if (bias === 'Bearish' && plusDI != null && minusDI != null && minusDI > plusDI) {
+    return 'ConfirmBear'
+  }
+
+  return 'NoConfirm'
+}
+
+function isAdxRising(adxSlope: number | null): boolean {
+  if (adxSlope == null) {
+    return false
+  }
+  return adxSlope > 0
+}
+
+function classifySignalStrength(
+  bias: CombinedSignalBreakdown['bias'],
+  momentum: CombinedSignalBreakdown['momentum'],
+  trendStrength: CombinedSignalBreakdown['trendStrength'],
+  adxDirection: CombinedSignalBreakdown['adxDirection'],
+  adxIsRising: boolean,
+): number {
+  if (
+    bias === 'Bullish' &&
+    momentum === 'StrongBullish' &&
+    trendStrength === 'Strong' &&
+    adxDirection === 'ConfirmBull'
+  ) {
+    return 3
+  }
+
+  if (
+    bias === 'Bearish' &&
+    momentum === 'StrongBearish' &&
+    trendStrength === 'Strong' &&
+    adxDirection === 'ConfirmBear'
+  ) {
+    return -3
+  }
+
+  if (trendStrength === 'Forming' && adxIsRising) {
+    if (momentum === 'StrongBullish' || bias === 'Bullish') {
+      return 2
+    }
+    if (momentum === 'StrongBearish' || bias === 'Bearish') {
+      return -2
+    }
+  }
+
+  if (
+    bias === 'Bullish' &&
+    (momentum === 'StrongBullish' || adxDirection === 'ConfirmBull')
+  ) {
+    return 1
+  }
+
+  if (
+    bias === 'Bearish' &&
+    (momentum === 'StrongBearish' || adxDirection === 'ConfirmBear')
+  ) {
+    return -1
+  }
+
+  return 0
+}
+
+function resolveSignalLabel(score: number): CombinedSignalBreakdown['label'] {
+  if (score >= 3) return 'STRONG_BUY'
+  if (score === 2) return 'BUY_FORMING'
+  if (score === 1) return 'BUY_WEAK'
+  if (score === -1) return 'SELL_WEAK'
+  if (score === -2) return 'SELL_FORMING'
+  if (score <= -3) return 'STRONG_SELL'
+  return 'NEUTRAL'
 }
 
 export function deriveSignalsFromHeatmap(results: HeatmapResult[]): TradingSignal[] {
@@ -124,6 +261,36 @@ export function deriveTimeframeSnapshots(
   return results.map((result) => mapHeatmapResultToSnapshot(result))
 }
 
+function resolveCombinedBias(
+  score: number,
+): { dir: CombinedSignalDirection; strength: 'Strong' | 'Medium' | 'Weak' | 'Sideways' } {
+  if (score > 8) {
+    return { dir: 'Bullish', strength: 'Strong' }
+  }
+
+  if (score > 4) {
+    return { dir: 'Bullish', strength: 'Medium' }
+  }
+
+  if (score > 1) {
+    return { dir: 'Bullish', strength: 'Weak' }
+  }
+
+  if (score < -8) {
+    return { dir: 'Bearish', strength: 'Strong' }
+  }
+
+  if (score < -4) {
+    return { dir: 'Bearish', strength: 'Medium' }
+  }
+
+  if (score < -1) {
+    return { dir: 'Bearish', strength: 'Weak' }
+  }
+
+  return { dir: 'Neutral', strength: 'Sideways' }
+}
+
 export function getMultiTimeframeSignal(
   snapshots: TimeframeSignalSnapshot[],
 ): MultiTimeframeSignal | null {
@@ -133,7 +300,7 @@ export function getMultiTimeframeSignal(
 
   const contributions: MultiTimeframeSignalContribution[] = []
 
-  let weightedScore = 0
+  let combinedScore = 0
   let totalWeight = 0
 
   snapshots.forEach((snapshot) => {
@@ -143,44 +310,47 @@ export function getMultiTimeframeSignal(
     }
 
     const signal = snapshot.combined
-    const directionSign = signal.direction === 'Bullish' ? 1 : signal.direction === 'Bearish' ? -1 : 0
-    const bias = directionSign * signal.strength
+    const score = signal.breakdown.signalStrength
+    const weightedScore = score * weight
 
     contributions.push({
       timeframe: snapshot.timeframe,
       timeframeLabel: snapshot.timeframeLabel,
       weight,
       signal,
-      bias,
+      score,
+      weightedScore,
     })
 
-    weightedScore += bias * weight
+    combinedScore += weightedScore
     totalWeight += weight
   })
 
   if (totalWeight === 0) {
     return {
       direction: 'Neutral',
-      bias: 0,
       strength: 0,
+      combinedScore: 0,
+      normalizedScore: 0,
+      combinedBias: { dir: 'Neutral', strength: 'Sideways' },
       contributions,
     }
   }
 
-  const rawBias = weightedScore / totalWeight
-  let normalizedBias = Math.round(rawBias * 10) / 10
-  if (Object.is(normalizedBias, -0)) {
-    normalizedBias = 0
+  const normalizedScoreRaw = combinedScore / totalWeight
+  let normalizedScore = Math.round(normalizedScoreRaw * 10) / 10
+  if (Object.is(normalizedScore, -0)) {
+    normalizedScore = 0
   }
 
-  let globalDirection: CombinedSignalDirection = 'Neutral'
-  if (normalizedBias > 0) {
-    globalDirection = 'Bullish'
-  } else if (normalizedBias < 0) {
-    globalDirection = 'Bearish'
-  }
+  const combinedBias = resolveCombinedBias(combinedScore)
 
-  const strength = Math.min(Math.max(Math.abs(normalizedBias), 0), 100)
+  const strength = Math.round(
+    Math.min(
+      Math.max(Math.abs(combinedScore) / (MAX_SIGNAL_STRENGTH * TOTAL_TIMEFRAME_WEIGHT), 0),
+      1,
+    ) * 100,
+  )
 
   const sortedContributions = contributions
     .slice()
@@ -192,9 +362,11 @@ export function getMultiTimeframeSignal(
     })
 
   return {
-    direction: globalDirection,
-    bias: normalizedBias,
+    direction: combinedBias.dir,
     strength,
+    combinedScore,
+    normalizedScore,
+    combinedBias,
     contributions: sortedContributions,
   }
 }
@@ -202,36 +374,18 @@ export function getMultiTimeframeSignal(
 function mapHeatmapResultToSnapshot(
   result: HeatmapResult,
 ): TimeframeSignalSnapshot {
-  const ema10 = toNumberOrNull(result.ema?.ema10)
-  const ema50 = toNumberOrNull(result.ema?.ema50)
-  const ma200 = toNumberOrNull(result.ma200.value)
   const price = toNumberOrNull(result.price)
 
-  let trend: TimeframeSignalSnapshot['trend'] = 'Neutral'
+  const combined = getCombinedSignal(result)
 
-  if (ema10 != null && ema50 != null && price != null && ma200 != null) {
-    if (ema10 > ema50 && price > ma200) {
-      trend = 'Bullish'
-    } else if (ema10 < ema50 && price < ma200) {
-      trend = 'Bearish'
-    }
-  }
-
-  const rsi = toNumberOrNull(result.rsiLtf.value)
-  const stochK = toNumberOrNull(result.stochRsi.k)
-  const stochD = toNumberOrNull(result.stochRsi.d)
-
-  const normalizedStochRsi = resolveNormalizedStochRsi(result)
-
-  let momentum: TimeframeSignalSnapshot['momentum'] = 'Neutral'
-
-  if (rsi != null && stochK != null && stochD != null) {
-    if (rsi > 50 && stochK > stochD) {
-      momentum = 'Bullish'
-    } else if (rsi < 50 && stochK < stochD) {
-      momentum = 'Bearish'
-    }
-  }
+  const trend: TimeframeSignalSnapshot['trend'] = combined.breakdown.bias
+  const momentumState = combined.breakdown.momentum
+  const momentum: TimeframeSignalSnapshot['momentum'] =
+    momentumState === 'StrongBullish'
+      ? 'Bullish'
+      : momentumState === 'StrongBearish'
+      ? 'Bearish'
+      : 'Neutral'
 
   let side: SignalDirection | null = null
 
@@ -248,15 +402,6 @@ function mapHeatmapResultToSnapshot(
   const reasons = side ? buildReasons(result, side) : []
   const confluenceScore = side ? scoreSignal(result, side, reasons) : null
   const strength = confluenceScore != null ? bucketSignal(confluenceScore) : null
-  const combined = getCombinedSignal(
-    null,
-    result.ema?.ema10,
-    result.ema?.ema50,
-    result.ma200.value,
-    result.rsiLtf.value,
-    normalizedStochRsi,
-    null,
-  )
 
   const stage = resolveSnapshotStage(result, side)
 
@@ -578,30 +723,6 @@ function toNumberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function resolveNormalizedStochRsi(result: HeatmapResult): number | null {
-  const rawNormalized = toNumberOrNull(result.stochRsi.rawNormalized)
-  if (rawNormalized != null) {
-    if (rawNormalized >= 0 && rawNormalized <= 1) {
-      return rawNormalized
-    }
-    if (rawNormalized >= 0 && rawNormalized <= 100) {
-      return clamp01(rawNormalized / 100)
-    }
-  }
-
-  const kValue = toNumberOrNull(result.stochRsi.k)
-  if (kValue != null) {
-    return clamp01(kValue / 100)
-  }
-
-  const dValue = toNumberOrNull(result.stochRsi.d)
-  if (dValue != null) {
-    return clamp01(dValue / 100)
-  }
-
-  return null
-}
-
 function clampScore(score: number): number {
   if (score < 0) {
     return 0
@@ -612,28 +733,15 @@ function clampScore(score: number): number {
   return Math.round(score)
 }
 
-function clamp01(value: number): number {
-  if (Number.isNaN(value)) {
-    return 0
-  }
-  if (value < 0) {
-    return 0
-  }
-  if (value > 1) {
-    return 1
-  }
-  return value
-}
-
 function resolveTimeframeWeight(timeframe: string): number {
-  const direct = MULTI_TIMEFRAME_WEIGHTS[timeframe]
+  const direct = TIMEFRAME_WEIGHTS[timeframe]
   if (typeof direct === 'number' && Number.isFinite(direct)) {
     return direct
   }
 
   const numeric = Number(timeframe)
   if (Number.isFinite(numeric) && numeric > 0) {
-    return MULTI_TIMEFRAME_WEIGHTS[String(numeric)] ?? DEFAULT_MULTI_TIMEFRAME_WEIGHT
+    return TIMEFRAME_WEIGHTS[String(numeric)] ?? DEFAULT_MULTI_TIMEFRAME_WEIGHT
   }
 
   return DEFAULT_MULTI_TIMEFRAME_WEIGHT

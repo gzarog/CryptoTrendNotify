@@ -417,13 +417,35 @@ export function DashboardView({
                             COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
                             COMBINED_DIRECTION_CARD_CLASSES.neutral
                           const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
-                          const formatBiasValue = (value: number) =>
+                          const formatScore = (value: number) =>
                             value > 0 ? `+${value}` : value.toString()
+                          const momentumLabel =
+                            entry.breakdown.momentum === 'StrongBullish'
+                              ? 'Strong bullish'
+                              : entry.breakdown.momentum === 'StrongBearish'
+                              ? 'Strong bearish'
+                              : 'Weak'
+                          const adxLabel = (() => {
+                            if (entry.breakdown.adxDirection === 'ConfirmBull') {
+                              return entry.breakdown.adxIsRising
+                                ? 'Confirm bull (rising)'
+                                : 'Confirm bull'
+                            }
+                            if (entry.breakdown.adxDirection === 'ConfirmBear') {
+                              return entry.breakdown.adxIsRising
+                                ? 'Confirm bear (rising)'
+                                : 'Confirm bear'
+                            }
+                            return entry.breakdown.adxIsRising
+                              ? 'No confirmation (rising)'
+                              : 'No confirmation'
+                          })()
                           const breakdownSummary = [
-                            `Trend ${formatBiasValue(entry.breakdown.trendBias)}`,
-                            `Momentum ${formatBiasValue(entry.breakdown.momentumBias)}`,
-                            `Confirm ${formatBiasValue(entry.breakdown.confirmation)}`,
-                            `Total ${formatBiasValue(entry.breakdown.combinedScore)}`,
+                            entry.breakdown.label.replace(/_/g, ' '),
+                            `Score ${formatScore(entry.breakdown.signalStrength)}`,
+                            `${entry.breakdown.bias.toLowerCase()} bias`,
+                            momentumLabel,
+                            `Trend ${entry.breakdown.trendStrength.toLowerCase()} • ${adxLabel}`,
                           ].join(' • ')
 
                           return (
@@ -464,10 +486,19 @@ export function DashboardView({
                             COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
                             COMBINED_DIRECTION_CARD_CLASSES.neutral
                           const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
-                          const normalizedBiasValue = Object.is(entry.bias, -0) ? 0 : entry.bias
-                          const biasLabelRaw = normalizedBiasValue.toFixed(1).replace(/\.0$/, '')
-                          const biasLabel =
-                            normalizedBiasValue > 0 ? `+${biasLabelRaw}` : biasLabelRaw
+                          const normalizedScoreValue = Object.is(entry.normalizedScore, -0)
+                            ? 0
+                            : entry.normalizedScore
+                          const formatSigned = (value: number) => {
+                            const raw = value.toFixed(1).replace(/\.0$/, '')
+                            return value > 0 ? `+${raw}` : raw
+                          }
+                          const normalizedLabel = formatSigned(normalizedScoreValue)
+                          const weightedScoreValue = entry.contributions.reduce(
+                            (sum, contribution) => sum + contribution.weightedScore,
+                            0,
+                          )
+                          const weightedLabel = formatSigned(weightedScoreValue)
                           const contributionsSummary = entry.contributions
                             .map((contribution) => {
                               const contributionEmoji =
@@ -500,7 +531,10 @@ export function DashboardView({
                               </div>
                               <span className="text-sm font-semibold text-white">{entry.symbol}</span>
                               <span className="text-[11px] text-white/80">
-                                Bias {biasLabel} • Strength {entry.strength}% • Timeframes {entry.contributions.length}
+                                Norm {normalizedLabel} • Weighted {weightedLabel} • Strength {entry.strength}%
+                              </span>
+                              <span className="text-[11px] text-white/80">
+                                {entry.combinedBias.strength.toLowerCase()} bias • Timeframes {entry.contributions.length}
                               </span>
                               {contributionsSummary && (
                                 <span className="text-[11px] text-white/80">{contributionsSummary}</span>

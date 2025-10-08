@@ -7,10 +7,26 @@ export type CombinedSignalDirection = SignalDirection | 'Neutral'
 export type SignalStage = 'ready' | 'cooldown' | 'gated' | 'triggered'
 
 export type CombinedSignalBreakdown = {
-  trendBias: number
-  momentumBias: number
-  confirmation: number
-  combinedScore: number
+  bias: 'Bullish' | 'Bearish' | 'Neutral'
+  momentum: 'StrongBullish' | 'StrongBearish' | 'Weak'
+  trendStrength: 'Strong' | 'Forming' | 'Weak'
+  adxDirection: 'ConfirmBull' | 'ConfirmBear' | 'NoConfirm'
+  adxIsRising: boolean
+  adxValue: number | null
+  rsiValue: number | null
+  stochKValue: number | null
+  emaFast: number | null
+  emaSlow: number | null
+  maLong: number | null
+  signalStrength: number
+  label:
+    | 'STRONG_BUY'
+    | 'BUY_FORMING'
+    | 'BUY_WEAK'
+    | 'NEUTRAL'
+    | 'SELL_WEAK'
+    | 'SELL_FORMING'
+    | 'STRONG_SELL'
 }
 
 export type CombinedSignal = {
@@ -24,13 +40,19 @@ export type MultiTimeframeSignalContribution = {
   timeframeLabel: string
   weight: number
   signal: CombinedSignal
-  bias: number
+  score: number
+  weightedScore: number
 }
 
 export type MultiTimeframeSignal = {
   direction: CombinedSignalDirection
-  bias: number
   strength: number
+  combinedScore: number
+  normalizedScore: number
+  combinedBias: {
+    dir: CombinedSignalDirection
+    strength: 'Strong' | 'Medium' | 'Weak' | 'Sideways'
+  }
   contributions: MultiTimeframeSignalContribution[]
 }
 
@@ -51,9 +73,13 @@ export type MultiTimeframeSignalNotification = {
   id: string
   symbol: string
   direction: CombinedSignalDirection
-  bias: number
+  normalizedScore: number
   strength: number
   contributions: MultiTimeframeSignalContribution[]
+  combinedBias: {
+    dir: CombinedSignalDirection
+    strength: 'Strong' | 'Medium' | 'Weak' | 'Sideways'
+  }
   triggeredAt: number
 }
 
