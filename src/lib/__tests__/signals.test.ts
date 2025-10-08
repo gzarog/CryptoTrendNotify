@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildReasons,
+  calculateTrendScoreBreakdown,
   buildTrendMatrixMarkov,
   getCombinedSignal,
   getMultiTimeframeSignal,
@@ -223,6 +224,44 @@ function createEvaluation(
     evaluation: evaluateSnapshotWithMarkov(snapshot),
   }
 }
+
+describe('calculateTrendScoreBreakdown', () => {
+  it('favours EMA alignment when trend structure is intact', () => {
+    const breakdown = calculateTrendScoreBreakdown(110, 105, 100, 1.2, 0.8, 0.4)
+
+    expect(breakdown).toMatchObject({
+      emaAlignment: 1,
+      macdAlignment: 1,
+      emaWeight: 0.6,
+      macdWeight: 0.4,
+    })
+    expect(breakdown.trendScore).toBe(1)
+  })
+
+  it('leans on MACD when moving averages are neutral', () => {
+    const breakdown = calculateTrendScoreBreakdown(100, 100, 100, 1.5, 1.1, 0.4)
+
+    expect(breakdown).toMatchObject({
+      emaAlignment: 0,
+      macdAlignment: 1,
+      emaWeight: 0.4,
+      macdWeight: 0.6,
+    })
+    expect(breakdown.trendScore).toBeCloseTo(0.6)
+  })
+
+  it('produces bearish scores when both inputs align lower', () => {
+    const breakdown = calculateTrendScoreBreakdown(90, 95, 100, -1.2, -0.8, -0.4)
+
+    expect(breakdown).toMatchObject({
+      emaAlignment: -1,
+      macdAlignment: -1,
+      emaWeight: 0.6,
+      macdWeight: 0.4,
+    })
+    expect(breakdown.trendScore).toBe(-1)
+  })
+})
 
 describe('getCombinedSignal', () => {
   it('classifies a fully aligned bullish trend as a strong buy', () => {

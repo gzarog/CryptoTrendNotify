@@ -157,6 +157,39 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   }
 }
 
+export function calculateTrendScoreBreakdown(
+  emaFast: number | null,
+  emaSlow: number | null,
+  maLong: number | null,
+  macdValue: number | null,
+  macdSignal: number | null,
+  macdHistogram: number | null,
+): {
+  emaAlignment: number
+  macdAlignment: number
+  trendScore: number
+  emaWeight: number
+  macdWeight: number
+} {
+  const emaAlignment = resolveEmaAlignment(emaFast, emaSlow, maLong)
+  const macdAlignment = resolveMacdAlignment(macdValue, macdSignal, macdHistogram)
+  const emaWeight = emaAlignment === 0 ? 0.4 : 0.6
+  const macdWeight = emaAlignment === 0 ? 0.6 : 0.4
+  const trendScore = clampRange(
+    emaWeight * emaAlignment + macdWeight * macdAlignment,
+    -1,
+    1,
+  )
+
+  return {
+    emaAlignment,
+    macdAlignment,
+    trendScore,
+    emaWeight,
+    macdWeight,
+  }
+}
+
 function computeTrendBias(
   emaFast: number | null,
   emaSlow: number | null,
@@ -165,26 +198,24 @@ function computeTrendBias(
   macdSignal: number | null,
   macdHistogram: number | null,
 ): { bias: CombinedSignalBreakdown['bias']; score: number } {
-  const emaAlignment = resolveEmaAlignment(emaFast, emaSlow, maLong)
-  const macdAlignment = resolveMacdAlignment(macdValue, macdSignal, macdHistogram)
-
-  const blendedScore = clampRange(
-    emaAlignment === 0
-      ? 0.4 * emaAlignment + 0.6 * macdAlignment
-      : 0.6 * emaAlignment + 0.4 * macdAlignment,
-    -1,
-    1,
+  const { trendScore } = calculateTrendScoreBreakdown(
+    emaFast,
+    emaSlow,
+    maLong,
+    macdValue,
+    macdSignal,
+    macdHistogram,
   )
 
-  if (blendedScore >= 0.2) {
-    return { bias: 'Bullish', score: blendedScore }
+  if (trendScore >= 0.2) {
+    return { bias: 'Bullish', score: trendScore }
   }
 
-  if (blendedScore <= -0.2) {
-    return { bias: 'Bearish', score: blendedScore }
+  if (trendScore <= -0.2) {
+    return { bias: 'Bearish', score: trendScore }
   }
 
-  return { bias: 'Neutral', score: blendedScore }
+  return { bias: 'Neutral', score: trendScore }
 }
 
 function resolveEmaAlignment(
