@@ -15,6 +15,7 @@ import type {
 import { LineChart } from './LineChart'
 import { RiskManagementPanel } from './RiskManagementPanel'
 import { SignalsPanel } from './SignalsPanel'
+import { ExpertSignalsPanel } from './ExpertSignalsPanel'
 import type { HeatmapResult } from '../types/heatmap'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
@@ -1052,6 +1053,18 @@ export function DashboardView({
             signals={signals}
             snapshots={timeframeSnapshots}
             isLoading={isFetching || signalsLoading}
+          />
+          <ExpertSignalsPanel
+            snapshots={timeframeSnapshots}
+            isLoading={isFetching || signalsLoading}
+            symbol={symbol}
+            timeframe={timeframe}
+            timeframeOptions={timeframeOptions}
+            resolvedBarLimit={resolvedBarLimit}
+            macdLabel={macdSeries.label}
+            adxLabel={adxSeries.label}
+            rsiLengthDescription={rsiLengthDescription}
+            stochasticLengthDescription={stochasticLengthDescription}
           />
         </section>
         <aside

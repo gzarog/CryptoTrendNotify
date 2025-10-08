@@ -56,6 +56,10 @@ const ORDERED_TIMEFRAMES = Object.keys(TIMEFRAME_WEIGHTS)
   .sort((a, b) => a - b)
   .map((value) => String(value))
 
+export function getBaseTimeframeWeights(): Record<string, number> {
+  return { ...TIMEFRAME_WEIGHTS }
+}
+
 const SIGNAL_WEAK_THRESHOLD = 0.5
 const SIGNAL_FORMING_THRESHOLD = 1.5
 const SIGNAL_STRONG_THRESHOLD = 2.5

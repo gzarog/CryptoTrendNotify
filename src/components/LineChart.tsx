@@ -376,12 +376,12 @@ export function LineChart({
               </text>
             </g>
           ))}
-          {ticks.map((value) => {
+          {ticks.map((value, tickIndex) => {
             const y =
               PADDING + (DEFAULT_HEIGHT - PADDING * 2) -
               ((value - min) / (max - min || 1)) * (DEFAULT_HEIGHT - PADDING * 2)
             return (
-              <g key={`tick-${value}`}>
+              <g key={`tick-${tickIndex}-${value}`}>
                 <line
                   x1={PADDING}
                   x2={DEFAULT_WIDTH - PADDING}
