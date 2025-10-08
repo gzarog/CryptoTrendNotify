@@ -294,6 +294,45 @@ describe('getCombinedSignal', () => {
     })
   })
 
+  it('parses numeric strings in indicator values', () => {
+    const result = createBaseHeatmapResult({
+      ema: {
+        ema10: '104.5' as unknown as number,
+        ema50: '99.2' as unknown as number,
+      },
+      ma200: { value: '94.1' as unknown as number, slope: '0.25' as unknown as number },
+      macd: {
+        value: '1.25' as unknown as number,
+        signal: '0.8' as unknown as number,
+        histogram: '0.45' as unknown as number,
+      },
+      rsiLtf: { value: '61.5' as unknown as number, sma5: null, okLong: true, okShort: false },
+      stochRsi: { k: '68.2' as unknown as number, d: null, rawNormalized: null },
+      adx: {
+        value: '27.4' as unknown as number,
+        plusDI: '31.1' as unknown as number,
+        minusDI: '18.6' as unknown as number,
+        slope: '0.5' as unknown as number,
+      },
+      markov: { priorScore: '0.35' as unknown as number, currentState: 'B', transitionMatrix: null },
+    })
+
+    const combined = getCombinedSignal(result)
+
+    expect(combined.breakdown).toMatchObject({
+      emaFast: 104.5,
+      emaSlow: 99.2,
+      maLong: 94.1,
+      macdValue: 1.25,
+      macdSignal: 0.8,
+      macdHistogram: 0.45,
+      rsiValue: 61.5,
+      stochKValue: 68.2,
+      adxValue: 27.4,
+      markov: { priorScore: 0.35, currentState: 'B' },
+    })
+  })
+
   it('classifies a fully aligned bearish trend as a strong sell', () => {
     const result = createBaseHeatmapResult({
       bias: 'BEAR',

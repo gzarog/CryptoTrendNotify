@@ -895,7 +895,23 @@ function bucketSignal(score: number): SignalStrength {
 }
 
 function toNumberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+
+    if (normalized === '') {
+      return null
+    }
+
+    const parsed = Number(normalized)
+
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
 }
 
 function clampScore(score: number): number {
