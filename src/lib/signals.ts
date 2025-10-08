@@ -351,7 +351,7 @@ function mapHeatmapResultToSignal(result: HeatmapResult): TradingSignal | null {
   }
 }
 
-function buildReasons(result: HeatmapResult, side: SignalDirection): string[] {
+export function buildReasons(result: HeatmapResult, side: SignalDirection): string[] {
   const reasons: string[] = []
 
   const crossReasons = collectMovingAverageCrossReasons(result, side)
@@ -476,7 +476,7 @@ const BEARISH_CROSS_DIRECTIONS = new Set([
   'short',
 ])
 
-function scoreSignal(
+export function scoreSignal(
   result: HeatmapResult,
   side: SignalDirection,
   reasons: string[],
