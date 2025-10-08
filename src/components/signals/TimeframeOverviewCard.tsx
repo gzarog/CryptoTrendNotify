@@ -70,6 +70,10 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     { label: 'EMA fast', value: formatPrice(breakdown.emaFast, 5) },
     { label: 'EMA slow', value: formatPrice(breakdown.emaSlow, 5) },
     { label: 'MA long', value: formatPrice(breakdown.maLong, 5) },
+    { label: 'MACD', value: formatIndicator(breakdown.macdValue, 2) },
+    { label: 'MACD signal', value: formatIndicator(breakdown.macdSignal, 2) },
+    { label: 'MACD hist', value: formatIndicator(breakdown.macdHistogram, 2) },
+    { label: 'Trend score', value: formatSignedValue(breakdown.trendScore) },
   ]
   const markovPriorScore = Number.isFinite(breakdown.markov.priorScore)
     ? (breakdown.markov.priorScore as number)

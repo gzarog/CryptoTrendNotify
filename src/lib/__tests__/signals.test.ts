@@ -54,6 +54,11 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
       d: null,
       rawNormalized: null,
     },
+    macd: {
+      value: null,
+      signal: null,
+      histogram: null,
+    },
     rsiLtf: {
       value: null,
       sma5: null,
@@ -109,6 +114,7 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
     ema: { ...base.ema, ...(overrides.ema ?? {}) },
     votes: { ...base.votes, ...(overrides.votes ?? {}) },
     stochRsi: { ...base.stochRsi, ...(overrides.stochRsi ?? {}) },
+    macd: { ...base.macd, ...(overrides.macd ?? {}) },
     rsiLtf: { ...base.rsiLtf, ...(overrides.rsiLtf ?? {}) },
     filters: { ...base.filters, ...(overrides.filters ?? {}) },
     gating: {
@@ -162,6 +168,10 @@ function createBreakdown(
     emaFast: 110,
     emaSlow: 105,
     maLong: 100,
+    macdValue: 2,
+    macdSignal: 1.5,
+    macdHistogram: 0.5,
+    trendScore: 0.6,
     markov: { priorScore: 0.6, currentState: 'B' },
     signalStrength: 2.6,
     signalStrengthRaw: 2.6,
@@ -315,6 +325,38 @@ describe('getCombinedSignal', () => {
       markov: { priorScore: 0, currentState: null },
       label: 'NEUTRAL',
     })
+  })
+
+  it('leans bullish when MACD alignment is positive even if EMAs are flat', () => {
+    const combined = getCombinedSignal(
+      createBaseHeatmapResult({
+        ema: { ema10: 100, ema50: 100 },
+        ma200: { value: 100, slope: 0 },
+        macd: { value: 1.2, signal: 0.8, histogram: 0.4 },
+        rsiLtf: { value: 58, sma5: null, okLong: true, okShort: false },
+        stochRsi: { k: 62, d: 55, rawNormalized: null },
+        adx: { value: 18, plusDI: 24, minusDI: 21, slope: 0.2 },
+      }),
+    )
+
+    expect(combined.breakdown.bias).toBe('Bullish')
+    expect(combined.breakdown.trendScore).toBeGreaterThan(0)
+  })
+
+  it('leans bearish when MACD alignment is negative even if EMAs are flat', () => {
+    const combined = getCombinedSignal(
+      createBaseHeatmapResult({
+        ema: { ema10: 100, ema50: 100 },
+        ma200: { value: 100, slope: 0 },
+        macd: { value: -1.3, signal: -0.9, histogram: -0.5 },
+        rsiLtf: { value: 42, sma5: null, okLong: false, okShort: true },
+        stochRsi: { k: 38, d: 45, rawNormalized: null },
+        adx: { value: 19, plusDI: 18, minusDI: 26, slope: -0.2 },
+      }),
+    )
+
+    expect(combined.breakdown.bias).toBe('Bearish')
+    expect(combined.breakdown.trendScore).toBeLessThan(0)
   })
 })
 
