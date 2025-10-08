@@ -1,5 +1,6 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
+import { MarkovPriorGauge } from './MarkovPriorGauge'
 import {
   COMBINED_STRENGTH_GRADIENT,
   DIRECTION_BADGE_CLASS,
@@ -70,6 +71,10 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     { label: 'EMA slow', value: formatPrice(breakdown.emaSlow, 5) },
     { label: 'MA long', value: formatPrice(breakdown.maLong, 5) },
   ]
+  const markovPriorScore = Number.isFinite(breakdown.markov.priorScore)
+    ? (breakdown.markov.priorScore as number)
+    : null
+  const markovState = breakdown.markov.currentState ?? null
 
   return (
     <article className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
@@ -111,6 +116,15 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
           ))}
         </div>
       </section>
+
+      {markovPriorScore != null && (
+        <section className="flex flex-col gap-3 text-xs text-slate-200">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Markov directional prior
+          </span>
+          <MarkovPriorGauge priorScore={markovPriorScore} state={markovState} />
+        </section>
+      )}
 
       <section className="flex flex-col gap-3 text-xs text-slate-200">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">

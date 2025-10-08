@@ -43,6 +43,12 @@ export type MovingAverageCrossEvent = {
   direction: MovingAverageCrossDirection
 }
 
+export type MarkovContext = {
+  priorScore: number
+  currentState: 'D' | 'R' | 'B' | 'U' | null
+  transitionMatrix: number[][] | null
+}
+
 export type HeatmapResult = {
   entryTimeframe: string
   entryLabel: string
@@ -102,6 +108,7 @@ export type HeatmapResult = {
     value: number | null
     slope: number | null
   }
+  markov: MarkovContext
   adx?: {
     value: number | null
     plusDI: number | null

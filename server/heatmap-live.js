@@ -15,6 +15,19 @@ const MAX_BAR_LIMIT = 500
 const BYBIT_REQUEST_LIMIT = 200
 const ATR_BOUNDS = { min: 0.5, max: 10 }
 const MA_DISTANCE_TOO_CLOSE_THRESHOLD = 0.25
+const MARKOV_WINDOW_BARS = 400
+const MARKOV_STATES = ['D', 'R', 'B', 'U']
+const MARKOV_STATE_INDEX = MARKOV_STATES.reduce((acc, state, index) => {
+  acc[state] = index
+  return acc
+}, {})
+const MARKOV_HORIZONS = [
+  { name: 'h1', steps: 1, weight: 0.5 },
+  { name: 'h2', steps: 2, weight: 0.3 },
+  { name: 'h3', steps: 3, weight: 0.2 },
+]
+const MARKOV_WEIGHT_R = 0.6
+const MARKOV_WEIGHT_B = 0.25
 
 function clamp(value, min, max) {
   if (Number.isNaN(value)) {
@@ -177,6 +190,202 @@ function resolveMomentumDirection(rsi, stochK, stochD) {
   }
 
   return 'Neutral'
+}
+
+function labelRegimeBar({
+  index,
+  ema10Series,
+  ema50Series,
+  ma200Series,
+  rsiSeries,
+  stochKSeries,
+}) {
+  const ema10 = ema10Series[index]
+  const ema50 = ema50Series[index]
+  const ma200 = ma200Series[index]
+  const rsi = rsiSeries[index]
+  const stochK = stochKSeries[index]
+
+  if (
+    ema10 == null ||
+    ema50 == null ||
+    ma200 == null ||
+    rsi == null ||
+    stochK == null ||
+    !Number.isFinite(ema10) ||
+    !Number.isFinite(ema50) ||
+    !Number.isFinite(ma200) ||
+    !Number.isFinite(rsi) ||
+    !Number.isFinite(stochK)
+  ) {
+    return 'B'
+  }
+
+  if (ema10 > ema50 && ema50 > ma200) {
+    if (rsi > 60 && stochK > 60) {
+      return 'U'
+    }
+    return 'B'
+  }
+
+  if (ema10 < ema50 && ema50 < ma200) {
+    if (rsi < 40 && stochK < 40) {
+      return 'D'
+    }
+    return 'B'
+  }
+
+  const previousIndex = Math.max(0, index - 1)
+  const prevEma10 = ema10Series[previousIndex]
+  const prevEma50 = ema50Series[previousIndex]
+  const prevRsi = rsiSeries[previousIndex]
+
+  const emaCrossUp =
+    prevEma10 != null &&
+    prevEma50 != null &&
+    ema10 != null &&
+    ema50 != null &&
+    Number.isFinite(prevEma10) &&
+    Number.isFinite(prevEma50) &&
+    prevEma10 <= prevEma50 &&
+    ema10 > ema50
+
+  const emaCrossDown =
+    prevEma10 != null &&
+    prevEma50 != null &&
+    ema10 != null &&
+    ema50 != null &&
+    Number.isFinite(prevEma10) &&
+    Number.isFinite(prevEma50) &&
+    prevEma10 >= prevEma50 &&
+    ema10 < ema50
+
+  const rsiCrossUp =
+    prevRsi != null &&
+    Number.isFinite(prevRsi) &&
+    prevRsi <= 50 &&
+    rsi > 50
+
+  const rsiCrossDown =
+    prevRsi != null &&
+    Number.isFinite(prevRsi) &&
+    prevRsi >= 50 &&
+    rsi < 50
+
+  if (emaCrossUp || rsiCrossUp || emaCrossDown || rsiCrossDown) {
+    return 'R'
+  }
+
+  return 'B'
+}
+
+function createIdentityMatrix(size) {
+  return Array.from({ length: size }, (_, rowIndex) =>
+    Array.from({ length: size }, (_, columnIndex) => (rowIndex === columnIndex ? 1 : 0)),
+  )
+}
+
+function multiplyRowVectorMatrix(vector, matrix) {
+  const result = new Array(matrix.length).fill(0)
+
+  for (let column = 0; column < matrix.length; column += 1) {
+    let sum = 0
+
+    for (let row = 0; row < matrix.length; row += 1) {
+      sum += vector[row] * matrix[row][column]
+    }
+
+    result[column] = sum
+  }
+
+  return result
+}
+
+function estimateTransitionMatrix(regimes) {
+  const size = MARKOV_STATES.length
+  const counts = Array.from({ length: size }, () => new Array(size).fill(0))
+
+  for (let i = 1; i < regimes.length; i += 1) {
+    const prevState = MARKOV_STATE_INDEX[regimes[i - 1]]
+    const nextState = MARKOV_STATE_INDEX[regimes[i]]
+
+    if (prevState == null || nextState == null) {
+      continue
+    }
+
+    counts[prevState][nextState] += 1
+  }
+
+  for (let row = 0; row < size; row += 1) {
+    let rowSum = MARKOV_STATES.length
+
+    for (let column = 0; column < size; column += 1) {
+      rowSum += counts[row][column]
+    }
+
+    for (let column = 0; column < size; column += 1) {
+      counts[row][column] = (counts[row][column] + 1) / rowSum
+    }
+  }
+
+  return counts
+}
+
+function priorStateDistribution(transitionMatrix, currentState, steps) {
+  const size = MARKOV_STATES.length
+  const vector = new Array(size).fill(0)
+  vector[currentState] = 1
+
+  let distribution = vector
+
+  for (let step = 0; step < steps; step += 1) {
+    distribution = multiplyRowVectorMatrix(distribution, transitionMatrix)
+  }
+
+  return distribution
+}
+
+function directionalPriorScore(probabilities) {
+  const pBear =
+    probabilities[MARKOV_STATE_INDEX.D] + MARKOV_WEIGHT_B * probabilities[MARKOV_STATE_INDEX.B]
+  const pBull =
+    probabilities[MARKOV_STATE_INDEX.U] + MARKOV_WEIGHT_R * probabilities[MARKOV_STATE_INDEX.R]
+
+  return clamp(pBull - pBear, -1, 1)
+}
+
+function blendHorizonPriors(transitionMatrix, currentState) {
+  return MARKOV_HORIZONS.reduce((acc, horizon) => {
+    const probabilities = priorStateDistribution(transitionMatrix, currentState, horizon.steps)
+    const score = directionalPriorScore(probabilities)
+    return acc + horizon.weight * score
+  }, 0)
+}
+
+function resolveMarkovContext(regimes) {
+  const size = MARKOV_STATES.length
+  const identity = createIdentityMatrix(size)
+
+  if (!Array.isArray(regimes) || regimes.length === 0) {
+    return { priorScore: 0, currentState: null, transitionMatrix: identity }
+  }
+
+  const validRegimes = regimes.filter((state) => MARKOV_STATE_INDEX[state] != null)
+  const currentStateValue = validRegimes[validRegimes.length - 1] ?? null
+
+  if (!currentStateValue || validRegimes.length < 2) {
+    return { priorScore: 0, currentState: currentStateValue, transitionMatrix: identity }
+  }
+
+  const transitionMatrix = estimateTransitionMatrix(validRegimes)
+  const currentStateIndex = MARKOV_STATE_INDEX[currentStateValue]
+  const priorScore = blendHorizonPriors(transitionMatrix, currentStateIndex)
+
+  return {
+    priorScore,
+    currentState: currentStateValue,
+    transitionMatrix,
+  }
 }
 
 function resolveStochEvent(stochRaw, prevStochRaw, stochK, stochD, prevK, prevD) {
@@ -595,6 +804,7 @@ function buildBaseSnapshot(symbol, timeframe, label) {
     },
     price: null,
     ma200: { value: null, slope: null },
+    markov: { priorScore: 0, currentState: null, transitionMatrix: null },
   }
 }
 
@@ -634,6 +844,24 @@ export async function buildLiveSnapshots(symbol) {
         const prevStochK = getPreviousFiniteValue(stoch.kValues)
         const prevStochD = getPreviousFiniteValue(stoch.dValues)
         const atrValue = getLastFiniteValue(atrSeries)
+
+        const markovStartIndex = Math.max(0, closes.length - MARKOV_WINDOW_BARS)
+        const regimes = []
+
+        for (let i = markovStartIndex; i < closes.length; i += 1) {
+          regimes.push(
+            labelRegimeBar({
+              index: i,
+              ema10Series,
+              ema50Series,
+              ma200Series,
+              rsiSeries,
+              stochKSeries: stoch.kValues,
+            }),
+          )
+        }
+
+        const markov = resolveMarkovContext(regimes)
 
         const bias = resolveBias(price, ma200)
         const trend = resolveTrendDirection(ema10, ema50)
@@ -680,6 +908,7 @@ export async function buildLiveSnapshots(symbol) {
             d: stochD,
             rawNormalized: stochRaw != null ? stochRaw / 100 : null,
           },
+          markov,
           rsiLtf: {
             value: rsiValue,
             sma5: rsiSma5,

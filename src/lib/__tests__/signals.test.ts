@@ -85,6 +85,11 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
       value: null,
       slope: null,
     },
+    markov: {
+      priorScore: 0,
+      currentState: null,
+      transitionMatrix: null,
+    },
   }
 
   return {
@@ -105,6 +110,7 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
     movingAverageCrosses:
       overrides.movingAverageCrosses ?? base.movingAverageCrosses,
     adx: { ...base.adx, ...(overrides.adx ?? {}) },
+    markov: { ...base.markov, ...(overrides.markov ?? {}) },
   }
 }
 
@@ -155,6 +161,8 @@ describe('getCombinedSignal', () => {
       rsiValue: 62,
       stochKValue: 72,
       signalStrength: 3,
+      signalStrengthRaw: 3,
+      markov: { priorScore: 0, currentState: null },
       label: 'STRONG_BUY',
     })
   })
@@ -183,6 +191,8 @@ describe('getCombinedSignal', () => {
       rsiValue: 40,
       stochKValue: 25,
       signalStrength: -3,
+      signalStrengthRaw: -3,
+      markov: { priorScore: 0, currentState: null },
       label: 'STRONG_SELL',
     })
   })
@@ -205,6 +215,8 @@ describe('getCombinedSignal', () => {
       trendStrength: 'Forming',
       adxIsRising: true,
       signalStrength: 2,
+      signalStrengthRaw: 2,
+      markov: { priorScore: 0, currentState: null },
       label: 'BUY_FORMING',
     })
   })
@@ -221,6 +233,8 @@ describe('getCombinedSignal', () => {
       adxDirection: 'NoConfirm',
       adxIsRising: false,
       signalStrength: 0,
+      signalStrengthRaw: 0,
+      markov: { priorScore: 0, currentState: null },
       label: 'NEUTRAL',
     })
   })

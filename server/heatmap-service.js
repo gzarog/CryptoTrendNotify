@@ -156,6 +156,11 @@ function buildMockSnapshot(symbol, timeframe, label, template) {
       value: price * 0.985,
       slope: 12,
     },
+    markov: {
+      priorScore: 0,
+      currentState: null,
+      transitionMatrix: null,
+    },
   }
 }
 
