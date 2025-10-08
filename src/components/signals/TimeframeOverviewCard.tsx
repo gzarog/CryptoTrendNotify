@@ -1,6 +1,7 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
 import { MarkovPriorGauge } from './MarkovPriorGauge'
+import { TrendBiasBreakdown } from './TrendBiasBreakdown'
 import {
   COMBINED_STRENGTH_GRADIENT,
   DIRECTION_BADGE_CLASS,
@@ -10,6 +11,7 @@ import {
 } from './constants'
 import { clampPercentage, formatPrice, formatSignedValue, toDirectionKey } from './utils'
 import type { TimeframeSignalSnapshot } from '../../types/signals'
+import { calculateTrendScoreBreakdown } from '../../lib/signals'
 
 type TimeframeOverviewCardProps = {
   snapshot: TimeframeSignalSnapshot
@@ -63,6 +65,42 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     return value.toFixed(decimals)
   }
 
+  const formatTrendScoreValue = (value: number) => {
+    if (!Number.isFinite(value)) {
+      return '—'
+    }
+
+    let normalized = Math.round(value * 100) / 100
+
+    if (Object.is(normalized, -0)) {
+      normalized = 0
+    }
+
+    const formatted = normalized
+      .toFixed(2)
+      .replace(/(\.\d*?)0+$/, '$1')
+      .replace(/\.$/, '')
+
+    return normalized > 0 ? `+${formatted}` : formatted
+  }
+
+  const {
+    emaAlignment,
+    macdAlignment,
+    trendScore: blendedTrendScore,
+    emaWeight,
+    macdWeight,
+  } = calculateTrendScoreBreakdown(
+    breakdown.emaFast ?? null,
+    breakdown.emaSlow ?? null,
+    breakdown.maLong ?? null,
+    breakdown.macdValue ?? null,
+    breakdown.macdSignal ?? null,
+    breakdown.macdHistogram ?? null,
+  )
+  const trendScoreDisplay = Number.isFinite(breakdown.trendScore)
+    ? (breakdown.trendScore as number)
+    : blendedTrendScore
   const indicatorSnapshot = [
     { label: 'RSI', value: formatIndicator(breakdown.rsiValue) },
     { label: 'Stoch %K', value: formatIndicator(breakdown.stochKValue) },
@@ -73,7 +111,7 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     { label: 'MACD', value: formatIndicator(breakdown.macdValue, 2) },
     { label: 'MACD signal', value: formatIndicator(breakdown.macdSignal, 2) },
     { label: 'MACD hist', value: formatIndicator(breakdown.macdHistogram, 2) },
-    { label: 'Trend score', value: formatSignedValue(breakdown.trendScore) },
+    { label: 'Trend score', value: formatTrendScoreValue(trendScoreDisplay) },
   ]
   const markovPriorScore = Number.isFinite(breakdown.markov.priorScore)
     ? (breakdown.markov.priorScore as number)
@@ -119,6 +157,19 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="flex flex-col gap-3 text-xs text-slate-200">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          Trend score breakdown
+        </span>
+        <TrendBiasBreakdown
+          emaAlignment={emaAlignment}
+          macdAlignment={macdAlignment}
+          trendScore={trendScoreDisplay}
+          emaWeight={emaWeight}
+          macdWeight={macdWeight}
+        />
       </section>
 
       {markovPriorScore != null && (
