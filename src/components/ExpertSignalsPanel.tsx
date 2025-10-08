@@ -342,6 +342,7 @@ type ExpertSignalsPanelProps = {
   symbol: string
   timeframe: string
   timeframeOptions: TimeframeOption[]
+  resolvedBarLimit: number
   macdLabel: string
   adxLabel: string
   rsiLengthDescription: string
@@ -354,6 +355,7 @@ export function ExpertSignalsPanel({
   symbol,
   timeframe,
   timeframeOptions,
+  resolvedBarLimit,
   macdLabel,
   adxLabel,
   rsiLengthDescription,
@@ -532,9 +534,11 @@ export function ExpertSignalsPanel({
             Multi-layer fusion that mirrors the execution pseudocode.
           </span>
           <span className="text-xs text-slate-400">
-            Symbol {symbol} • Focus {formatTimeframeLabel(selectedTimeframeKey, timeframeLabelMap)} • Warmup {ENGINE_METADATA.warmupBars} bars • Anchored VWAP: {ENGINE_METADATA.vwapAnchors.join(', ')}
+            Symbol {symbol} • Focus {formatTimeframeLabel(selectedTimeframeKey, timeframeLabelMap)} • Window{' '}
+            {resolvedBarLimit} bars • Warmup {ENGINE_METADATA.warmupBars} bars • Anchored VWAP: {ENGINE_METADATA.vwapAnchors.join(', ')}
           </span>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+            <Badge tone="muted">Window {resolvedBarLimit} bars</Badge>
             <Badge tone="muted">MACD {macdLabel}</Badge>
             <Badge tone="muted">ADX {adxLabel}</Badge>
             <Badge tone="muted">RSI {rsiLengthDescription}</Badge>

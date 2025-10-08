@@ -1060,6 +1060,7 @@ export function DashboardView({
             symbol={symbol}
             timeframe={timeframe}
             timeframeOptions={timeframeOptions}
+            resolvedBarLimit={resolvedBarLimit}
             macdLabel={macdSeries.label}
             adxLabel={adxSeries.label}
             rsiLengthDescription={rsiLengthDescription}
