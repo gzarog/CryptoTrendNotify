@@ -1,5 +1,7 @@
 import { URL } from 'node:url'
 
+import { buildLiveSnapshots } from './heatmap-live.js'
+
 const DEFAULT_SYMBOL = 'BTCUSDT'
 const MOCK_TIMEFRAMES = [
   {
@@ -232,9 +234,9 @@ export async function getHeatmapSnapshots(rawSymbol) {
   const symbol = normalizeSymbol(rawSymbol)
 
   const upstreamResults = await fetchUpstreamSnapshots(symbol)
-  if (Array.isArray(upstreamResults)) {
+  if (Array.isArray(upstreamResults) && upstreamResults.length > 0) {
     return upstreamResults
   }
 
-  return buildMockSnapshots(symbol)
+  return buildLiveSnapshots(symbol)
 }
