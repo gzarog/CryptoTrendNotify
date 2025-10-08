@@ -64,6 +64,14 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     return value.toFixed(decimals)
   }
 
+  const trendComponents = breakdown.trendComponents ?? {
+    emaAlignment: 0,
+    macdAlignment: 0,
+  }
+  const trendScore = Number.isFinite(breakdown.trendScore)
+    ? (breakdown.trendScore as number)
+    : 0
+
   const indicatorSnapshot = [
     { label: 'RSI', value: formatIndicator(breakdown.rsiValue) },
     { label: 'Stoch %K', value: formatIndicator(breakdown.stochKValue) },
@@ -74,7 +82,7 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     { label: 'MACD', value: formatIndicator(breakdown.macdValue, 2) },
     { label: 'MACD signal', value: formatIndicator(breakdown.macdSignal, 2) },
     { label: 'MACD hist', value: formatIndicator(breakdown.macdHistogram, 2) },
-    { label: 'Trend score', value: formatSignedValue(breakdown.trendScore, 2) },
+    { label: 'Trend score', value: formatSignedValue(trendScore, 2) },
   ]
   const markovPriorScore = Number.isFinite(breakdown.markov.priorScore)
     ? (breakdown.markov.priorScore as number)
@@ -127,9 +135,9 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
           Trend alignment
         </span>
         <TrendAlignmentViz
-          emaAlignment={breakdown.trendComponents.emaAlignment}
-          macdAlignment={breakdown.trendComponents.macdAlignment}
-          blendedScore={breakdown.trendScore}
+          emaAlignment={trendComponents.emaAlignment}
+          macdAlignment={trendComponents.macdAlignment}
+          blendedScore={trendScore}
         />
       </section>
 

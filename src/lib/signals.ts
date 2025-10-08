@@ -90,7 +90,7 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   const markovPriorScore = Math.min(Math.max(markovPriorScoreRaw ?? 0, -1), 1)
   const markovState = result.markov.currentState ?? null
 
-  const { bias, score: trendScoreRaw, emaAlignment, macdAlignment } = computeTrendBias(
+  const trend = computeBias(
     emaFast,
     emaSlow,
     maLong,
@@ -98,7 +98,8 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
     macdSignal,
     macdHistogram,
   )
-  const trendScore = roundTo(trendScoreRaw, 2)
+  const bias = trend.bias
+  const trendScore = roundTo(trend.score, 2)
   const momentum = computeMomentum(bias, rsiValue, stochKValue)
   const trendStrength = computeTrendStrength(adxValue, markovPriorScore)
   const adxDirection = computeAdxDirection(bias, plusDI, minusDI)
@@ -147,8 +148,8 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
       macdHistogram,
       trendScore,
       trendComponents: {
-        emaAlignment,
-        macdAlignment,
+        emaAlignment: trend.components.emaAlignment,
+        macdAlignment: trend.components.macdAlignment,
       },
       markov: {
         priorScore: markovPriorScore,
@@ -161,14 +162,18 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   }
 }
 
-type TrendBiasComputation = {
-  bias: CombinedSignalBreakdown['bias']
-  score: number
+type TrendBiasComponents = {
   emaAlignment: number
   macdAlignment: number
 }
 
-function computeTrendBias(
+type TrendBiasComputation = {
+  bias: CombinedSignalBreakdown['bias']
+  score: number
+  components: TrendBiasComponents
+}
+
+function computeBias(
   emaFast: number | null,
   emaSlow: number | null,
   maLong: number | null,
@@ -180,22 +185,24 @@ function computeTrendBias(
   const macdAlignment = resolveMacdAlignment(macdValue, macdSignal, macdHistogram)
 
   const blendedScore = clampRange(
-    emaAlignment === 0
-      ? 0.4 * emaAlignment + 0.6 * macdAlignment
-      : 0.6 * emaAlignment + 0.4 * macdAlignment,
+    (emaAlignment === 0 ? 0.4 : 0.6) * emaAlignment +
+      (emaAlignment === 0 ? 0.6 : 0.4) * macdAlignment,
     -1,
     1,
   )
 
+  let bias: CombinedSignalBreakdown['bias'] = 'Neutral'
   if (blendedScore >= 0.2) {
-    return { bias: 'Bullish', score: blendedScore, emaAlignment, macdAlignment }
+    bias = 'Bullish'
+  } else if (blendedScore <= -0.2) {
+    bias = 'Bearish'
   }
 
-  if (blendedScore <= -0.2) {
-    return { bias: 'Bearish', score: blendedScore, emaAlignment, macdAlignment }
+  return {
+    bias,
+    score: blendedScore,
+    components: { emaAlignment, macdAlignment },
   }
-
-  return { bias: 'Neutral', score: blendedScore, emaAlignment, macdAlignment }
 }
 
 function resolveEmaAlignment(
