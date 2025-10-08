@@ -102,4 +102,10 @@ export type HeatmapResult = {
     value: number | null
     slope: number | null
   }
+  adx?: {
+    value: number | null
+    plusDI: number | null
+    minusDI: number | null
+    slope: number | null
+  }
 }
