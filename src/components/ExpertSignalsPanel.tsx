@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { TIMEFRAMES } from '../constants/timeframes'
+import { getBaseTimeframeWeights, getMultiTimeframeSignal } from '../lib/signals'
 import type { CombinedSignalDirection, TimeframeSignalSnapshot } from '../types/signals'
 import { Badge } from './signals/Badge'
 import { PercentageBar } from './signals/PercentageBar'
@@ -6,6 +8,8 @@ import {
   clampPercentage,
   formatSignedValue,
   resolveBiasDirection,
+  snapshotsToMap,
+  sortSnapshotsByTimeframe,
 } from './signals/utils'
 
 type PresetKey = 'BALANCED' | 'SCALPER' | 'SWING'
@@ -17,51 +21,16 @@ type ContributionRow = {
   label: string
   baseWeight: number
   presetWeight: number
-  normalizedWeight: number
   signalStrength: number | null
   weightedScore: number | null
   direction: CombinedSignalDirection
   markovPrior: number | null
 }
 
-const ENGINE_CONFIG = {
+const ENGINE_METADATA = {
   symbol: 'BTCUSDT',
   warmupBars: 300,
-  timeframes: ['5m', '15m', '30m', '60m', '120m', '240m', '360m', '420m'],
-  vwapAnchors: ['session', 'day'],
-  fusion: {
-    '5': 0.12,
-    '15': 0.18,
-    '30': 0.24,
-    '60': 0.2,
-    '120': 0.14,
-    '240': 0.08,
-    '360': 0.03,
-    '420': 0.01,
-  } satisfies FusionWeights,
-  presets: {
-    BALANCED: null,
-    SCALPER: {
-      '5': 0.2,
-      '15': 0.25,
-      '30': 0.25,
-      '60': 0.15,
-      '120': 0.1,
-      '240': 0.04,
-      '360': 0.01,
-      '420': 0,
-    },
-    SWING: {
-      '5': 0.05,
-      '15': 0.1,
-      '30': 0.2,
-      '60': 0.25,
-      '120': 0.2,
-      '240': 0.12,
-      '360': 0.06,
-      '420': 0.02,
-    },
-  } as const,
+  vwapAnchors: ['session', 'day'] as const,
   categoryWeights: {
     trend: 2,
     momentum: 2,
@@ -144,16 +113,6 @@ const ENGINE_CONFIG = {
       vol_regime: 1.2,
       markov: 1.4,
     },
-    '420': {
-      trend: 1.6,
-      momentum: 0.7,
-      adx: 1,
-      micro: 0.6,
-      contrarian: 1.3,
-      onchain: 1.3,
-      vol_regime: 1.2,
-      markov: 1.4,
-    },
   } as const,
   thresholds: {
     strongBuy: 7,
@@ -166,23 +125,40 @@ const ENGINE_CONFIG = {
     atrTrailMult: 2,
     tpLadder: [1, 2, 3.5] as const,
   },
+} as const
+
+const TIMEFRAME_LABEL_MAP: Record<string, string> = TIMEFRAMES.reduce(
+  (accumulator, option) => ({ ...accumulator, [option.value]: option.label }),
+  {} as Record<string, string>,
+)
+
+const PRESET_WEIGHT_OVERRIDES: Record<Exclude<PresetKey, 'BALANCED'>, FusionWeights> = {
+  SCALPER: {
+    '5': 0.2,
+    '15': 0.25,
+    '30': 0.25,
+    '60': 0.15,
+    '120': 0.1,
+    '240': 0.04,
+    '360': 0.01,
+    '420': 0,
+  },
+  SWING: {
+    '5': 0.05,
+    '15': 0.1,
+    '30': 0.2,
+    '60': 0.25,
+    '120': 0.2,
+    '240': 0.12,
+    '360': 0.06,
+    '420': 0.02,
+  },
 }
 
 const PRESET_DESCRIPTIONS: Record<PresetKey, string> = {
   BALANCED: 'Balanced fusion — default blend across intraday to swing horizons.',
   SCALPER: 'Scalper fusion — front-loads short-term conviction for rapid reactions.',
   SWING: 'Swing fusion — emphasises higher timeframes for positional trades.',
-}
-
-const TIMEFRAME_LABELS: Record<string, string> = {
-  '5': '5m',
-  '15': '15m',
-  '30': '30m',
-  '60': '60m (1h)',
-  '120': '120m (2h)',
-  '240': '240m (4h)',
-  '360': '360m (6h)',
-  '420': '420m (7h)',
 }
 
 const CATEGORY_LABELS: Record<string, { title: string; description: string }> = {
@@ -312,20 +288,24 @@ function normalizeTimeframeKey(value: string): string {
 }
 
 function formatTimeframeLabel(key: string): string {
-  return TIMEFRAME_LABELS[key] ?? `${key}m`
+  return TIMEFRAME_LABEL_MAP[key] ?? `${key}m`
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function computeNormalizedWeights(weights: FusionWeights): FusionWeights {
-  const sum = Object.values(weights).reduce((acc, current) => acc + current, 0)
+function computeNormalizedWeights(weights: FusionWeights, order?: string[]): FusionWeights {
+  const keys = order ?? Object.keys(weights)
+  const entries = keys.map((key) => [key, weights[key] ?? 0] as const)
+  const sum = entries.reduce((accumulator, [, value]) => accumulator + value, 0)
+
   if (sum === 0) {
-    return Object.fromEntries(Object.keys(weights).map((key) => [key, 0])) as FusionWeights
+    return Object.fromEntries(entries.map(([key]) => [key, 0])) as FusionWeights
   }
+
   return Object.fromEntries(
-    Object.entries(weights).map(([key, value]) => [key, value / sum]),
+    entries.map(([key, value]) => [key, value / sum]),
   ) as FusionWeights
 }
 
@@ -359,40 +339,76 @@ type ExpertSignalsPanelProps = {
 export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelProps) {
   const [activePreset, setActivePreset] = useState<PresetKey>('BALANCED')
 
-  const presetWeights: FusionWeights = useMemo(() => {
-    if (activePreset === 'BALANCED') {
-      return ENGINE_CONFIG.fusion
-    }
-    const preset = ENGINE_CONFIG.presets[activePreset]
-    return preset ?? ENGINE_CONFIG.fusion
-  }, [activePreset])
-
-  const normalizedWeights = useMemo(() => computeNormalizedWeights(presetWeights), [presetWeights])
+  const orderedSnapshots = useMemo(
+    () => sortSnapshotsByTimeframe(snapshots),
+    [snapshots],
+  )
 
   const snapshotByTimeframe = useMemo(() => {
+    const initial = snapshotsToMap(orderedSnapshots)
     const map = new Map<string, TimeframeSignalSnapshot>()
-    snapshots.forEach((snapshot) => {
-      const key = normalizeTimeframeKey(snapshot.timeframe)
-      if (!map.has(key)) {
-        map.set(key, snapshot)
+    for (const [key, snapshot] of initial.entries()) {
+      const normalized = normalizeTimeframeKey(key)
+      if (!map.has(normalized)) {
+        map.set(normalized, snapshot)
+      }
+    }
+    return map
+  }, [orderedSnapshots])
+
+  const multiSignal = useMemo(
+    () => getMultiTimeframeSignal(orderedSnapshots),
+    [orderedSnapshots],
+  )
+
+  const baseWeights = useMemo(
+    () => computeNormalizedWeights(getBaseTimeframeWeights()),
+    [],
+  )
+
+  const timeframeKeys = useMemo(() => {
+    const keys = new Set<string>()
+    Object.keys(baseWeights).forEach((key) => keys.add(key))
+    snapshotByTimeframe.forEach((_, key) => keys.add(key))
+    multiSignal?.contributions.forEach((contribution) => {
+      keys.add(normalizeTimeframeKey(contribution.timeframe))
+    })
+
+    const ordered = TIMEFRAMES.map(({ value }) => value).filter((value) => keys.has(value))
+    const remaining = Array.from(keys).filter((value) => !ordered.includes(value))
+
+    remaining.sort((a, b) => Number(a) - Number(b))
+
+    return [...ordered, ...remaining]
+  }, [baseWeights, snapshotByTimeframe, multiSignal])
+
+  const presetWeights = useMemo(() => {
+    const override = activePreset === 'BALANCED' ? null : PRESET_WEIGHT_OVERRIDES[activePreset]
+    const raw: FusionWeights = {}
+
+    timeframeKeys.forEach((key) => {
+      const baseValue = baseWeights[key] ?? 0
+      if (override) {
+        raw[key] = override[key] ?? baseValue
+      } else {
+        raw[key] = baseValue
       }
     })
-    return map
-  }, [snapshots])
+
+    return computeNormalizedWeights(raw, timeframeKeys)
+  }, [activePreset, baseWeights, timeframeKeys])
 
   const contributions = useMemo(() => {
     const rows: ContributionRow[] = []
     let combinedScore = 0
 
-    const timeframeKeys = ENGINE_CONFIG.timeframes.map((tf) => normalizeTimeframeKey(tf))
-    const baseWeights = ENGINE_CONFIG.fusion
-
     timeframeKeys.forEach((key) => {
       const snapshot = snapshotByTimeframe.get(key) ?? null
       const signalStrength = snapshot?.combined.breakdown.signalStrength ?? null
+      const presetWeight = presetWeights[key] ?? 0
       const weightedScore =
         signalStrength != null && Number.isFinite(signalStrength)
-          ? signalStrength * (normalizedWeights[key] ?? 0)
+          ? signalStrength * presetWeight
           : null
       if (weightedScore != null) {
         combinedScore += weightedScore
@@ -402,8 +418,7 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
         key,
         label: formatTimeframeLabel(key),
         baseWeight: baseWeights[key] ?? 0,
-        presetWeight: presetWeights[key] ?? 0,
-        normalizedWeight: normalizedWeights[key] ?? 0,
+        presetWeight,
         signalStrength: signalStrength ?? null,
         weightedScore,
         direction: snapshot?.combined.direction ?? 'Neutral',
@@ -417,7 +432,7 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
     const considered = available.length
     const majority = considered === 0 ? 0 : Math.max(bullish, bearish)
     const agreement = considered === 0 ? 0.5 : majority / considered
-    const crossContribution = (agreement - 0.5) * ENGINE_CONFIG.categoryWeights.cross_tf
+    const crossContribution = (agreement - 0.5) * ENGINE_METADATA.categoryWeights.cross_tf
     const compositeScore = clamp(combinedScore + crossContribution, -10, 10)
     const compositeDirection = resolveBiasDirection(compositeScore)
     const strength = clampPercentage(Math.min(Math.abs(compositeScore) / 10, 1) * 100)
@@ -431,35 +446,36 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
       direction: compositeDirection,
       strength,
     }
-  }, [normalizedWeights, presetWeights, snapshotByTimeframe])
+  }, [baseWeights, presetWeights, snapshotByTimeframe, timeframeKeys])
 
   const categoryInsights = useMemo(() => {
-    const entries = ENGINE_CONFIG.timeframes.map((timeframe) => {
-      const key = normalizeTimeframeKey(timeframe)
-      const multipliers = ENGINE_CONFIG.categoryMultipliers[key as keyof typeof ENGINE_CONFIG.categoryMultipliers]
-      if (!multipliers) {
-        return null
-      }
-      const resolved = Object.entries(multipliers).map(([categoryKey, multiplier]) => {
-        const normalizedKey = categoryKey === 'micro' ? 'microstructure' : categoryKey
-        const base = ENGINE_CONFIG.categoryWeights[normalizedKey as keyof typeof ENGINE_CONFIG.categoryWeights] ?? 0
+    const entries = Object.entries(ENGINE_METADATA.categoryMultipliers).map(
+      ([timeframe, multipliers]) => {
+        const key = normalizeTimeframeKey(timeframe)
+        const resolved = Object.entries(multipliers).map(([categoryKey, multiplier]) => {
+          const normalizedKey = categoryKey === 'micro' ? 'microstructure' : categoryKey
+          const base =
+            ENGINE_METADATA.categoryWeights[
+              normalizedKey as keyof typeof ENGINE_METADATA.categoryWeights
+            ] ?? 0
+          return {
+            key: normalizedKey,
+            weight: base * (multiplier + 0),
+          }
+        })
+
+        const ranked = resolved
+          .filter((entry) => entry.key !== 'cross_tf')
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 3)
+
         return {
-          key: normalizedKey,
-          weight: base * (multiplier + 0),
+          key,
+          label: formatTimeframeLabel(key),
+          ranked,
         }
-      })
-
-      const ranked = resolved
-        .filter((entry) => entry.key !== 'cross_tf')
-        .sort((a, b) => b.weight - a.weight)
-        .slice(0, 3)
-
-      return {
-        key,
-        label: formatTimeframeLabel(key),
-        ranked,
-      }
-    })
+      },
+    )
 
     return entries.filter((entry): entry is NonNullable<typeof entry> => entry != null)
   }, [])
@@ -482,7 +498,7 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
             Multi-layer fusion that mirrors the execution pseudocode.
           </span>
           <span className="text-xs text-slate-400">
-            Symbol {ENGINE_CONFIG.symbol} • Warmup {ENGINE_CONFIG.warmupBars} bars • Anchored VWAP: {ENGINE_CONFIG.vwapAnchors.join(', ')}
+            Symbol {ENGINE_METADATA.symbol} • Warmup {ENGINE_METADATA.warmupBars} bars • Anchored VWAP: {ENGINE_METADATA.vwapAnchors.join(', ')}
           </span>
         </div>
         <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
@@ -555,7 +571,6 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
                       <th className="px-3 py-2">Timeframe</th>
                       <th className="px-3 py-2">Base weight</th>
                       <th className="px-3 py-2">Preset weight</th>
-                      <th className="px-3 py-2">Normalized</th>
                       <th className="px-3 py-2">Signal score</th>
                       <th className="px-3 py-2">Weighted</th>
                       <th className="px-3 py-2">Markov</th>
@@ -599,9 +614,6 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2 font-mono text-[11px] text-slate-300">
-                            {formatPercent(row.normalizedWeight * 100, 1)}
-                          </td>
                           <td className="px-3 py-2 font-mono text-[11px] text-slate-200">
                             {row.signalStrength != null
                               ? formatSignedValue(row.signalStrength, 2)
@@ -636,7 +648,7 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
           </header>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(ENGINE_CONFIG.categoryWeights).map(([key, weight]) => {
+            {Object.entries(ENGINE_METADATA.categoryWeights).map(([key, weight]) => {
               const meta = CATEGORY_LABELS[key] ?? { title: key, description: '' }
               return (
                 <div
