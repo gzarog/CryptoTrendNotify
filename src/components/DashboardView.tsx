@@ -1054,7 +1054,17 @@ export function DashboardView({
             snapshots={timeframeSnapshots}
             isLoading={isFetching || signalsLoading}
           />
-          <ExpertSignalsPanel snapshots={timeframeSnapshots} isLoading={isFetching || signalsLoading} />
+          <ExpertSignalsPanel
+            snapshots={timeframeSnapshots}
+            isLoading={isFetching || signalsLoading}
+            symbol={symbol}
+            timeframe={timeframe}
+            timeframeOptions={timeframeOptions}
+            macdLabel={macdSeries.label}
+            adxLabel={adxSeries.label}
+            rsiLengthDescription={rsiLengthDescription}
+            stochasticLengthDescription={stochasticLengthDescription}
+          />
         </section>
         <aside
           className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${

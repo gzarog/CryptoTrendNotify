@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { TIMEFRAMES } from '../constants/timeframes'
+import type { TimeframeOption } from '../constants/timeframes'
 import { getBaseTimeframeWeights, getMultiTimeframeSignal } from '../lib/signals'
 import type { CombinedSignalDirection, TimeframeSignalSnapshot } from '../types/signals'
 import { Badge } from './signals/Badge'
@@ -126,11 +126,6 @@ const ENGINE_METADATA = {
     tpLadder: [1, 2, 3.5] as const,
   },
 } as const
-
-const TIMEFRAME_LABEL_MAP: Record<string, string> = TIMEFRAMES.reduce(
-  (accumulator, option) => ({ ...accumulator, [option.value]: option.label }),
-  {} as Record<string, string>,
-)
 
 const PRESET_WEIGHT_OVERRIDES: Record<Exclude<PresetKey, 'BALANCED'>, FusionWeights> = {
   SCALPER: {
@@ -287,12 +282,22 @@ function normalizeTimeframeKey(value: string): string {
   return value
 }
 
-function formatTimeframeLabel(key: string): string {
-  return TIMEFRAME_LABEL_MAP[key] ?? `${key}m`
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function buildTimeframeLabelMap(options: TimeframeOption[]): Record<string, string> {
+  return options.reduce((accumulator, option) => {
+    const normalized = normalizeTimeframeKey(option.value)
+    if (!(normalized in accumulator)) {
+      accumulator[normalized] = option.label
+    }
+    return accumulator
+  }, {} as Record<string, string>)
+}
+
+function formatTimeframeLabel(key: string, map: Record<string, string>): string {
+  return map[key] ?? `${key}m`
 }
 
 function computeNormalizedWeights(weights: FusionWeights, order?: string[]): FusionWeights {
@@ -334,9 +339,26 @@ function formatSignedNumber(value: number | null, decimals = 2): string {
 type ExpertSignalsPanelProps = {
   snapshots: TimeframeSignalSnapshot[]
   isLoading: boolean
+  symbol: string
+  timeframe: string
+  timeframeOptions: TimeframeOption[]
+  macdLabel: string
+  adxLabel: string
+  rsiLengthDescription: string
+  stochasticLengthDescription: string
 }
 
-export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelProps) {
+export function ExpertSignalsPanel({
+  snapshots,
+  isLoading,
+  symbol,
+  timeframe,
+  timeframeOptions,
+  macdLabel,
+  adxLabel,
+  rsiLengthDescription,
+  stochasticLengthDescription,
+}: ExpertSignalsPanelProps) {
   const [activePreset, setActivePreset] = useState<PresetKey>('BALANCED')
 
   const orderedSnapshots = useMemo(
@@ -361,9 +383,19 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
     [orderedSnapshots],
   )
 
+  const timeframeLabelMap = useMemo(
+    () => buildTimeframeLabelMap(timeframeOptions),
+    [timeframeOptions],
+  )
+
   const baseWeights = useMemo(
     () => computeNormalizedWeights(getBaseTimeframeWeights()),
     [],
+  )
+
+  const selectedTimeframeKey = useMemo(
+    () => normalizeTimeframeKey(timeframe),
+    [timeframe],
   )
 
   const timeframeKeys = useMemo(() => {
@@ -374,13 +406,15 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
       keys.add(normalizeTimeframeKey(contribution.timeframe))
     })
 
-    const ordered = TIMEFRAMES.map(({ value }) => value).filter((value) => keys.has(value))
+    const ordered = timeframeOptions
+      .map(({ value }) => normalizeTimeframeKey(value))
+      .filter((value) => keys.has(value))
     const remaining = Array.from(keys).filter((value) => !ordered.includes(value))
 
     remaining.sort((a, b) => Number(a) - Number(b))
 
     return [...ordered, ...remaining]
-  }, [baseWeights, snapshotByTimeframe, multiSignal])
+  }, [baseWeights, multiSignal, snapshotByTimeframe, timeframeOptions])
 
   const presetWeights = useMemo(() => {
     const override = activePreset === 'BALANCED' ? null : PRESET_WEIGHT_OVERRIDES[activePreset]
@@ -416,7 +450,7 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
 
       rows.push({
         key,
-        label: formatTimeframeLabel(key),
+        label: formatTimeframeLabel(key, timeframeLabelMap),
         baseWeight: baseWeights[key] ?? 0,
         presetWeight,
         signalStrength: signalStrength ?? null,
@@ -471,14 +505,14 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
 
         return {
           key,
-          label: formatTimeframeLabel(key),
+          label: formatTimeframeLabel(key, timeframeLabelMap),
           ranked,
         }
       },
     )
 
     return entries.filter((entry): entry is NonNullable<typeof entry> => entry != null)
-  }, [])
+  }, [timeframeLabelMap])
 
   const compositeGradient =
     contributions.direction === 'Bullish'
@@ -498,8 +532,14 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
             Multi-layer fusion that mirrors the execution pseudocode.
           </span>
           <span className="text-xs text-slate-400">
-            Symbol {ENGINE_METADATA.symbol} • Warmup {ENGINE_METADATA.warmupBars} bars • Anchored VWAP: {ENGINE_METADATA.vwapAnchors.join(', ')}
+            Symbol {symbol} • Focus {formatTimeframeLabel(selectedTimeframeKey, timeframeLabelMap)} • Warmup {ENGINE_METADATA.warmupBars} bars • Anchored VWAP: {ENGINE_METADATA.vwapAnchors.join(', ')}
           </span>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+            <Badge tone="muted">MACD {macdLabel}</Badge>
+            <Badge tone="muted">ADX {adxLabel}</Badge>
+            <Badge tone="muted">RSI {rsiLengthDescription}</Badge>
+            <Badge tone="muted">Stoch RSI {stochasticLengthDescription}</Badge>
+          </div>
         </div>
         <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
           <span>CONFIG.active_preset</span>
@@ -586,9 +626,13 @@ export function ExpertSignalsPanel({ snapshots, isLoading }: ExpertSignalsPanelP
                           : row.direction === 'Bearish'
                           ? 'border-rose-400/60 bg-rose-500/10 text-rose-100'
                           : 'border-slate-400/40 bg-slate-500/10 text-slate-100'
+                      const isFocused = row.key === selectedTimeframeKey
+                      const rowClassName = isFocused
+                        ? 'bg-indigo-500/10 ring-1 ring-inset ring-indigo-400/60'
+                        : 'hover:bg-slate-900/50'
 
                       return (
-                        <tr key={row.key} className="hover:bg-slate-900/50">
+                        <tr key={row.key} className={rowClassName}>
                           <td className="whitespace-nowrap px-3 py-2">
                             <div className="flex flex-col gap-1">
                               <span className="text-sm font-semibold text-white">{row.label}</span>
