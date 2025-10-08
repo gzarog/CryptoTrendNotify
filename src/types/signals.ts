@@ -18,6 +18,14 @@ export type CombinedSignalBreakdown = {
   emaFast: number | null
   emaSlow: number | null
   maLong: number | null
+  macdValue: number | null
+  macdSignal: number | null
+  macdHistogram: number | null
+  trendScore: number
+  trendComponents: {
+    emaAlignment: number
+    macdAlignment: number
+  }
   markov: {
     priorScore: number
     currentState: 'D' | 'R' | 'B' | 'U' | null

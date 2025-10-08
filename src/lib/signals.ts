@@ -66,6 +66,20 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   const emaFast = toNumberOrNull(result.ema?.ema10)
   const emaSlow = toNumberOrNull(result.ema?.ema50)
   const maLong = toNumberOrNull(result.ma200.value)
+  const macdRaw = result.macd as (typeof result.macd & Record<string, unknown>) | undefined
+  const macdValue = toNumberOrNull(
+    macdRaw?.value ??
+      (macdRaw?.['macd'] as number | null | undefined) ??
+      (macdRaw?.['macdLine'] as number | null | undefined),
+  )
+  const macdSignal = toNumberOrNull(
+    macdRaw?.signal ?? (macdRaw?.['signalLine'] as number | null | undefined),
+  )
+  const macdHistogram = toNumberOrNull(
+    macdRaw?.histogram ??
+      (macdRaw?.['hist'] as number | null | undefined) ??
+      (macdRaw?.['histLine'] as number | null | undefined),
+  )
   const rsiValue = toNumberOrNull(result.rsiLtf.value)
   const stochKValue = toNumberOrNull(result.stochRsi.k)
   const adxValue = toNumberOrNull(result.adx?.value)
@@ -76,7 +90,15 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   const markovPriorScore = Math.min(Math.max(markovPriorScoreRaw ?? 0, -1), 1)
   const markovState = result.markov.currentState ?? null
 
-  const bias = computeBias(emaFast, emaSlow, maLong)
+  const { bias, score: trendScoreRaw, emaAlignment, macdAlignment } = computeTrendBias(
+    emaFast,
+    emaSlow,
+    maLong,
+    macdValue,
+    macdSignal,
+    macdHistogram,
+  )
+  const trendScore = roundTo(trendScoreRaw, 2)
   const momentum = computeMomentum(bias, rsiValue, stochKValue)
   const trendStrength = computeTrendStrength(adxValue, markovPriorScore)
   const adxDirection = computeAdxDirection(bias, plusDI, minusDI)
@@ -120,6 +142,14 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
       emaFast,
       emaSlow,
       maLong,
+      macdValue,
+      macdSignal,
+      macdHistogram,
+      trendScore,
+      trendComponents: {
+        emaAlignment,
+        macdAlignment,
+      },
       markov: {
         priorScore: markovPriorScore,
         currentState: markovState,
@@ -131,11 +161,48 @@ export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   }
 }
 
-function computeBias(
+type TrendBiasComputation = {
+  bias: CombinedSignalBreakdown['bias']
+  score: number
+  emaAlignment: number
+  macdAlignment: number
+}
+
+function computeTrendBias(
   emaFast: number | null,
   emaSlow: number | null,
   maLong: number | null,
-): CombinedSignalBreakdown['bias'] {
+  macdValue: number | null,
+  macdSignal: number | null,
+  macdHistogram: number | null,
+): TrendBiasComputation {
+  const emaAlignment = resolveEmaAlignment(emaFast, emaSlow, maLong)
+  const macdAlignment = resolveMacdAlignment(macdValue, macdSignal, macdHistogram)
+
+  const blendedScore = clampRange(
+    emaAlignment === 0
+      ? 0.4 * emaAlignment + 0.6 * macdAlignment
+      : 0.6 * emaAlignment + 0.4 * macdAlignment,
+    -1,
+    1,
+  )
+
+  if (blendedScore >= 0.2) {
+    return { bias: 'Bullish', score: blendedScore, emaAlignment, macdAlignment }
+  }
+
+  if (blendedScore <= -0.2) {
+    return { bias: 'Bearish', score: blendedScore, emaAlignment, macdAlignment }
+  }
+
+  return { bias: 'Neutral', score: blendedScore, emaAlignment, macdAlignment }
+}
+
+function resolveEmaAlignment(
+  emaFast: number | null,
+  emaSlow: number | null,
+  maLong: number | null,
+): number {
   if (
     emaFast != null &&
     emaSlow != null &&
@@ -143,7 +210,7 @@ function computeBias(
     emaFast > emaSlow &&
     emaSlow > maLong
   ) {
-    return 'Bullish'
+    return 1
   }
 
   if (
@@ -153,10 +220,59 @@ function computeBias(
     emaFast < emaSlow &&
     emaSlow < maLong
   ) {
-    return 'Bearish'
+    return -1
   }
 
-  return 'Neutral'
+  return 0
+}
+
+function resolveMacdAlignment(
+  macdValue: number | null,
+  macdSignal: number | null,
+  macdHistogram: number | null,
+): number {
+  if (macdValue == null || macdSignal == null || macdHistogram == null) {
+    return 0
+  }
+
+  if (macdHistogram > 0 && macdValue > macdSignal && macdValue > 0) {
+    return 1
+  }
+
+  if (macdHistogram < 0 && macdValue < macdSignal && macdValue < 0) {
+    return -1
+  }
+
+  const histogramSign = valueSign(macdHistogram)
+  if (histogramSign === 0) {
+    return 0
+  }
+
+  return histogramSign * 0.25
+}
+
+function valueSign(value: number): number {
+  if (value > 0) {
+    return 1
+  }
+
+  if (value < 0) {
+    return -1
+  }
+
+  return 0
+}
+
+function clampRange(value: number, min: number, max: number): number {
+  if (value < min) {
+    return min
+  }
+
+  if (value > max) {
+    return max
+  }
+
+  return value
 }
 
 function computeMomentum(

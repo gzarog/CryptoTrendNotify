@@ -9,6 +9,7 @@ import {
   STRENGTH_BADGE_CLASS,
 } from './constants'
 import { clampPercentage, formatPrice, formatSignedValue, toDirectionKey } from './utils'
+import { TrendAlignmentViz } from './TrendAlignmentViz'
 import type { TimeframeSignalSnapshot } from '../../types/signals'
 
 type TimeframeOverviewCardProps = {
@@ -70,6 +71,10 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
     { label: 'EMA fast', value: formatPrice(breakdown.emaFast, 5) },
     { label: 'EMA slow', value: formatPrice(breakdown.emaSlow, 5) },
     { label: 'MA long', value: formatPrice(breakdown.maLong, 5) },
+    { label: 'MACD', value: formatIndicator(breakdown.macdValue, 2) },
+    { label: 'MACD signal', value: formatIndicator(breakdown.macdSignal, 2) },
+    { label: 'MACD hist', value: formatIndicator(breakdown.macdHistogram, 2) },
+    { label: 'Trend score', value: formatSignedValue(breakdown.trendScore, 2) },
   ]
   const markovPriorScore = Number.isFinite(breakdown.markov.priorScore)
     ? (breakdown.markov.priorScore as number)
@@ -115,6 +120,17 @@ export function TimeframeOverviewCard({ snapshot }: TimeframeOverviewCardProps) 
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="flex flex-col gap-3 text-xs text-slate-200">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          Trend alignment
+        </span>
+        <TrendAlignmentViz
+          emaAlignment={breakdown.trendComponents.emaAlignment}
+          macdAlignment={breakdown.trendComponents.macdAlignment}
+          blendedScore={breakdown.trendScore}
+        />
       </section>
 
       {markovPriorScore != null && (
