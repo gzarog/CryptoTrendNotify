@@ -3,11 +3,15 @@ import type {
   CombinedSignal,
   CombinedSignalBreakdown,
   CombinedSignalDirection,
+  AggregateMultiTfMarkovResult,
+  MarkovTimeframeEvaluation,
   MultiTimeframeSignal,
   MultiTimeframeSignalContribution,
+  MultiTimeframeModelSummary,
   SignalDirection,
   SignalStage,
   SignalStrength,
+  TrendMatrixRow,
   TimeframeSignalSnapshot,
   TradingSignal,
 } from '../types/signals'
@@ -45,6 +49,18 @@ const RSI_BULL_MIN = 55
 const RSI_BEAR_MAX = 45
 const STOCH_BULL_MIN = 60
 const STOCH_BEAR_MAX = 40
+
+const ORDERED_TIMEFRAMES = Object.keys(TIMEFRAME_WEIGHTS)
+  .map((value) => Number(value))
+  .filter((value) => Number.isFinite(value))
+  .sort((a, b) => a - b)
+  .map((value) => String(value))
+
+const SIGNAL_WEAK_THRESHOLD = 0.5
+const SIGNAL_FORMING_THRESHOLD = 1.5
+const SIGNAL_STRONG_THRESHOLD = 2.5
+const PRIOR_SUPPORT_THRESHOLD = 0.25
+const PRIOR_STRONG_OPPOSITION_THRESHOLD = 0.45
 
 export function getCombinedSignal(result: HeatmapResult): CombinedSignal {
   const emaFast = toNumberOrNull(result.ema?.ema10)
@@ -768,4 +784,222 @@ function resolveTimeframeWeight(timeframe: string): number {
   }
 
   return DEFAULT_MULTI_TIMEFRAME_WEIGHT
+}
+
+function roundNullable(value: number | null | undefined, decimals: number): number | null {
+  if (value == null || !Number.isFinite(value)) {
+    return null
+  }
+
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function parseTimeframeToMinutes(value: string): number {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric)) {
+    return numeric
+  }
+
+  const trimmed = value.trim().toUpperCase()
+  const suffixMatch = trimmed.match(/^(\d+)([SMHDW])$/)
+  if (suffixMatch) {
+    const [, amountRaw, unit] = suffixMatch
+    const amount = Number(amountRaw)
+    if (!Number.isFinite(amount)) {
+      return Number.POSITIVE_INFINITY
+    }
+
+    const multiplier =
+      unit === 'S'
+        ? 1 / 60
+        : unit === 'M'
+        ? 1
+        : unit === 'H'
+        ? 60
+        : unit === 'D'
+        ? 60 * 24
+        : unit === 'W'
+        ? 60 * 24 * 7
+        : null
+
+    if (multiplier != null) {
+      return amount * multiplier
+    }
+  }
+
+  return Number.POSITIVE_INFINITY
+}
+
+function orderTimeframes(
+  evaluations: Record<string, MarkovTimeframeEvaluation>,
+): string[] {
+  const known = ORDERED_TIMEFRAMES.filter((timeframe) => evaluations[timeframe])
+  const extras = Object.keys(evaluations)
+    .filter((timeframe) => !known.includes(timeframe))
+    .sort((a, b) => parseTimeframeToMinutes(a) - parseTimeframeToMinutes(b))
+
+  return [...known, ...extras]
+}
+
+export function evaluateSnapshotWithMarkov(
+  snapshot: TimeframeSignalSnapshot,
+): MarkovTimeframeEvaluation {
+  const breakdown = snapshot.combined.breakdown
+
+  return {
+    timeframe: snapshot.timeframe,
+    timeframeLabel: snapshot.timeframeLabel,
+    ...breakdown,
+    markov: { ...breakdown.markov },
+  }
+}
+
+export function buildTrendMatrixMarkov(
+  evaluations: Record<string, MarkovTimeframeEvaluation>,
+): TrendMatrixRow[] {
+  const ordered = orderTimeframes(evaluations)
+
+  return ordered.map((timeframe) => {
+    const evaluation = evaluations[timeframe]
+    const priorScore = roundNullable(evaluation?.markov?.priorScore ?? null, 2)
+
+    return {
+      timeframe,
+      timeframeLabel: evaluation?.timeframeLabel ?? timeframe,
+      bias: evaluation?.bias ?? 'Neutral',
+      rsi: roundNullable(evaluation?.rsiValue ?? null, 1),
+      stochK: roundNullable(evaluation?.stochKValue ?? null, 1),
+      adx: roundNullable(evaluation?.adxValue ?? null, 1),
+      trend: evaluation?.trendStrength ?? 'Weak',
+      adxDirection: evaluation?.adxDirection ?? 'NoConfirm',
+      prior: priorScore,
+      label: evaluation?.label ?? 'NEUTRAL',
+      scoreRaw: evaluation ? roundTo(evaluation.signalStrengthRaw, 2) : 0,
+      score: evaluation ? roundTo(evaluation.signalStrength, 2) : 0,
+    }
+  })
+}
+
+export function aggregateMultiTfMarkov(
+  evaluations: Record<string, MarkovTimeframeEvaluation>,
+): AggregateMultiTfMarkovResult {
+  let combinedScore = 0
+
+  for (const timeframe of orderTimeframes(evaluations)) {
+    const evaluation = evaluations[timeframe]
+    if (!evaluation) {
+      continue
+    }
+
+    const weight = resolveTimeframeWeight(timeframe)
+    if (weight <= 0) {
+      continue
+    }
+
+    combinedScore += evaluation.signalStrength * weight
+  }
+
+  const combinedBias = resolveCombinedBias(combinedScore)
+
+  return { combinedScore, combinedBias }
+}
+
+export function qualifiesForTradeMarkov(evaluation: MarkovTimeframeEvaluation): boolean {
+  if (!evaluation) {
+    return false
+  }
+
+  const posterior = evaluation.signalStrength
+  if (posterior == null || !Number.isFinite(posterior) || posterior === 0) {
+    return false
+  }
+
+  const magnitude = Math.abs(posterior)
+  const priorScore = evaluation.markov?.priorScore ?? 0
+  const priorMagnitude = Math.abs(priorScore)
+  const aligned = priorScore !== 0 && Math.sign(priorScore) === Math.sign(posterior)
+
+  if (magnitude >= SIGNAL_STRONG_THRESHOLD) {
+    if (!aligned && priorMagnitude >= PRIOR_STRONG_OPPOSITION_THRESHOLD) {
+      return false
+    }
+    return true
+  }
+
+  if (magnitude >= SIGNAL_FORMING_THRESHOLD) {
+    if (!aligned && priorMagnitude >= PRIOR_SUPPORT_THRESHOLD) {
+      return false
+    }
+    return true
+  }
+
+  if (magnitude >= SIGNAL_WEAK_THRESHOLD) {
+    return aligned && priorMagnitude >= PRIOR_SUPPORT_THRESHOLD
+  }
+
+  return false
+}
+
+export function hasNConsecutiveTimeframes(
+  timeframes: string[],
+  n: number,
+  evaluations?: Record<string, MarkovTimeframeEvaluation>,
+): boolean {
+  if (n <= 1) {
+    return timeframes.length > 0
+  }
+
+  if (timeframes.length === 0) {
+    return false
+  }
+
+  const ordered = evaluations ? orderTimeframes(evaluations) : ORDERED_TIMEFRAMES
+  const qualified = new Set(timeframes)
+  let streak = 0
+
+  for (const timeframe of ordered) {
+    if (qualified.has(timeframe)) {
+      streak += 1
+      if (streak >= n) {
+        return true
+      }
+    } else {
+      streak = 0
+    }
+  }
+
+  return false
+}
+
+export function runMultiTfModel(
+  snapshots: TimeframeSignalSnapshot[],
+): MultiTimeframeModelSummary {
+  const evaluations: Record<string, MarkovTimeframeEvaluation> = {}
+
+  for (const snapshot of snapshots) {
+    evaluations[snapshot.timeframe] = evaluateSnapshotWithMarkov(snapshot)
+  }
+
+  const ordered = orderTimeframes(evaluations)
+  const trendMatrix = buildTrendMatrixMarkov(evaluations)
+  const combined = aggregateMultiTfMarkov(evaluations)
+  const qualifiedTimeframes = ordered.filter((timeframe) => {
+    const evaluation = evaluations[timeframe]
+    return evaluation ? qualifiesForTradeMarkov(evaluation) : false
+  })
+  const emitTradeSignal = hasNConsecutiveTimeframes(qualifiedTimeframes, 3, evaluations)
+
+  return {
+    perTimeframe: evaluations,
+    trendMatrix,
+    combined,
+    qualifiedTimeframes,
+    emitTradeSignal,
+  }
 }

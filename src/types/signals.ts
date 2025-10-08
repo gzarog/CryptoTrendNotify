@@ -132,3 +132,39 @@ export type TimeframeSignalSnapshot = {
   side: SignalDirection | null
   combined: CombinedSignal
 }
+
+export type MarkovTimeframeEvaluation = CombinedSignalBreakdown & {
+  timeframe: string
+  timeframeLabel: string
+}
+
+export type TrendMatrixRow = {
+  timeframe: string
+  timeframeLabel: string
+  bias: CombinedSignalBreakdown['bias']
+  rsi: number | null
+  stochK: number | null
+  adx: number | null
+  trend: CombinedSignalBreakdown['trendStrength']
+  adxDirection: CombinedSignalBreakdown['adxDirection']
+  prior: number | null
+  label: CombinedSignalBreakdown['label']
+  scoreRaw: number
+  score: number
+}
+
+export type AggregateMultiTfMarkovResult = {
+  combinedScore: number
+  combinedBias: {
+    dir: CombinedSignalDirection
+    strength: 'Strong' | 'Medium' | 'Weak' | 'Sideways'
+  }
+}
+
+export type MultiTimeframeModelSummary = {
+  perTimeframe: Record<string, MarkovTimeframeEvaluation>
+  trendMatrix: TrendMatrixRow[]
+  combined: AggregateMultiTfMarkovResult
+  qualifiedTimeframes: string[]
+  emitTradeSignal: boolean
+}
