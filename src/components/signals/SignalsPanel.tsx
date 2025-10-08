@@ -46,9 +46,28 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
 
       {!collapsed && (
         <div className="flex flex-col gap-5 px-6 py-6">
+          <div className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+            <header className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Qualified signals
+              </span>
+              <span className="text-sm text-slate-300">
+                Highest scoring setups surfaced by the confluence engine
+              </span>
+            </header>
+
+            {isLoading ? (
+              <p className="text-sm text-slate-400">Calculating signals…</p>
+            ) : primaryHighlights.length === 0 ? (
+              <p className="text-sm text-slate-400">No qualified signals yet. Check back soon.</p>
+            ) : (
+              <SignalHighlights signals={primaryHighlights} />
+            )}
+          </div>
+
           {multiTimeframeSignal && <MultiTimeframeSummary signal={multiTimeframeSignal} />}
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {TIMEFRAMES.map(({ value, label }) => {
               const snapshot = snapshotsByTimeframe.get(value)
               return snapshot ? (
@@ -58,14 +77,6 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
               )
             })}
           </div>
-
-          {isLoading ? (
-            <p className="text-sm text-slate-400">Calculating signals…</p>
-          ) : primaryHighlights.length === 0 ? (
-            <p className="text-sm text-slate-400">No qualified signals yet. Check back soon.</p>
-          ) : (
-            <SignalHighlights signals={primaryHighlights} />
-          )}
         </div>
       )}
     </section>

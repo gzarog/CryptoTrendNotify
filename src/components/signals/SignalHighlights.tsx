@@ -14,13 +14,6 @@ export function SignalHighlights({ signals }: SignalHighlightsProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Featured opportunities</p>
-        <p className="text-sm text-slate-300">
-          Highest scoring signals surfaced from the confluence engine
-        </p>
-      </header>
-
       {signals.map((signal) => {
         const badgeClass =
           (signal.strength && STRENGTH_BADGE_CLASS[signal.strength.toLowerCase()]) ?? STRENGTH_BADGE_CLASS.weak
