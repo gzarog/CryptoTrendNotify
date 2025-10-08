@@ -76,6 +76,11 @@ export type HeatmapResult = {
     d: number | null
     rawNormalized: number | null
   }
+  macd?: {
+    value: number | null
+    signal: number | null
+    histogram: number | null
+  }
   rsiLtf: {
     value: number | null
     sma5: number | null
