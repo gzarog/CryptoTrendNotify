@@ -2,12 +2,23 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildReasons,
+  buildTrendMatrixMarkov,
   getCombinedSignal,
   getMultiTimeframeSignal,
+  hasNConsecutiveTimeframes,
+  runMultiTfModel,
   scoreSignal,
+  aggregateMultiTfMarkov,
+  evaluateSnapshotWithMarkov,
+  qualifiesForTradeMarkov,
 } from '../signals'
 import type { HeatmapResult } from '../../types/heatmap'
-import type { CombinedSignal, TimeframeSignalSnapshot } from '../../types/signals'
+import type {
+  CombinedSignal,
+  CombinedSignalBreakdown,
+  MarkovTimeframeEvaluation,
+  TimeframeSignalSnapshot,
+} from '../../types/signals'
 
 function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): HeatmapResult {
   const base: HeatmapResult = {
@@ -133,6 +144,73 @@ function createSnapshot(
     side: null,
     combined,
     ...overrides,
+  }
+}
+
+function createBreakdown(
+  overrides: Partial<CombinedSignalBreakdown> = {},
+): CombinedSignalBreakdown {
+  const base: CombinedSignalBreakdown = {
+    bias: 'Bullish',
+    momentum: 'StrongBullish',
+    trendStrength: 'Strong',
+    adxDirection: 'ConfirmBull',
+    adxIsRising: true,
+    adxValue: 30,
+    rsiValue: 60,
+    stochKValue: 70,
+    emaFast: 110,
+    emaSlow: 105,
+    maLong: 100,
+    markov: { priorScore: 0.6, currentState: 'B' },
+    signalStrength: 2.6,
+    signalStrengthRaw: 2.6,
+    label: 'STRONG_BUY',
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    markov: { ...base.markov, ...(overrides.markov ?? {}) },
+  }
+}
+
+function createCombinedSignalFromBreakdown(
+  breakdown: CombinedSignalBreakdown,
+  directionOverride?: CombinedSignal['direction'],
+): CombinedSignal {
+  const direction: CombinedSignal['direction'] =
+    directionOverride ?? (breakdown.signalStrength >= 0 ? 'Bullish' : 'Bearish')
+  const strength = Math.round(
+    Math.min(Math.max(Math.abs(breakdown.signalStrength) / 3, 0), 1) * 100,
+  )
+
+  return {
+    direction,
+    strength,
+    breakdown,
+  }
+}
+
+function createEvaluation(
+  timeframe: string,
+  timeframeLabel: string,
+  breakdownOverrides: Partial<CombinedSignalBreakdown> = {},
+): { snapshot: TimeframeSignalSnapshot; evaluation: MarkovTimeframeEvaluation } {
+  const breakdown = createBreakdown(breakdownOverrides)
+  const combined = createCombinedSignalFromBreakdown(breakdown)
+  const snapshot = createSnapshot(combined, {
+    timeframe,
+    timeframeLabel,
+    trend: breakdown.signalStrength >= 0 ? 'Bullish' : 'Bearish',
+    momentum: breakdown.signalStrength >= 0 ? 'Bullish' : 'Bearish',
+    bias: breakdown.signalStrength >= 0 ? 'BULL' : 'BEAR',
+    side: breakdown.signalStrength >= 0 ? 'Bullish' : 'Bearish',
+  })
+
+  return {
+    snapshot,
+    evaluation: evaluateSnapshotWithMarkov(snapshot),
   }
 }
 
@@ -322,6 +400,177 @@ describe('getMultiTimeframeSignal', () => {
     expect(multi?.contributions[0]?.weightedScore).toBeCloseTo(0.5, 5)
     expect(multi?.contributions[1]?.weightedScore).toBeCloseTo(2.1, 5)
     expect(multi?.contributions[2]?.weightedScore).toBeCloseTo(-3.9, 5)
+  })
+})
+
+describe('Markov multi timeframe model utilities', () => {
+  it('extracts Markov-aware evaluations from snapshots', () => {
+    const { snapshot, evaluation } = createEvaluation('5', '5m', {
+      rsiValue: 55.6,
+      stochKValue: 62.3,
+      adxValue: 22.8,
+      signalStrength: 1.23,
+      signalStrengthRaw: 1.23,
+      markov: { priorScore: 0.34, currentState: 'R' },
+    })
+
+    expect(snapshot.timeframe).toBe('5')
+    expect(evaluation.timeframe).toBe('5')
+    expect(evaluation.timeframeLabel).toBe('5m')
+    expect(evaluation.signalStrength).toBeCloseTo(1.23, 5)
+    expect(evaluation.markov.priorScore).toBeCloseTo(0.34, 5)
+  })
+
+  it('builds a rounded trend matrix ordered by timeframe', () => {
+    const evalA = createEvaluation('5', '5m', {
+      rsiValue: 55.64,
+      stochKValue: 62.33,
+      adxValue: 23.84,
+      signalStrength: 1.276,
+      signalStrengthRaw: 1.21,
+      markov: { priorScore: 0.338, currentState: 'R' },
+    }).evaluation
+    const evalB = createEvaluation('15', '15m', {
+      bias: 'Bearish',
+      momentum: 'StrongBearish',
+      trendStrength: 'Strong',
+      adxDirection: 'ConfirmBear',
+      adxValue: 28.4,
+      rsiValue: 38.2,
+      stochKValue: 24.6,
+      signalStrength: -2.41,
+      signalStrengthRaw: -2.18,
+      markov: { priorScore: -0.512, currentState: 'D' },
+      label: 'STRONG_SELL',
+    }).evaluation
+
+    const matrix = buildTrendMatrixMarkov({ '15': evalB, '5': evalA })
+
+    expect(matrix).toHaveLength(2)
+    expect(matrix[0]).toMatchObject({
+      timeframe: '5',
+      timeframeLabel: '5m',
+      bias: 'Bullish',
+      rsi: 55.6,
+      stochK: 62.3,
+      adx: 23.8,
+      prior: 0.34,
+      scoreRaw: 1.21,
+      score: 1.28,
+    })
+    expect(matrix[1]).toMatchObject({
+      timeframe: '15',
+      bias: 'Bearish',
+      prior: -0.51,
+      score: -2.41,
+      label: 'STRONG_SELL',
+    })
+  })
+
+  it('aggregates posterior scores with timeframe weights', () => {
+    const eval5 = createEvaluation('5', '5m', {
+      signalStrength: 1.2,
+      signalStrengthRaw: 1.2,
+      markov: { priorScore: 0.4, currentState: 'B' },
+    }).evaluation
+    const eval15 = createEvaluation('15', '15m', {
+      signalStrength: 2.4,
+      signalStrengthRaw: 2.4,
+      markov: { priorScore: 0.55, currentState: 'B' },
+    }).evaluation
+    const eval30 = createEvaluation('30', '30m', {
+      signalStrength: -0.5,
+      signalStrengthRaw: -0.5,
+      markov: { priorScore: -0.1, currentState: 'R' },
+    }).evaluation
+
+    const aggregate = aggregateMultiTfMarkov({ '5': eval5, '30': eval30, '15': eval15 })
+
+    expect(aggregate.combinedScore).toBeCloseTo(1.78, 5)
+    expect(aggregate.combinedBias).toEqual({ dir: 'Bullish', strength: 'Weak' })
+  })
+
+  it('scores timeframe qualification based on posterior and prior alignment', () => {
+    const supportive = createEvaluation('5', '5m', {
+      signalStrength: 1.1,
+      signalStrengthRaw: 1.1,
+      markov: { priorScore: 0.32, currentState: 'B' },
+    }).evaluation
+    const weakPrior = createEvaluation('15', '15m', {
+      signalStrength: 1.05,
+      signalStrengthRaw: 1.05,
+      markov: { priorScore: 0.05, currentState: 'R' },
+    }).evaluation
+    const strongOpposing = createEvaluation('30', '30m', {
+      signalStrength: 2.6,
+      signalStrengthRaw: 2.6,
+      markov: { priorScore: -0.6, currentState: 'D' },
+    }).evaluation
+    const mildOpposing = createEvaluation('60', '60m', {
+      signalStrength: 2.6,
+      signalStrengthRaw: 2.6,
+      markov: { priorScore: -0.2, currentState: 'R' },
+    }).evaluation
+
+    expect(qualifiesForTradeMarkov(supportive)).toBe(true)
+    expect(qualifiesForTradeMarkov(weakPrior)).toBe(false)
+    expect(qualifiesForTradeMarkov(strongOpposing)).toBe(false)
+    expect(qualifiesForTradeMarkov(mildOpposing)).toBe(true)
+  })
+
+  it('detects consecutive qualified timeframes respecting the configured order', () => {
+    const evals: Record<string, MarkovTimeframeEvaluation> = {}
+    const a = createEvaluation('5', '5m').evaluation
+    const b = createEvaluation('15', '15m').evaluation
+    const c = createEvaluation('30', '30m').evaluation
+    const d = createEvaluation('60', '60m', {
+      signalStrength: 0.4,
+      signalStrengthRaw: 0.4,
+      markov: { priorScore: 0.5, currentState: 'B' },
+    }).evaluation
+
+    evals['5'] = a
+    evals['15'] = b
+    evals['30'] = c
+    evals['60'] = d
+
+    expect(hasNConsecutiveTimeframes(['5', '15', '60'], 2, evals)).toBe(true)
+    expect(hasNConsecutiveTimeframes(['5', '15', '60'], 3, evals)).toBe(false)
+    expect(hasNConsecutiveTimeframes(['5', '15', '30'], 3, evals)).toBe(true)
+  })
+
+  it('runs the full multi-timeframe model with Markov-weighted aggregation', () => {
+    const s5 = createEvaluation('5', '5m', {
+      signalStrength: 2.6,
+      signalStrengthRaw: 2.6,
+      markov: { priorScore: 0.6, currentState: 'B' },
+    })
+    const s15 = createEvaluation('15', '15m', {
+      signalStrength: 1.8,
+      signalStrengthRaw: 1.8,
+      markov: { priorScore: 0.45, currentState: 'R' },
+    })
+    const s30 = createEvaluation('30', '30m', {
+      signalStrength: 1.1,
+      signalStrengthRaw: 1.1,
+      markov: { priorScore: 0.32, currentState: 'R' },
+    })
+    const s60 = createEvaluation('60', '60m', {
+      signalStrength: 0.4,
+      signalStrengthRaw: 0.4,
+      markov: { priorScore: 0.2, currentState: 'R' },
+    })
+
+    const result = runMultiTfModel([s30.snapshot, s60.snapshot, s5.snapshot, s15.snapshot])
+
+    expect(new Set(Object.keys(result.perTimeframe))).toEqual(
+      new Set(['5', '15', '30', '60']),
+    )
+    expect(result.trendMatrix).toHaveLength(4)
+    expect(result.combined.combinedScore).toBeCloseTo(4.18, 5)
+    expect(result.combined.combinedBias).toEqual({ dir: 'Bullish', strength: 'Medium' })
+    expect(result.qualifiedTimeframes).toEqual(['5', '15', '30'])
+    expect(result.emitTradeSignal).toBe(true)
   })
 })
 
