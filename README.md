@@ -58,6 +58,34 @@ The repository ships with a `Dockerfile` and `docker-compose.yml` so you can bri
 
 The compose file maps a named Docker volume (`push_data`) to `/app/server/data` so subscriptions survive container restarts. Adjust environment variables in `docker-compose.yml` if you need different ports, origins, or VAPID credentials.
 
+### Troubleshooting Docker pulls on Windows
+
+If `docker compose up --build` fails with an error similar to:
+
+```
+failed to resolve source metadata for docker.io/library/node:20-alpine: failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/20-alpine": dial tcp: lookup registry-1.docker.io on 192.168.127.1:53: no such host
+```
+
+the Docker Desktop VM cannot resolve Docker Hub because its DNS forwarding is misconfigured. This typically happens after VPN/proxy changes or when Rancher Desktop is running alongside Docker Desktop.
+
+Recommended fixes:
+
+1. Open Docker Desktop → **Settings → Docker Engine** and add a DNS override, for example:
+
+   ```json
+   {
+     "dns": ["8.8.8.8", "1.1.1.1"]
+   }
+   ```
+
+   Save and restart Docker Desktop.
+
+2. If you are using WSL 2 integration, run `wsl --shutdown` from PowerShell and reopen Docker Desktop so it regenerates the `/etc/resolv.conf` used inside containers.
+
+3. Ensure only one container runtime (Docker Desktop or Rancher Desktop) is exposing the `docker` CLI at a time. Stopping Rancher Desktop before running Docker Desktop is often enough to restore DNS resolution.
+
+After updating DNS, retry `docker compose up --build`; the `node:20-alpine` base image should download successfully.
+
 ## Available scripts
 
 ### Start the push server
