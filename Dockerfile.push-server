@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.6
+ARG NODE_VERSION=20.18.0
+
+FROM node:${NODE_VERSION}-alpine AS base
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY server ./server
+COPY core ./core
+
+EXPOSE 4000
+
+VOLUME ["/app/server/data"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:4000/api/push/public-key || exit 1
+
+CMD ["node", "server/index.js"]

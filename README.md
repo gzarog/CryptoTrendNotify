@@ -81,6 +81,43 @@ The script spawns both `npm run push:server` and `npm run dev`, forwarding all l
 npm run build
 ```
 
+## Container images
+
+Production deployments typically run the frontend and push server in separate containers. Two Dockerfiles are included:
+
+- `Dockerfile.frontend` builds the Vite bundle and serves it with Nginx. Override the API endpoint at build time with `--build-arg VITE_API_BASE_URL=<push server URL>` if it differs from the default Kubernetes service name.
+- `Dockerfile.push-server` bundles the Node.js push API. Mount `/app/server/data` to persist stored subscriptions.
+
+Example builds:
+
+```bash
+# Build the static frontend bundle
+docker build -f Dockerfile.frontend -t cryptotrendnotify-frontend:latest .
+
+# Build the push notification backend
+docker build -f Dockerfile.push-server -t cryptotrendnotify-push-server:latest .
+```
+
+## Run locally with Docker Compose
+
+To spin up both services locally without installing Node.js, use the included Compose file:
+
+```bash
+docker compose up --build
+```
+
+The command builds both images, starts the push server on <http://localhost:4000>, and serves the frontend through Nginx on <http://localhost:8080>. Subscriptions are saved to a named Docker volume (`push-data`) so restarts do not wipe the stored browser registrations. Update the `docker-compose.yml` file with your own VAPID keys or additional environment variables if you need deterministic credentials.
+
+## Deploying to Rancher/Kubernetes
+
+Kubernetes manifests for Rancher-managed clusters live in [`k8s/`](./k8s). They provision:
+
+- A namespace (`namespace.yaml`).
+- The push server deployment, service, and persistent volume claim (`push-server.yaml`).
+- The frontend deployment, service, and ingress (`frontend.yaml`).
+
+Follow the detailed instructions in [`k8s/README.md`](./k8s/README.md) to publish your container images, create VAPID secrets, and apply the manifests.
+
 ## Push delivery flow
 
 1. When users grant notification permission, the app calls the Push API to create a subscription and sends it to the backend.
