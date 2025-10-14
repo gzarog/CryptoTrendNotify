@@ -2,6 +2,15 @@
 
 These manifests assume a Rancher-managed Kubernetes cluster with the [`local-path`](https://github.com/rancher/local-path-provisioner) storage class available (the default for Rancher Desktop and K3s). Adjust the resources, ingress, or storage class to match your environment.
 
+If you are using Rancher Desktop and want a single command to build the images, load them into the Kubernetes runtime, and apply the manifests, run [`scripts/rancher-desktop-up.sh`](../scripts/rancher-desktop-up.sh). The script wraps the Rancher Desktop overlay described below and can auto-generate VAPID credentials when Node.js plus the local `web-push` dependency are available.
+
+## Repository layout
+
+- [`base/`](./base) – namespace, push server, and frontend manifests.
+- [`overlays/rancher-desktop/`](./overlays/rancher-desktop) – kustomization that rewrites the image names to `cryptotrendnotify-*-local`, sets `imagePullPolicy: Never`, and narrows the frontend replica count to a single pod for local testing.
+
+Use `kubectl apply -k k8s/base` for generic clusters that can pull images from your registry, or `kubectl apply -k k8s/overlays/rancher-desktop` when you have already loaded the local images into Rancher Desktop's container runtime.
+
 ## 1. Build and publish container images
 
 Two images are required:
@@ -25,10 +34,22 @@ docker push ghcr.io/your-org/cryptotrendnotify-push-server:latest
 
 Replace `ghcr.io/your-org/...` with the registry and repository that Rancher can pull from.
 
+When working entirely on Rancher Desktop you can skip the registry push by building the images locally and loading them into the `k8s.io` namespace:
+
+```bash
+nerdctl build -t cryptotrendnotify-frontend:local -f Dockerfile.frontend .
+nerdctl build -t cryptotrendnotify-push-server:local -f Dockerfile.push-server .
+
+nerdctl image save cryptotrendnotify-frontend:local | nerdctl --namespace k8s.io load
+nerdctl image save cryptotrendnotify-push-server:local | nerdctl --namespace k8s.io load
+
+kubectl apply -k k8s/overlays/rancher-desktop
+```
+
 ## 2. Create the namespace
 
 ```bash
-kubectl apply -f namespace.yaml
+kubectl apply -f base/namespace.yaml
 ```
 
 ## 3. Store VAPID credentials as a secret
@@ -51,8 +72,8 @@ kubectl -n cryptotrendnotify create secret generic cryptotrendnotify-vapid \
 ## 4. Apply the workloads
 
 ```bash
-kubectl apply -f push-server.yaml
-kubectl apply -f frontend.yaml
+kubectl apply -f base/push-server.yaml
+kubectl apply -f base/frontend.yaml
 ```
 
 The push server deployment provisions a persistent volume claim to keep subscription data across pod restarts. Update the storage class or remove the claim if you use a different persistence strategy.

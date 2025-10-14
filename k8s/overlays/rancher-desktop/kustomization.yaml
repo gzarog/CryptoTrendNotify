@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/your-org/cryptotrendnotify-frontend
+    newName: cryptotrendnotify-frontend
+    newTag: local
+  - name: ghcr.io/your-org/cryptotrendnotify-push-server
+    newName: cryptotrendnotify-push-server
+    newTag: local
+patches:
+  - path: patch-frontend.yaml
+    target:
+      kind: Deployment
+      name: cryptotrendnotify-frontend
+  - path: patch-push-server.yaml
+    target:
+      kind: Deployment
+      name: cryptotrendnotify-push-server
+  - path: patch-configmap.yaml
+    target:
+      kind: ConfigMap
+      name: cryptotrendnotify-push-config

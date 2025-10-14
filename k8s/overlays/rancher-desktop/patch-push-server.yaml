@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptotrendnotify-push-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: push-server
+          imagePullPolicy: Never

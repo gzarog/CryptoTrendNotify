@@ -112,11 +112,19 @@ The command builds both images, starts the push server on <http://localhost:4000
 
 Kubernetes manifests for Rancher-managed clusters live in [`k8s/`](./k8s). They provision:
 
-- A namespace (`namespace.yaml`).
-- The push server deployment, service, and persistent volume claim (`push-server.yaml`).
-- The frontend deployment, service, and ingress (`frontend.yaml`).
+- A namespace (`base/namespace.yaml`).
+- The push server deployment, service, and persistent volume claim (`base/push-server.yaml`).
+- The frontend deployment, service, and ingress (`base/frontend.yaml`).
 
-Follow the detailed instructions in [`k8s/README.md`](./k8s/README.md) to publish your container images, create VAPID secrets, and apply the manifests.
+For an automated Rancher Desktop workflow run:
+
+```bash
+scripts/rancher-desktop-up.sh
+```
+
+The helper script builds both images locally, loads them into the Rancher Desktop Kubernetes runtime, generates VAPID credentials when necessary (using the locally installed `web-push` dependency or the `VAPID_*` environment variables), and applies the [`k8s/overlays/rancher-desktop`](./k8s/overlays/rancher-desktop) kustomization.
+
+See [`k8s/README.md`](./k8s/README.md) for manual deployment details or adapting the manifests to other clusters.
 
 ## Push delivery flow
 
