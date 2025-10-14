@@ -38,6 +38,26 @@ VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
 
 `VITE_API_BASE_URL` lets the frontend know where to reach the push API. `VITE_HEATMAP_API_URL` overrides the default heatmap endpoint the dashboard queries (falls back to `VITE_API_BASE_URL` when omitted). The push server proxies heatmap traffic through `HEATMAP_SERVICE_URL`; leave it unset to use the built-in mock snapshots. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
 
+## Running with Docker
+
+The repository ships with a `Dockerfile` and `docker-compose.yml` so you can bring up the entire stack (Vite frontend and push server) with a single command—perfect for Docker Desktop or Rancher Desktop on Windows 11.
+
+1. Build and start the containers:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   The frontend will be available at http://localhost:5173 and the push API at http://localhost:4000.
+
+2. Stop the stack when you're done:
+
+   ```bash
+   docker compose down
+   ```
+
+The compose file maps a named Docker volume (`push_data`) to `/app/server/data` so subscriptions survive container restarts. Adjust environment variables in `docker-compose.yml` if you need different ports, origins, or VAPID credentials.
+
 ## Available scripts
 
 ### Start the push server
