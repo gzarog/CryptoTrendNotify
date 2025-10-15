@@ -4,6 +4,13 @@ const TREND_STATES = ['Down', 'Base', 'Reversal', 'Up'] as const
 
 export type TrendState = (typeof TREND_STATES)[number]
 
+const STATE_INDEX: Record<TrendState, number> = {
+  Down: 0,
+  Base: 1,
+  Reversal: 2,
+  Up: 3,
+}
+
 export type QuantumVector = Record<TrendState, number>
 
 export type QuantumProbability = {
@@ -176,6 +183,219 @@ export type RiskPlan = {
   targets: RiskTarget[]
   trailing: { type: 'ATR'; multiple: number } | null
   meta: QuantumCompositeSignal['debug'] | null
+}
+
+type PhaseMapKey = keyof PhaseMap
+
+function clonePhaseMap(map: PhaseMap): PhaseMap {
+  return {
+    rsi: { ...map.rsi },
+    macd_hist: { ...map.macd_hist },
+    adx: { ...map.adx },
+    stoch_rsi_k: { ...map.stoch_rsi_k },
+  }
+}
+
+function cloneInterferenceMatrix(matrix: number[][]): number[][] {
+  return matrix.map((row) => row.slice())
+}
+
+function normalizeInterferenceMatrix(matrix: number[][]): number[][] {
+  return matrix.map((row) => {
+    const sanitized = row.map((value) => {
+      if (!Number.isFinite(value)) {
+        return 0
+      }
+      return Math.max(0, value)
+    })
+    const sum = sanitized.reduce((total, value) => total + value, 0)
+    if (sum <= 0) {
+      return Array.from({ length: TREND_STATES.length }, () => 1 / TREND_STATES.length)
+    }
+    return sanitized.map((value) => value / sum)
+  })
+}
+
+function withNormalizedInterference(
+  matrix: number[][],
+  updater: (draft: number[][]) => void,
+): number[][] {
+  const draft = cloneInterferenceMatrix(matrix)
+  updater(draft)
+  return normalizeInterferenceMatrix(draft)
+}
+
+function applyDelta(
+  matrix: number[][],
+  fromStates: TrendState[],
+  toStates: TrendState[],
+  delta: number,
+): void {
+  for (const from of fromStates) {
+    const fromIndex = STATE_INDEX[from]
+    const row = matrix[fromIndex]
+    if (!row) {
+      continue
+    }
+    for (const to of toStates) {
+      const toIndex = STATE_INDEX[to]
+      if (typeof row[toIndex] !== 'number') {
+        continue
+      }
+      row[toIndex] += delta
+    }
+  }
+}
+
+function amplifyTransitions(
+  matrix: number[][],
+  fromStates: TrendState[],
+  toStates: TrendState[],
+  delta: number,
+): number[][] {
+  if (fromStates.length === 0 || toStates.length === 0 || delta === 0) {
+    return normalizeInterferenceMatrix(matrix)
+  }
+  return withNormalizedInterference(matrix, (draft) => {
+    applyDelta(draft, fromStates, toStates, delta)
+  })
+}
+
+function amplifyDiagonal(matrix: number[][], states: TrendState[], delta: number): number[][] {
+  if (states.length === 0 || delta === 0) {
+    return normalizeInterferenceMatrix(matrix)
+  }
+  return withNormalizedInterference(matrix, (draft) => {
+    for (const state of states) {
+      const index = STATE_INDEX[state]
+      if (draft[index] && typeof draft[index][index] === 'number') {
+        draft[index][index] += delta
+      }
+    }
+  })
+}
+
+function redistributeColumns(matrix: number[][], toStates: TrendState[], delta: number): number[][] {
+  if (toStates.length === 0 || delta === 0) {
+    return normalizeInterferenceMatrix(matrix)
+  }
+  return withNormalizedInterference(matrix, (draft) => {
+    for (const row of draft) {
+      for (const state of toStates) {
+        const columnIndex = STATE_INDEX[state]
+        if (typeof row[columnIndex] === 'number') {
+          row[columnIndex] += delta
+        }
+      }
+    }
+  })
+}
+
+function scalePhaseMap(map: PhaseMap, keys: PhaseMapKey[], factor: number): PhaseMap {
+  if (!Number.isFinite(factor) || factor === 1) {
+    return clonePhaseMap(map)
+  }
+  const updated = clonePhaseMap(map)
+  for (const key of keys) {
+    if (updated[key]) {
+      updated[key] = {
+        ...updated[key],
+        scale: updated[key].scale * factor,
+      }
+    }
+  }
+  return updated
+}
+
+function cloneConfig(config: ConfigQuantum): ConfigQuantum {
+  return {
+    ...config,
+    phase_map: clonePhaseMap(config.phase_map),
+    interference: {
+      matrix4x4: cloneInterferenceMatrix(config.interference.matrix4x4),
+      regime_rules: config.interference.regime_rules.slice(),
+    },
+    entanglement: {
+      ...config.entanglement,
+      peers: config.entanglement.peers.slice(),
+      timeframes: config.entanglement.timeframes.slice(),
+    },
+    q_anneal: { ...config.q_anneal },
+  }
+}
+
+type PhaseMapOverrides = Partial<Record<PhaseMapKey, Partial<PhaseMapEntry>>>
+
+type ConfigOverrides = Partial<
+  Omit<ConfigQuantum, 'phase_map' | 'interference' | 'entanglement' | 'q_anneal'>
+> & {
+  phase_map?: PhaseMapOverrides
+  interference?: Partial<Pick<InterferenceConfig, 'matrix4x4' | 'regime_rules'>>
+  entanglement?: Partial<EntanglementConfig>
+  q_anneal?: Partial<AnnealConfig>
+}
+
+function buildConfig(base: ConfigQuantum, overrides: ConfigOverrides): ConfigQuantum {
+  const next = cloneConfig(base)
+
+  if (overrides.steps !== undefined) next.steps = overrides.steps
+  if (overrides.alpha_markov_prior !== undefined) next.alpha_markov_prior = overrides.alpha_markov_prior
+  if (overrides.beta_quantum_probs !== undefined) next.beta_quantum_probs = overrides.beta_quantum_probs
+  if (overrides.gamma_indicator_bias !== undefined) next.gamma_indicator_bias = overrides.gamma_indicator_bias
+  if (overrides.delta_news_sentiment !== undefined) next.delta_news_sentiment = overrides.delta_news_sentiment
+  if (overrides.epsilon_vol_entropy !== undefined) next.epsilon_vol_entropy = overrides.epsilon_vol_entropy
+  if (overrides.normalize_weights !== undefined) next.normalize_weights = overrides.normalize_weights
+
+  if (overrides.phase_map) {
+    const updated = clonePhaseMap(next.phase_map)
+    for (const key of Object.keys(overrides.phase_map) as PhaseMapKey[]) {
+      const entryOverride = overrides.phase_map[key]
+      if (!entryOverride) {
+        continue
+      }
+      updated[key] = {
+        ...updated[key],
+        ...entryOverride,
+      }
+    }
+    next.phase_map = updated
+  }
+
+  if (overrides.interference) {
+    const updated: InterferenceConfig = {
+      matrix4x4: cloneInterferenceMatrix(next.interference.matrix4x4),
+      regime_rules: next.interference.regime_rules.slice(),
+    }
+    if (overrides.interference.matrix4x4) {
+      updated.matrix4x4 = overrides.interference.matrix4x4.map((row) => row.slice())
+    }
+    if (overrides.interference.regime_rules) {
+      updated.regime_rules = overrides.interference.regime_rules.slice()
+    }
+    next.interference = updated
+  }
+
+  if (overrides.entanglement) {
+    next.entanglement = {
+      ...next.entanglement,
+      ...overrides.entanglement,
+      peers: overrides.entanglement.peers
+        ? overrides.entanglement.peers.slice()
+        : next.entanglement.peers.slice(),
+      timeframes: overrides.entanglement.timeframes
+        ? overrides.entanglement.timeframes.slice()
+        : next.entanglement.timeframes.slice(),
+    }
+  }
+
+  if (overrides.q_anneal) {
+    next.q_anneal = {
+      ...next.q_anneal,
+      ...overrides.q_anneal,
+    }
+  }
+
+  return next
 }
 
 const DEFAULT_VECTOR: QuantumVector = {
@@ -738,13 +958,49 @@ function buildInsights(
   return insights.slice(0, 4)
 }
 
-export const DEFAULT_CONFIG: ConfigQuantum = {
-  steps: 3,
-  alpha_markov_prior: 0.35,
+export const LowADXRangeRule: RegimeRule = {
+  when: (indicators) => {
+    const adx = indicators.adx
+    return typeof adx === 'number' && adx < 18
+  },
+  adjust_interference: (matrix) => amplifyTransitions(matrix, ['Down', 'Up'], ['Base', 'Reversal'], 0.05),
+  adjust_phase: (phaseMap) => scalePhaseMap(phaseMap, ['rsi', 'macd_hist'], 0.85),
+}
+
+export const HighTrendRule: RegimeRule = {
+  when: (indicators) => {
+    const adx = indicators.adx
+    const macdHist = indicators.macd_hist
+    const macdStd = indicators.macd_hist_std
+    if (typeof adx !== 'number' || adx <= 28) {
+      return false
+    }
+    if (typeof macdHist !== 'number') {
+      return false
+    }
+    const threshold = typeof macdStd === 'number' && macdStd > SMALL_EPSILON ? macdStd * 0.5 : 0.5
+    return Math.abs(macdHist) > threshold
+  },
+  adjust_interference: (matrix) => amplifyDiagonal(matrix, ['Down', 'Up'], 0.06),
+  adjust_phase: (phaseMap) => scalePhaseMap(phaseMap, ['rsi', 'macd_hist'], 1.1),
+}
+
+export const HighEntropyShockRule: RegimeRule = {
+  when: (indicators) => {
+    const entropy = indicators.vol_entropy
+    return typeof entropy === 'number' && entropy > 0.65
+  },
+  adjust_interference: (matrix) => redistributeColumns(matrix, ['Reversal', 'Base'], 0.06),
+  adjust_phase: (phaseMap) => scalePhaseMap(phaseMap, ['stoch_rsi_k'], 1.15),
+}
+
+export const BASE_QUANTUM_CONFIG: ConfigQuantum = {
+  steps: 4,
+  alpha_markov_prior: 0.4,
   beta_quantum_probs: 0.4,
-  gamma_indicator_bias: 0.25,
-  delta_news_sentiment: 0,
-  epsilon_vol_entropy: 0,
+  gamma_indicator_bias: 0.15,
+  delta_news_sentiment: 0.03,
+  epsilon_vol_entropy: 0.02,
   normalize_weights: true,
   phase_map: {
     rsi: { center: 50, scale: (Math.PI / 2) / 25 },
@@ -754,18 +1010,18 @@ export const DEFAULT_CONFIG: ConfigQuantum = {
   },
   interference: {
     matrix4x4: [
-      [0.6, -0.2, 0.1, -0.1],
-      [-0.2, 0.5, 0.3, 0.1],
-      [0.15, 0.2, 0.4, 0.25],
-      [-0.1, 0.1, 0.25, 0.55],
+      [0.62, 0.22, 0.1, 0.06],
+      [0.18, 0.52, 0.2, 0.1],
+      [0.08, 0.24, 0.38, 0.3],
+      [0.06, 0.12, 0.22, 0.6],
     ],
-    regime_rules: [],
+    regime_rules: [LowADXRangeRule, HighTrendRule, HighEntropyShockRule],
   },
   entanglement: {
-    enabled: false,
-    strength: 0,
-    peers: [],
-    timeframes: [],
+    enabled: true,
+    strength: 0.3,
+    peers: ['ETH', 'TOTAL', 'DXY_inv'],
+    timeframes: ['1h', '4h'],
     coupling_rule: 'corr',
   },
   q_anneal: {
@@ -777,6 +1033,236 @@ export const DEFAULT_CONFIG: ConfigQuantum = {
     objective: 'maximize_f1',
   },
 }
+
+export const CONFIG_5M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 5,
+  alpha_markov_prior: 0.32,
+  beta_quantum_probs: 0.46,
+  gamma_indicator_bias: 0.17,
+  delta_news_sentiment: 0.03,
+  epsilon_vol_entropy: 0.02,
+  phase_map: {
+    rsi: { scale: (Math.PI / 2) / 20 },
+    macd_hist: { scale: Math.PI / 2.8 },
+    stoch_rsi_k: { scale: (Math.PI / 2) / 20 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.58, 0.24, 0.11, 0.07],
+      [0.16, 0.5, 0.22, 0.12],
+      [0.08, 0.22, 0.36, 0.34],
+      [0.07, 0.12, 0.24, 0.57],
+    ],
+  },
+  entanglement: {
+    strength: 0.38,
+    timeframes: ['15m', '1h'],
+  },
+})
+
+export const CONFIG_15M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 4,
+  alpha_markov_prior: 0.35,
+  beta_quantum_probs: 0.4,
+  gamma_indicator_bias: 0.2,
+  delta_news_sentiment: 0.03,
+  epsilon_vol_entropy: 0.02,
+  interference: {
+    matrix4x4: [
+      [0.6, 0.25, 0.1, 0.05],
+      [0.18, 0.5, 0.22, 0.1],
+      [0.08, 0.24, 0.36, 0.32],
+      [0.06, 0.1, 0.24, 0.6],
+    ],
+  },
+})
+
+export const CONFIG_30M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 4,
+  alpha_markov_prior: 0.38,
+  beta_quantum_probs: 0.38,
+  gamma_indicator_bias: 0.2,
+  delta_news_sentiment: 0.03,
+  epsilon_vol_entropy: 0.01,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 3.2 },
+    rsi: { scale: (Math.PI / 2) / 26 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.61, 0.24, 0.09, 0.06],
+      [0.17, 0.53, 0.2, 0.1],
+      [0.08, 0.22, 0.38, 0.32],
+      [0.06, 0.1, 0.22, 0.62],
+    ],
+  },
+})
+
+export const CONFIG_60M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 4,
+  alpha_markov_prior: 0.4,
+  beta_quantum_probs: 0.37,
+  gamma_indicator_bias: 0.18,
+  delta_news_sentiment: 0.03,
+  epsilon_vol_entropy: 0.02,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 3.5 },
+    rsi: { scale: (Math.PI / 2) / 28 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.63, 0.22, 0.08, 0.07],
+      [0.16, 0.54, 0.2, 0.1],
+      [0.07, 0.22, 0.37, 0.34],
+      [0.06, 0.1, 0.2, 0.64],
+    ],
+  },
+  entanglement: {
+    strength: 0.28,
+    timeframes: ['1h', '4h'],
+  },
+})
+
+export const CONFIG_120M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 4,
+  alpha_markov_prior: 0.42,
+  beta_quantum_probs: 0.35,
+  gamma_indicator_bias: 0.18,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 4 },
+    rsi: { scale: (Math.PI / 2) / 30 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.64, 0.21, 0.07, 0.08],
+      [0.15, 0.55, 0.2, 0.1],
+      [0.07, 0.21, 0.37, 0.35],
+      [0.06, 0.1, 0.18, 0.66],
+    ],
+  },
+  entanglement: {
+    strength: 0.26,
+    timeframes: ['2h', '4h'],
+  },
+})
+
+export const CONFIG_240M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 5,
+  alpha_markov_prior: 0.45,
+  beta_quantum_probs: 0.35,
+  gamma_indicator_bias: 0.15,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 4.5 },
+    rsi: { scale: (Math.PI / 2) / 32 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.66, 0.2, 0.06, 0.08],
+      [0.14, 0.56, 0.19, 0.11],
+      [0.06, 0.2, 0.36, 0.38],
+      [0.05, 0.08, 0.18, 0.69],
+    ],
+  },
+  entanglement: {
+    strength: 0.24,
+    timeframes: ['4h', '1d'],
+  },
+})
+
+export const CONFIG_360M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 5,
+  alpha_markov_prior: 0.48,
+  beta_quantum_probs: 0.32,
+  gamma_indicator_bias: 0.15,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 5 },
+    rsi: { scale: (Math.PI / 2) / 34 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.68, 0.19, 0.05, 0.08],
+      [0.13, 0.58, 0.18, 0.11],
+      [0.05, 0.19, 0.36, 0.4],
+      [0.04, 0.08, 0.17, 0.71],
+    ],
+  },
+  entanglement: {
+    strength: 0.22,
+    timeframes: ['6h', '1d'],
+  },
+})
+
+export const CONFIG_420M = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 5,
+  alpha_markov_prior: 0.5,
+  beta_quantum_probs: 0.3,
+  gamma_indicator_bias: 0.15,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 5.2 },
+    rsi: { scale: (Math.PI / 2) / 35 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.69, 0.18, 0.05, 0.08],
+      [0.12, 0.59, 0.18, 0.11],
+      [0.05, 0.18, 0.35, 0.42],
+      [0.04, 0.07, 0.16, 0.73],
+    ],
+  },
+  entanglement: {
+    strength: 0.2,
+    timeframes: ['7h', '1d'],
+  },
+})
+
+export const CONFIG_1D = buildConfig(BASE_QUANTUM_CONFIG, {
+  steps: 6,
+  alpha_markov_prior: 0.54,
+  beta_quantum_probs: 0.28,
+  gamma_indicator_bias: 0.15,
+  delta_news_sentiment: 0.02,
+  epsilon_vol_entropy: 0.01,
+  phase_map: {
+    macd_hist: { scale: Math.PI / 6 },
+    rsi: { scale: (Math.PI / 2) / 38 },
+    stoch_rsi_k: { scale: (Math.PI / 2) / 28 },
+  },
+  interference: {
+    matrix4x4: [
+      [0.72, 0.16, 0.04, 0.08],
+      [0.1, 0.62, 0.16, 0.12],
+      [0.04, 0.16, 0.34, 0.46],
+      [0.03, 0.06, 0.15, 0.76],
+    ],
+    regime_rules: [HighTrendRule, HighEntropyShockRule],
+  },
+  entanglement: {
+    strength: 0.18,
+    peers: ['ETH', 'TOTAL', 'NQ100', 'DXY_inv'],
+    timeframes: ['4h', '1d'],
+  },
+})
+
+export const QUANTUM_CONFIG_TEMPLATES: Record<string, ConfigQuantum> = {
+  base: BASE_QUANTUM_CONFIG,
+  '5m': CONFIG_5M,
+  '15m': CONFIG_15M,
+  '30m': CONFIG_30M,
+  '60m': CONFIG_60M,
+  '1h': CONFIG_60M,
+  '120m': CONFIG_120M,
+  '2h': CONFIG_120M,
+  '240m': CONFIG_240M,
+  '4h': CONFIG_240M,
+  '360m': CONFIG_360M,
+  '6h': CONFIG_360M,
+  '420m': CONFIG_420M,
+  '7h': CONFIG_420M,
+  '1d': CONFIG_1D,
+  '1D': CONFIG_1D,
+}
+
+export const DEFAULT_CONFIG: ConfigQuantum = BASE_QUANTUM_CONFIG
 
 function deriveIndicators(snapshots: TimeframeSignalSnapshot[]): {
   indicators: Indicators
@@ -989,9 +1475,10 @@ export function deriveQuantumCompositeSignal(
 
   const phaseMap = { ...config.phase_map }
   if (indicators.macd_hist_std && indicators.macd_hist_std > SMALL_EPSILON) {
+    const configuredScale = phaseMap.macd_hist.scale
     phaseMap.macd_hist = {
       ...phaseMap.macd_hist,
-      scale: (Math.PI / 3) / indicators.macd_hist_std,
+      scale: configuredScale / indicators.macd_hist_std,
     }
   }
 
@@ -1368,7 +1855,8 @@ export function deriveMultiTfQuantumComposite(
 
   for (const timeframe of timeframes) {
     const snapshots = snapshotsByTimeframe[timeframe] ?? []
-    const config = configByTimeframe[timeframe] ?? DEFAULT_CONFIG
+    const template = QUANTUM_CONFIG_TEMPLATES[timeframe]
+    const config = configByTimeframe[timeframe] ?? template ?? DEFAULT_CONFIG
     const result = deriveQuantumCompositeSignal(snapshots, config)
     perTimeframe[timeframe] = result
     if (result) {
