@@ -837,10 +837,17 @@ export function scoreSignal(
 
   const dist = result.filters.distPctToMa200
   if (typeof dist === 'number' && Number.isFinite(dist)) {
-    if (dist < 0.5) {
-      score += 8
-    } else if (dist < 1) {
-      score += 5
+    const alignedWithSide =
+      Math.abs(dist) < Number.EPSILON ||
+      (side === 'Bullish' ? dist >= 0 : dist <= 0)
+
+    if (alignedWithSide) {
+      const proximity = Math.abs(dist)
+      if (proximity < 0.5) {
+        score += 8
+      } else if (proximity < 1) {
+        score += 5
+      }
     }
   }
 

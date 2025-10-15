@@ -272,12 +272,14 @@ describe('getCombinedSignal', () => {
       rsiLtf: { value: 62, sma5: null, okLong: true, okShort: false },
       stochRsi: { k: 72, d: 65, rawNormalized: null },
       adx: { value: 32, plusDI: 35, minusDI: 18, slope: 0.8 },
+      macd: { value: 1.6, signal: 1.1, histogram: 0.5 },
     })
 
     const combined = getCombinedSignal(result)
 
     expect(combined.direction).toBe('Bullish')
-    expect(combined.strength).toBe(100)
+    expect(combined.strength).toBe(65)
+    expect(combined.breakdown.signalStrength).toBeCloseTo(1.95, 5)
     expect(combined.breakdown).toMatchObject({
       bias: 'Bullish',
       momentum: 'StrongBullish',
@@ -287,10 +289,9 @@ describe('getCombinedSignal', () => {
       adxValue: 32,
       rsiValue: 62,
       stochKValue: 72,
-      signalStrength: 3,
       signalStrengthRaw: 3,
       markov: { priorScore: 0, currentState: null },
-      label: 'STRONG_BUY',
+      label: 'BUY_FORMING',
     })
   })
 
@@ -302,12 +303,14 @@ describe('getCombinedSignal', () => {
       rsiLtf: { value: 40, sma5: null, okLong: false, okShort: true },
       stochRsi: { k: 25, d: 35, rawNormalized: null },
       adx: { value: 29, plusDI: 18, minusDI: 34, slope: -0.6 },
+      macd: { value: -1.4, signal: -1, histogram: -0.4 },
     })
 
     const combined = getCombinedSignal(result)
 
     expect(combined.direction).toBe('Bearish')
-    expect(combined.strength).toBe(100)
+    expect(combined.strength).toBe(65)
+    expect(combined.breakdown.signalStrength).toBeCloseTo(-1.95, 5)
     expect(combined.breakdown).toMatchObject({
       bias: 'Bearish',
       momentum: 'StrongBearish',
@@ -317,10 +320,9 @@ describe('getCombinedSignal', () => {
       adxValue: 29,
       rsiValue: 40,
       stochKValue: 25,
-      signalStrength: -3,
       signalStrengthRaw: -3,
       markov: { priorScore: 0, currentState: null },
-      label: 'STRONG_SELL',
+      label: 'SELL_FORMING',
     })
   })
 
@@ -332,19 +334,20 @@ describe('getCombinedSignal', () => {
       rsiLtf: { value: 61, sma5: null, okLong: true, okShort: false },
       stochRsi: { k: 68, d: 55, rawNormalized: null },
       adx: { value: 22, plusDI: 30, minusDI: 20, slope: 0.5 },
+      macd: { value: 0.9, signal: 0.6, histogram: 0.3 },
     })
 
     const combined = getCombinedSignal(result)
 
     expect(combined.direction).toBe('Bullish')
-    expect(combined.strength).toBe(67)
+    expect(combined.strength).toBe(43)
+    expect(combined.breakdown.signalStrength).toBeCloseTo(1.3, 2)
     expect(combined.breakdown).toMatchObject({
       trendStrength: 'Forming',
       adxIsRising: true,
-      signalStrength: 2,
       signalStrengthRaw: 2,
       markov: { priorScore: 0, currentState: null },
-      label: 'BUY_FORMING',
+      label: 'BUY_WEAK',
     })
   })
 
@@ -411,6 +414,7 @@ describe('getMultiTimeframeSignal', () => {
         rsiLtf: { value: 65, sma5: null, okLong: true, okShort: false },
         stochRsi: { k: 75, d: 60, rawNormalized: null },
         adx: { value: 31, plusDI: 36, minusDI: 15, slope: 0.9 },
+        macd: { value: 1.8, signal: 1.3, histogram: 0.5 },
       }),
     )
 
@@ -424,6 +428,7 @@ describe('getMultiTimeframeSignal', () => {
         rsiLtf: { value: 58, sma5: null, okLong: true, okShort: false },
         stochRsi: { k: 65, d: 55, rawNormalized: null },
         adx: { value: 18, plusDI: 24, minusDI: 16, slope: -0.2 },
+        macd: { value: 0.7, signal: 0.6, histogram: 0.1 },
       }),
     )
 
@@ -437,6 +442,7 @@ describe('getMultiTimeframeSignal', () => {
         rsiLtf: { value: 39, sma5: null, okLong: false, okShort: true },
         stochRsi: { k: 30, d: 42, rawNormalized: null },
         adx: { value: 34, plusDI: 20, minusDI: 40, slope: -0.3 },
+        macd: { value: -1.6, signal: -1.2, histogram: -0.4 },
       }),
     )
 
@@ -469,18 +475,19 @@ describe('getMultiTimeframeSignal', () => {
 
     const multi = getMultiTimeframeSignal(snapshots)
 
+
     expect(multi).not.toBeNull()
-    expect(multi?.direction).toBe('Bearish')
-    expect(multi?.combinedScore).toBeCloseTo(-1.3, 5)
-    expect(multi?.normalizedScore).toBe(-0.5)
-    expect(multi?.strength).toBe(5)
-    expect(multi?.combinedBias).toEqual({ dir: 'Bearish', strength: 'Weak' })
+    expect(multi?.direction).toBe('Neutral')
+    expect(multi?.combinedScore).toBeCloseTo(-0.845, 5)
+    expect(multi?.normalizedScore).toBeCloseTo(-0.3, 5)
+    expect(multi?.strength).toBe(3)
+    expect(multi?.combinedBias).toEqual({ dir: 'Neutral', strength: 'Sideways' })
 
     expect(multi?.contributions.map((c) => c.timeframe)).toEqual(['5', '15', '60'])
 
-    expect(multi?.contributions[0]?.weightedScore).toBeCloseTo(0.5, 5)
-    expect(multi?.contributions[1]?.weightedScore).toBeCloseTo(2.1, 5)
-    expect(multi?.contributions[2]?.weightedScore).toBeCloseTo(-3.9, 5)
+    expect(multi?.contributions[0]?.weightedScore).toBeCloseTo(0.325, 5)
+    expect(multi?.contributions[1]?.weightedScore).toBeCloseTo(1.365, 5)
+    expect(multi?.contributions[2]?.weightedScore).toBeCloseTo(-2.535, 5)
   })
 })
 
@@ -710,5 +717,64 @@ describe('scoreSignal moving average cross bonuses', () => {
 
     const score = scoreSignal(result, 'Bearish', reasons)
     expect(score).toBe(25)
+  })
+})
+
+describe('scoreSignal MA200 distance weighting', () => {
+  it('does not award proximity bonus when price is stretched on the wrong side', () => {
+    const result = createBaseHeatmapResult({
+      filters: {
+        atrPct: null,
+        atrBounds: { min: 0, max: 0 },
+        atrStatus: 'too-low',
+        maSide: 'below',
+        maLongOk: false,
+        maShortOk: true,
+        distPctToMa200: -10,
+        maDistanceStatus: 'ok',
+        useMa200Filter: true,
+      },
+    })
+
+    const score = scoreSignal(result, 'Bullish', [])
+    expect(score).toBe(0)
+  })
+
+  it('awards the tighter proximity bonus when aligned and close', () => {
+    const result = createBaseHeatmapResult({
+      filters: {
+        atrPct: null,
+        atrBounds: { min: 0, max: 0 },
+        atrStatus: 'ok',
+        maSide: 'above',
+        maLongOk: true,
+        maShortOk: false,
+        distPctToMa200: 0.3,
+        maDistanceStatus: 'ok',
+        useMa200Filter: true,
+      },
+    })
+
+    const score = scoreSignal(result, 'Bullish', [])
+    expect(score).toBe(8)
+  })
+
+  it('awards the looser proximity bonus when aligned but slightly further away', () => {
+    const result = createBaseHeatmapResult({
+      filters: {
+        atrPct: null,
+        atrBounds: { min: 0, max: 0 },
+        atrStatus: 'ok',
+        maSide: 'below',
+        maLongOk: false,
+        maShortOk: true,
+        distPctToMa200: -0.7,
+        maDistanceStatus: 'ok',
+        useMa200Filter: true,
+      },
+    })
+
+    const score = scoreSignal(result, 'Bearish', [])
+    expect(score).toBe(5)
   })
 })
