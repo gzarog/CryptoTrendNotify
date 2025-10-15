@@ -105,7 +105,7 @@ type AnnealConfig = {
   objective: string
 }
 
-type ConfigQuantum = {
+export type ConfigQuantum = {
   steps: number
   alpha_markov_prior: number
   beta_quantum_probs: number
@@ -709,7 +709,7 @@ function buildInsights(
   return insights.slice(0, 4)
 }
 
-const DEFAULT_CONFIG: ConfigQuantum = {
+export const DEFAULT_CONFIG: ConfigQuantum = {
   steps: 3,
   alpha_markov_prior: 0.35,
   beta_quantum_probs: 0.4,
@@ -1084,6 +1084,337 @@ export function deriveQuantumCompositeSignal(
         signalStrength: averages.signalStrength,
       },
       sampleCount: usableSnapshots.length,
+    },
+  }
+}
+
+type TimeframeQuantumEntry = {
+  timeframe: string
+  result: QuantumCompositeSignal
+}
+
+type WeightOverrides = Partial<Record<string, number>>
+
+const STATE_PRIORITY: TrendState[] = ['Up', 'Down', 'Reversal', 'Base']
+
+function buildTimeframeWeights(
+  timeframes: string[],
+  overrides: WeightOverrides,
+  validTimeframes: Set<string>,
+): Record<string, number> {
+  const weights: Record<string, number> = {}
+  let total = 0
+
+  for (const timeframe of timeframes) {
+    if (!validTimeframes.has(timeframe)) {
+      weights[timeframe] = 0
+      continue
+    }
+
+    const override = overrides[timeframe]
+    const weight = typeof override === 'number' && Number.isFinite(override) && override > 0 ? override : 1
+    weights[timeframe] = weight
+    total += weight
+  }
+
+  if (total <= 0) {
+    const fallback = validTimeframes.size > 0 ? 1 / validTimeframes.size : 0
+    for (const timeframe of timeframes) {
+      weights[timeframe] = validTimeframes.has(timeframe) ? fallback : 0
+    }
+    return weights
+  }
+
+  for (const timeframe of timeframes) {
+    if (validTimeframes.has(timeframe)) {
+      weights[timeframe] = weights[timeframe] / total
+    } else {
+      weights[timeframe] = 0
+    }
+  }
+
+  return weights
+}
+
+function majorityVoteWithPriority(
+  voteCounts: Record<TrendState, number>,
+  weightedVotes: Record<TrendState, number>,
+): TrendState {
+  let bestState: TrendState = 'Base'
+  let bestScore = -Infinity
+
+  for (const state of TREND_STATES) {
+    const score = weightedVotes[state]
+    if (score > bestScore + SMALL_EPSILON) {
+      bestState = state
+      bestScore = score
+      continue
+    }
+
+    if (Math.abs(score - bestScore) <= SMALL_EPSILON) {
+      if (voteCounts[state] > voteCounts[bestState]) {
+        bestState = state
+      } else if (voteCounts[state] === voteCounts[bestState]) {
+        const statePriority = STATE_PRIORITY.indexOf(state)
+        const bestPriority = STATE_PRIORITY.indexOf(bestState)
+        if (bestPriority === -1 || (statePriority !== -1 && statePriority < bestPriority)) {
+          bestState = state
+        }
+      }
+    }
+  }
+
+  return bestState
+}
+
+function aggregateComponentsAcrossTimeframes(
+  entries: TimeframeQuantumEntry[],
+  weights: Record<string, number>,
+): QuantumComponent[] {
+  const accumulator: Record<QuantumComponent['key'], { label: string; weight: number; value: number; total: number }> = {
+    markov: { label: 'Markov prior', weight: 0, value: 0, total: 0 },
+    quantum: { label: 'Quantum walk', weight: 0, value: 0, total: 0 },
+    bias: { label: 'Indicator bias', weight: 0, value: 0, total: 0 },
+  }
+
+  let totalWeight = 0
+
+  for (const entry of entries) {
+    const timeframeWeight = weights[entry.timeframe] ?? 0
+    if (timeframeWeight <= 0) {
+      continue
+    }
+
+    totalWeight += timeframeWeight
+
+    for (const component of entry.result.components) {
+      const bucket = accumulator[component.key]
+      bucket.label = component.label
+      bucket.weight += timeframeWeight * component.weight
+      bucket.value += timeframeWeight * component.value
+      bucket.total += timeframeWeight
+    }
+  }
+
+  if (totalWeight <= 0) {
+    return [
+      { key: 'markov', label: 'Markov prior', weight: 0, value: 0 },
+      { key: 'quantum', label: 'Quantum walk', weight: 0, value: 0 },
+      { key: 'bias', label: 'Indicator bias', weight: 0, value: 0 },
+    ]
+  }
+
+  return (['markov', 'quantum', 'bias'] as QuantumComponent['key'][]).map((key) => {
+    const bucket = accumulator[key]
+    const divisor = bucket.total > 0 ? bucket.total : totalWeight
+    return {
+      key,
+      label: bucket.label,
+      weight: divisor > 0 ? bucket.weight / divisor : 0,
+      value: divisor > 0 ? bucket.value / divisor : 0,
+    }
+  })
+}
+
+function aggregatePhasesAcrossTimeframes(
+  entries: TimeframeQuantumEntry[],
+  weights: Record<string, number>,
+): QuantumPhase[] {
+  const phaseAccumulator: Record<TrendState, {
+    label: string
+    shift: number
+    magnitude: number
+    weight: number
+    reading: number
+    readingWeight: number
+  }> = {
+    Down: { label: 'Down state phase', shift: 0, magnitude: 0, weight: 0, reading: 0, readingWeight: 0 },
+    Base: { label: 'Base state phase', shift: 0, magnitude: 0, weight: 0, reading: 0, readingWeight: 0 },
+    Reversal: { label: 'Reversal state phase', shift: 0, magnitude: 0, weight: 0, reading: 0, readingWeight: 0 },
+    Up: { label: 'Up state phase', shift: 0, magnitude: 0, weight: 0, reading: 0, readingWeight: 0 },
+  }
+
+  for (const entry of entries) {
+    const timeframeWeight = weights[entry.timeframe] ?? 0
+    if (timeframeWeight <= 0) {
+      continue
+    }
+
+    for (const phase of entry.result.phases) {
+      const state = TREND_STATES.find((candidate) => candidate.toLowerCase() === phase.key) ?? null
+      if (!state) {
+        continue
+      }
+      const bucket = phaseAccumulator[state]
+      bucket.label = phase.label
+      bucket.shift += phase.shift * timeframeWeight
+      bucket.magnitude += phase.magnitude * timeframeWeight
+      bucket.weight += timeframeWeight
+      if (phase.reading !== null) {
+        bucket.reading += phase.reading * timeframeWeight
+        bucket.readingWeight += timeframeWeight
+      }
+    }
+  }
+
+  return TREND_STATES.map((state) => {
+    const bucket = phaseAccumulator[state]
+    const total = bucket.weight
+    const avgShift = total > 0 ? bucket.shift / total : 0
+    const avgMagnitude = total > 0 ? clamp(bucket.magnitude / total, 0, 1) : 0
+    const avgReading = bucket.readingWeight > 0 ? bucket.reading / bucket.readingWeight : null
+    const direction: 'bullish' | 'bearish' | 'neutral' = avgShift > 0 ? 'bullish' : avgShift < 0 ? 'bearish' : 'neutral'
+
+    return {
+      key: state.toLowerCase(),
+      label: bucket.label,
+      shift: avgShift,
+      reading: avgReading,
+      direction,
+      magnitude: avgMagnitude,
+    }
+  })
+}
+
+function aggregateInsights(
+  entries: TimeframeQuantumEntry[],
+  weights: Record<string, number>,
+  limit = 6,
+): string[] {
+  const ordered = entries
+    .slice()
+    .sort((a, b) => (weights[b.timeframe] ?? 0) - (weights[a.timeframe] ?? 0))
+
+  const insights: string[] = []
+
+  for (const entry of ordered) {
+    for (const insight of entry.result.insights) {
+      if (!insights.includes(insight)) {
+        insights.push(insight)
+      }
+      if (insights.length >= limit) {
+        return insights
+      }
+    }
+  }
+
+  return insights
+}
+
+function vectorFromProbabilities(probabilities: QuantumProbability[]): QuantumVector {
+  const vector = initializeVector()
+  for (const probability of probabilities) {
+    vector[probability.state] = probability.probability
+  }
+  return normalizeVector(vector)
+}
+
+export type MultiTfQuantumComposite = {
+  symbol: string
+  state: TrendState
+  confidence: number
+  probabilities: QuantumProbability[]
+  components: QuantumComponent[]
+  phases: QuantumPhase[]
+  insights: string[]
+  perTimeframe: Record<string, QuantumCompositeSignal | null>
+  votes: Record<TrendState, number>
+  debug: {
+    weights: Record<string, number>
+    weightedVotes: Record<TrendState, number>
+    aggregatedVector: QuantumVector
+  }
+}
+
+export function deriveMultiTfQuantumComposite(
+  symbol: string,
+  timeframes: string[],
+  snapshotsByTimeframe: Record<string, TimeframeSignalSnapshot[]>,
+  configByTimeframe: Partial<Record<string, ConfigQuantum>> = {},
+  weightOverrides: WeightOverrides = {},
+): MultiTfQuantumComposite | null {
+  const perTimeframe: Record<string, QuantumCompositeSignal | null> = {}
+  const entries: TimeframeQuantumEntry[] = []
+  const validTimeframes = new Set<string>()
+
+  for (const timeframe of timeframes) {
+    const snapshots = snapshotsByTimeframe[timeframe] ?? []
+    const config = configByTimeframe[timeframe] ?? DEFAULT_CONFIG
+    const result = deriveQuantumCompositeSignal(snapshots, config)
+    perTimeframe[timeframe] = result
+    if (result) {
+      validTimeframes.add(timeframe)
+      entries.push({ timeframe, result })
+    }
+  }
+
+  if (entries.length === 0) {
+    return null
+  }
+
+  const weights = buildTimeframeWeights(timeframes, weightOverrides, validTimeframes)
+
+  const voteCounts: Record<TrendState, number> = { Down: 0, Base: 0, Reversal: 0, Up: 0 }
+  const weightedVotes: Record<TrendState, number> = { Down: 0, Base: 0, Reversal: 0, Up: 0 }
+
+  for (const entry of entries) {
+    const weight = weights[entry.timeframe] ?? 0
+    voteCounts[entry.result.state] += 1
+    weightedVotes[entry.result.state] += weight
+  }
+
+  const majorityState = majorityVoteWithPriority(voteCounts, weightedVotes)
+
+  const aggregatedVector = initializeVector()
+  for (const entry of entries) {
+    const weight = weights[entry.timeframe] ?? 0
+    if (weight <= 0) {
+      continue
+    }
+
+    const fused = entry.result.debug?.fusedVector ?? vectorFromProbabilities(entry.result.probabilities)
+    for (const state of TREND_STATES) {
+      aggregatedVector[state] += weight * fused[state]
+    }
+  }
+
+  const normalizedAggregated = normalizeVector(aggregatedVector)
+
+  let dominantState: TrendState = majorityState
+  let bestProbability = normalizedAggregated[majorityState]
+  for (const state of TREND_STATES) {
+    if (normalizedAggregated[state] > bestProbability + 0.1) {
+      dominantState = state
+      bestProbability = normalizedAggregated[state]
+    }
+  }
+
+  const confidence = Confidence.compute(normalizedAggregated)
+
+  const probabilities: QuantumProbability[] = TREND_STATES.map((state) => ({
+    state,
+    probability: normalizedAggregated[state],
+    amplitude: Math.sqrt(Math.max(0, normalizedAggregated[state])),
+  }))
+
+  const components = aggregateComponentsAcrossTimeframes(entries, weights)
+  const phases = aggregatePhasesAcrossTimeframes(entries, weights)
+  const insights = aggregateInsights(entries, weights)
+
+  return {
+    symbol,
+    state: dominantState,
+    confidence,
+    probabilities,
+    components,
+    phases,
+    insights,
+    perTimeframe,
+    votes: voteCounts,
+    debug: {
+      weights,
+      weightedVotes,
+      aggregatedVector: normalizedAggregated,
     },
   }
 }
