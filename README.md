@@ -38,6 +38,54 @@ VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
 
 `VITE_API_BASE_URL` lets the frontend know where to reach the push API. `VITE_HEATMAP_API_URL` overrides the default heatmap endpoint the dashboard queries (falls back to `VITE_API_BASE_URL` when omitted). The push server proxies heatmap traffic through `HEATMAP_SERVICE_URL`; leave it unset to use the built-in mock snapshots. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
 
+## Running with Docker
+
+The repository ships with a `Dockerfile` and `docker-compose.yml` so you can bring up the entire stack (Vite frontend and push server) with a single command—perfect for Docker Desktop or Rancher Desktop on Windows 11.
+
+1. Build and start the containers:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   The frontend will be available at http://localhost:5173 and the push API at http://localhost:4000.
+
+2. Stop the stack when you're done:
+
+   ```bash
+   docker compose down
+   ```
+
+The compose file maps a named Docker volume (`push_data`) to `/app/server/data` so subscriptions survive container restarts. Adjust environment variables in `docker-compose.yml` if you need different ports, origins, or VAPID credentials.
+
+### Troubleshooting Docker pulls on Windows
+
+If `docker compose up --build` fails with an error similar to:
+
+```
+failed to resolve source metadata for docker.io/library/node:20-alpine: failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/20-alpine": dial tcp: lookup registry-1.docker.io on 192.168.127.1:53: no such host
+```
+
+the Docker Desktop VM cannot resolve Docker Hub because its DNS forwarding is misconfigured. This typically happens after VPN/proxy changes or when Rancher Desktop is running alongside Docker Desktop.
+
+Recommended fixes:
+
+1. Open Docker Desktop → **Settings → Docker Engine** and add a DNS override, for example:
+
+   ```json
+   {
+     "dns": ["8.8.8.8", "1.1.1.1"]
+   }
+   ```
+
+   Save and restart Docker Desktop.
+
+2. If you are using WSL 2 integration, run `wsl --shutdown` from PowerShell and reopen Docker Desktop so it regenerates the `/etc/resolv.conf` used inside containers.
+
+3. Ensure only one container runtime (Docker Desktop or Rancher Desktop) is exposing the `docker` CLI at a time. Stopping Rancher Desktop before running Docker Desktop is often enough to restore DNS resolution.
+
+After updating DNS, retry `docker compose up --build`; the `node:20-alpine` base image should download successfully.
+
 ## Available scripts
 
 ### Start the push server
