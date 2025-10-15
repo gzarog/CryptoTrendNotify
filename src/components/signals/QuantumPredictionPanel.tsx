@@ -1,22 +1,22 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
-import type { QuantumCompositeSignal, QuantumProbability, QuantumState } from '../../lib/quantum'
+import type { QuantumCompositeSignal, QuantumProbability, TrendState } from '../../lib/quantum'
 
-const STATE_LABELS: Record<QuantumState, string> = {
+const STATE_LABELS: Record<TrendState, string> = {
   Down: 'Downtrend',
   Base: 'Base-building',
   Reversal: 'Reversal window',
   Up: 'Uptrend',
 }
 
-const STATE_BADGE_CLASS: Record<QuantumState, string> = {
+const STATE_BADGE_CLASS: Record<TrendState, string> = {
   Down: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
   Base: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
   Reversal: 'border-amber-400/40 bg-amber-500/10 text-amber-200',
   Up: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
 }
 
-const STATE_GRADIENT: Record<QuantumState, string> = {
+const STATE_GRADIENT: Record<TrendState, string> = {
   Down: 'from-rose-400 to-rose-500',
   Base: 'from-slate-500 to-slate-400',
   Reversal: 'from-amber-400 to-amber-500',

@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import type { UserConfig } from 'vite'
+import type { UserConfig as VitestUserConfig } from 'vitest/config'
 
 const pwaOptions = {
   registerType: 'prompt',
@@ -33,19 +35,23 @@ const pwaOptions = {
   },
 }
 
-export default defineConfig({
+const testConfig: VitestUserConfig['test'] = {
+  environment: 'jsdom',
+  globals: true,
+  setupFiles: ['./src/test/setup.ts'],
+  coverage: {
+    provider: 'v8',
+    reporter: ['text', 'html'],
+  },
+}
+
+const config: UserConfig & { test: VitestUserConfig['test'] } = {
   plugins: [
     react(),
     tailwindcss(),
     VitePWA(pwaOptions as Parameters<typeof VitePWA>[0]),
   ],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-    },
-  },
-})
+  test: testConfig,
+}
+
+export default defineConfig(config)

@@ -22,6 +22,19 @@ import type {
 } from '../../types/signals'
 
 function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): HeatmapResult {
+  const macdBase: NonNullable<HeatmapResult['macd']> = {
+    value: null,
+    signal: null,
+    histogram: null,
+  }
+
+  const adxBase: NonNullable<HeatmapResult['adx']> = {
+    value: null,
+    plusDI: null,
+    minusDI: null,
+    slope: null,
+  }
+
   const base: HeatmapResult = {
     entryTimeframe: '15',
     entryLabel: '15m',
@@ -44,22 +57,13 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
       mode: 'all',
       breakdown: [],
     },
-    adx: {
-      value: null,
-      plusDI: null,
-      minusDI: null,
-      slope: null,
-    },
+    adx: adxBase,
     stochRsi: {
       k: null,
       d: null,
       rawNormalized: null,
     },
-    macd: {
-      value: null,
-      signal: null,
-      histogram: null,
-    },
+    macd: macdBase,
     rsiLtf: {
       value: null,
       sma5: null,
@@ -109,27 +113,29 @@ function createBaseHeatmapResult(overrides: Partial<HeatmapResult> = {}): Heatma
     },
   }
 
-  return {
+  const result: HeatmapResult = {
     ...base,
     ...overrides,
-    ema: { ...base.ema, ...(overrides.ema ?? {}) },
-    votes: { ...base.votes, ...(overrides.votes ?? {}) },
-    stochRsi: { ...base.stochRsi, ...(overrides.stochRsi ?? {}) },
-    macd: { ...base.macd, ...(overrides.macd ?? {}) },
-    rsiLtf: { ...base.rsiLtf, ...(overrides.rsiLtf ?? {}) },
-    filters: { ...base.filters, ...(overrides.filters ?? {}) },
-    gating: {
-      long: { ...base.gating.long, ...(overrides.gating?.long ?? {}) },
-      short: { ...base.gating.short, ...(overrides.gating?.short ?? {}) },
-    },
-    cooldown: { ...base.cooldown, ...(overrides.cooldown ?? {}) },
-    risk: { ...base.risk, ...(overrides.risk ?? {}) },
-    ma200: { ...base.ma200, ...(overrides.ma200 ?? {}) },
-    movingAverageCrosses:
-      overrides.movingAverageCrosses ?? base.movingAverageCrosses,
-    adx: { ...base.adx, ...(overrides.adx ?? {}) },
-    markov: { ...base.markov, ...(overrides.markov ?? {}) },
   }
+
+  result.ema = { ...base.ema, ...(overrides.ema ?? {}) }
+  result.votes = { ...base.votes, ...(overrides.votes ?? {}) }
+  result.stochRsi = { ...base.stochRsi, ...(overrides.stochRsi ?? {}) }
+  result.macd = { ...macdBase, ...(overrides.macd ?? {}) }
+  result.rsiLtf = { ...base.rsiLtf, ...(overrides.rsiLtf ?? {}) }
+  result.filters = { ...base.filters, ...(overrides.filters ?? {}) }
+  result.gating = {
+    long: { ...base.gating.long, ...(overrides.gating?.long ?? {}) },
+    short: { ...base.gating.short, ...(overrides.gating?.short ?? {}) },
+  }
+  result.cooldown = { ...base.cooldown, ...(overrides.cooldown ?? {}) }
+  result.risk = { ...base.risk, ...(overrides.risk ?? {}) }
+  result.ma200 = { ...base.ma200, ...(overrides.ma200 ?? {}) }
+  result.movingAverageCrosses = overrides.movingAverageCrosses ?? base.movingAverageCrosses
+  result.adx = { ...adxBase, ...(overrides.adx ?? {}) }
+  result.markov = { ...base.markov, ...(overrides.markov ?? {}) }
+
+  return result
 }
 
 function createSnapshot(
@@ -137,9 +143,10 @@ function createSnapshot(
   overrides: Partial<TimeframeSignalSnapshot> &
     Pick<TimeframeSignalSnapshot, 'timeframe' | 'timeframeLabel'>,
 ): TimeframeSignalSnapshot {
+  const { timeframe, timeframeLabel, ...rest } = overrides
   return {
-    timeframe: overrides.timeframe,
-    timeframeLabel: overrides.timeframeLabel,
+    timeframe,
+    timeframeLabel,
     trend: 'Neutral',
     momentum: 'Neutral',
     stage: 'ready',
@@ -150,7 +157,7 @@ function createSnapshot(
     slopeMa200: null,
     side: null,
     combined,
-    ...overrides,
+    ...rest,
   }
 }
 
