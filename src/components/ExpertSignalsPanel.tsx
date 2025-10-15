@@ -28,103 +28,9 @@ type ContributionRow = {
 }
 
 const ENGINE_METADATA = {
-  symbol: 'BTCUSDT',
   warmupBars: 300,
   vwapAnchors: ['session', 'day'] as const,
-  categoryWeights: {
-    trend: 2,
-    momentum: 2,
-    adx: 1,
-    microstructure: 2,
-    contrarian: 2,
-    onchain: 2,
-    vol_regime: 1,
-    markov: 2,
-    cross_tf: 1,
-  } as const,
-  categoryMultipliers: {
-    '5': {
-      trend: 0.8,
-      momentum: 1.3,
-      adx: 0.8,
-      micro: 1.6,
-      contrarian: 0.9,
-      onchain: 0.4,
-      vol_regime: 1,
-      markov: 0.6,
-    },
-    '15': {
-      trend: 0.9,
-      momentum: 1.2,
-      adx: 1,
-      micro: 1.4,
-      contrarian: 1,
-      onchain: 0.5,
-      vol_regime: 1,
-      markov: 0.7,
-    },
-    '30': {
-      trend: 1.1,
-      momentum: 1.1,
-      adx: 1.1,
-      micro: 1.2,
-      contrarian: 1,
-      onchain: 0.6,
-      vol_regime: 1,
-      markov: 0.9,
-    },
-    '60': {
-      trend: 1.3,
-      momentum: 1,
-      adx: 1.2,
-      micro: 1,
-      contrarian: 1,
-      onchain: 0.8,
-      vol_regime: 1,
-      markov: 1.1,
-    },
-    '120': {
-      trend: 1.4,
-      momentum: 0.9,
-      adx: 1.2,
-      micro: 0.8,
-      contrarian: 1.1,
-      onchain: 1,
-      vol_regime: 1,
-      markov: 1.2,
-    },
-    '240': {
-      trend: 1.5,
-      momentum: 0.8,
-      adx: 1.1,
-      micro: 0.7,
-      contrarian: 1.2,
-      onchain: 1.2,
-      vol_regime: 1.1,
-      markov: 1.3,
-    },
-    '360': {
-      trend: 1.6,
-      momentum: 0.7,
-      adx: 1,
-      micro: 0.6,
-      contrarian: 1.3,
-      onchain: 1.3,
-      vol_regime: 1.2,
-      markov: 1.4,
-    },
-  } as const,
-  thresholds: {
-    strongBuy: 7,
-    strongSell: -7,
-    neutral: [-2, 2] as const,
-  },
-  risk: {
-    riskPctPerTrade: 0.5,
-    atrStopMult: 1.5,
-    atrTrailMult: 2,
-    tpLadder: [1, 2, 3.5] as const,
-  },
+  crossTimeframeWeight: 1,
 } as const
 
 const PRESET_WEIGHT_OVERRIDES: Record<Exclude<PresetKey, 'BALANCED'>, FusionWeights> = {
@@ -155,118 +61,6 @@ const PRESET_DESCRIPTIONS: Record<PresetKey, string> = {
   SCALPER: 'Scalper fusion — front-loads short-term conviction for rapid reactions.',
   SWING: 'Swing fusion — emphasises higher timeframes for positional trades.',
 }
-
-const CATEGORY_LABELS: Record<string, { title: string; description: string }> = {
-  trend: {
-    title: 'Trend',
-    description: 'EMA/MA structure and directional bias.',
-  },
-  momentum: {
-    title: 'Momentum',
-    description: 'MACD, RSI and stochastic inflection.',
-  },
-  adx: {
-    title: 'ADX',
-    description: 'Trend strength confirmation.',
-  },
-  microstructure: {
-    title: 'Microstructure',
-    description: 'Order book imbalance and CVD thrust.',
-  },
-  contrarian: {
-    title: 'Contrarian',
-    description: 'Funding, OI and crowding extremes.',
-  },
-  onchain: {
-    title: 'On-chain',
-    description: 'Exchange flows and whale activity.',
-  },
-  vol_regime: {
-    title: 'Volatility regime',
-    description: 'ATR regime and IV vs RV spread.',
-  },
-  markov: {
-    title: 'Markov regime',
-    description: 'State machine prior with smoothing.',
-  },
-  cross_tf: {
-    title: 'Cross timeframe',
-    description: 'Agreement bonus across horizons.',
-  },
-}
-
-const PIPELINE_STAGES: Array<{
-  id: string
-  label: string
-  description: string
-  points: string[]
-  icon: string
-}> = [
-  {
-    id: 'data',
-    label: '1) Data adapters',
-    description: 'Live market structure and derivatives flow.',
-    icon: '🛰️',
-    points: [
-      'fetchOHLCV() with 300-bar warmup per timeframe.',
-      'Top-5 order book depth + 1s trade delta buckets.',
-      'Funding, open interest and IV/RV surfaces.',
-      'Session & daily anchored VWAP distances.',
-      'On-chain netflow and whale footprint.',
-    ],
-  },
-  {
-    id: 'features',
-    label: '2-3) Feature engineering',
-    description: 'Normalize momentum, structure and flow.',
-    icon: '🧮',
-    points: [
-      'EMA/MA stack, RSI, StochRSI and MACD lattice.',
-      'ADX, ATR, CCI, ROC, Bollinger + Keltner envelopes.',
-      'Order book imbalance, CVD slope and VWAP drift.',
-      'Funding bias, OI velocity and IV-RV z-scores.',
-      'Z-score normalization with ±3σ clipping.',
-    ],
-  },
-  {
-    id: 'regime',
-    label: '4-5) Regime awareness',
-    description: 'Blend volatility state with Markov priors.',
-    icon: '🧭',
-    points: [
-      'Markov states D/R/B/U smoothed over 10 bars.',
-      'Volatility bias from ATR regime and IV vs RV.',
-      'Dynamic modifiers react to RV>IV, ADX60 and crowding.',
-      'Liquidity session filters throttle microstructure weight.',
-    ],
-  },
-  {
-    id: 'scoring',
-    label: '6-8) Scoring & fusion',
-    description: 'Category weights sum into per-TF conviction.',
-    icon: '⚖️',
-    points: [
-      'Trend, momentum, microstructure and contrarian stacks.',
-      'On-chain, volatility and Markov priors inject context.',
-      'Scores clipped to ±10 with 5m noise guardrails.',
-      'Preset fusion mixes align composite conviction.',
-      'Cross-timeframe agreement bonus (W.cross_tf).',
-    ],
-  },
-  {
-    id: 'execution',
-    label: '9-11) Execution loop',
-    description: 'Risk-managed orders and actionable alerts.',
-    icon: '🚀',
-    points: [
-      'Guards enforce liquidity, spread and cooldown filters.',
-      'ATR-based sizing with VWAP anchored entries.',
-      'Multi-target ladder & ATR trail manager.',
-      'Alert payload broadcasts composite context.',
-      'Loop sleeps to next TF0 close (5m).',
-    ],
-  },
-]
 
 const PRESET_OPTIONS: Array<{ value: PresetKey; label: string }> = [
   { value: 'BALANCED', label: 'Balanced' },
@@ -468,7 +262,7 @@ export function ExpertSignalsPanel({
     const considered = available.length
     const majority = considered === 0 ? 0 : Math.max(bullish, bearish)
     const agreement = considered === 0 ? 0.5 : majority / considered
-    const crossContribution = (agreement - 0.5) * ENGINE_METADATA.categoryWeights.cross_tf
+    const crossContribution = (agreement - 0.5) * ENGINE_METADATA.crossTimeframeWeight
     const compositeScore = clamp(combinedScore + crossContribution, -10, 10)
     const compositeDirection = resolveBiasDirection(compositeScore)
     const strength = clampPercentage(Math.min(Math.abs(compositeScore) / 10, 1) * 100)
@@ -482,39 +276,7 @@ export function ExpertSignalsPanel({
       direction: compositeDirection,
       strength,
     }
-  }, [baseWeights, presetWeights, snapshotByTimeframe, timeframeKeys])
-
-  const categoryInsights = useMemo(() => {
-    const entries = Object.entries(ENGINE_METADATA.categoryMultipliers).map(
-      ([timeframe, multipliers]) => {
-        const key = normalizeTimeframeKey(timeframe)
-        const resolved = Object.entries(multipliers).map(([categoryKey, multiplier]) => {
-          const normalizedKey = categoryKey === 'micro' ? 'microstructure' : categoryKey
-          const base =
-            ENGINE_METADATA.categoryWeights[
-              normalizedKey as keyof typeof ENGINE_METADATA.categoryWeights
-            ] ?? 0
-          return {
-            key: normalizedKey,
-            weight: base * (multiplier + 0),
-          }
-        })
-
-        const ranked = resolved
-          .filter((entry) => entry.key !== 'cross_tf')
-          .sort((a, b) => b.weight - a.weight)
-          .slice(0, 3)
-
-        return {
-          key,
-          label: formatTimeframeLabel(key, timeframeLabelMap),
-          ranked,
-        }
-      },
-    )
-
-    return entries.filter((entry): entry is NonNullable<typeof entry> => entry != null)
-  }, [timeframeLabelMap])
+  }, [baseWeights, presetWeights, snapshotByTimeframe, timeframeKeys, timeframeLabelMap])
 
   const compositeGradient =
     contributions.direction === 'Bullish'
@@ -687,83 +449,7 @@ export function ExpertSignalsPanel({
           )}
         </section>
 
-        <section className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-          <header className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Category weighting</span>
-            <span className="text-sm text-slate-300">
-              Base category weights (W) blended with timeframe multipliers (CATMUL).
-            </span>
-          </header>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(ENGINE_METADATA.categoryWeights).map(([key, weight]) => {
-              const meta = CATEGORY_LABELS[key] ?? { title: key, description: '' }
-              return (
-                <div
-                  key={key}
-                  className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3"
-                >
-                  <div className="flex items-center justify-between text-xs text-slate-300">
-                    <span className="text-[11px] uppercase tracking-wide text-slate-400">{meta.title}</span>
-                    <span className="font-mono text-[11px] text-slate-200">{weight.toFixed(1)}x</span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-slate-400">{meta.description}</p>
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {categoryInsights.map((entry) => (
-              <div
-                key={`insight-${entry.key}`}
-                className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  {entry.label}
-                </span>
-                <div className="flex flex-col gap-2">
-                  {entry.ranked.map((category) => {
-                    const label = CATEGORY_LABELS[category.key] ?? {
-                      title: category.key,
-                      description: '',
-                    }
-                    return (
-                      <div key={`${entry.key}-${category.key}`} className="flex items-center justify-between">
-                        <span className="text-xs text-slate-300">{label.title}</span>
-                        <span className="font-mono text-[11px] text-slate-200">
-                          {(category.weight).toFixed(2)}x
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-5 lg:grid-cols-2">
-          {PIPELINE_STAGES.map((stage) => (
-            <article
-              key={stage.id}
-              className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3"
-            >
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="text-[11px] uppercase tracking-wide text-slate-400">
-                  {stage.label}
-                </span>
-                <span className="text-lg">{stage.icon}</span>
-              </div>
-              <p className="text-sm font-semibold text-white">{stage.description}</p>
-              <ul className="flex list-disc flex-col gap-1 pl-4 text-[11px] leading-relaxed text-slate-400">
-                {stage.points.map((point) => (
-                  <li key={`${stage.id}-${point}`}>{point}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </section>
+        
       </div>
     </section>
   )

@@ -123,6 +123,16 @@ npm run dev:full
 
 The script spawns both `npm run push:server` and `npm run dev`, forwarding all logs to your console. Stop the stack with `Ctrl+C`—the script will shut down both processes.
 
+### Rebuild the Docker stack with fresh code
+
+When you need to pick up local changes inside the Docker containers, run the refresh helper. It shuts down any running services, rebuilds the images, and brings the stack back online in detached mode:
+
+```bash
+npm run stack:refresh
+```
+
+Any additional flags (for example `--pull` or specific service names) are passed directly to `docker compose up`, so you can do `npm run stack:refresh -- frontend` to rebuild just the frontend service. The script respects the standard `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, and `DOCKER_COMPOSE` environment variables if you need a custom Compose configuration.
+
 ### Build for production
 
 ```bash
