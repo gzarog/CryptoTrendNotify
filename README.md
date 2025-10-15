@@ -36,7 +36,7 @@ VAPID_PRIVATE_KEY=<your private key from the step above>
 VAPID_SUBJECT=mailto:you@example.com   # optional but recommended
 ```
 
-`VITE_API_BASE_URL` lets the frontend know where to reach the push API. `VITE_HEATMAP_API_URL` overrides the default heatmap endpoint the dashboard queries (falls back to `VITE_API_BASE_URL` when omitted). The push server proxies heatmap traffic through `HEATMAP_SERVICE_URL`; leave it unset to use the built-in mock snapshots. The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
+`VITE_API_BASE_URL` lets the frontend know where to reach the push API. `VITE_HEATMAP_API_URL` overrides the default heatmap endpoint the dashboard queries (falls back to `VITE_API_BASE_URL` when omitted). The push server proxies heatmap traffic through `HEATMAP_SERVICE_URL`; leave it unset to use the built-in mock snapshots. Both endpoints expect callers to supply a `bars` query parameter to determine the analysis window (for example, `/api/heatmap/snapshots?symbol=BTCUSDT&bars=200`). The `VAPID_*` variables are optional for quick local testing; without them the push server will create temporary keys on boot and print them to the console.
 
 ## Running with Docker
 

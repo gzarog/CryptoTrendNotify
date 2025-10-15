@@ -16,6 +16,7 @@ const SUBSCRIPTION_FILE = process.env.PUSH_SUBSCRIPTIONS_FILE
 
 const KNOWN_TIMEFRAMES = new Set(['5', '15', '30', '60', '120', '240', '360'])
 const KNOWN_MOVING_AVERAGE_PAIRS = new Set(['ema10-ema50', 'ema10-ma200', 'ema50-ma200'])
+const MAX_HEATMAP_BAR_LIMIT = 500
 
 function normalizeStringArray(values, transform = (value) => value) {
   if (!Array.isArray(values)) {
@@ -159,6 +160,19 @@ async function readBody(req) {
   return buffer.toString('utf8')
 }
 
+function parseBarLimit(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined
+  }
+
+  return Math.min(parsed, MAX_HEATMAP_BAR_LIMIT)
+}
+
 function isValidSubscription(payload) {
   return (
     payload &&
@@ -192,7 +206,19 @@ async function handleRequest(req, res, store) {
   if (req.method === 'GET' && url.pathname === '/api/heatmap/snapshots') {
     try {
       const symbol = url.searchParams.get('symbol') ?? undefined
-      const results = await getHeatmapSnapshots(symbol)
+      const barsParam = url.searchParams.get('bars')
+      if (barsParam == null) {
+        sendJson(res, 400, { error: 'bars query parameter is required' })
+        return
+      }
+
+      const barLimit = parseBarLimit(barsParam)
+      if (barLimit == null) {
+        sendJson(res, 400, { error: 'bars must be a positive integer no greater than 500' })
+        return
+      }
+
+      const results = await getHeatmapSnapshots(symbol, { barLimit })
       sendJson(res, 200, { results })
     } catch (error) {
       console.error('Failed to load heatmap snapshots', error)

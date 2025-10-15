@@ -2,7 +2,7 @@ import type { HeatmapResult } from '../types/heatmap'
 
 const DEFAULT_API_PATH = '/api/heatmap/snapshots'
 
-function buildHeatmapUrl(symbol: string): URL {
+function buildHeatmapUrl(symbol: string, bars?: number): URL {
   const rawBase = import.meta.env.VITE_HEATMAP_API_URL
   const apiBase = import.meta.env.VITE_API_BASE_URL
   const origin = typeof window !== 'undefined' && window.location?.origin
@@ -40,15 +40,21 @@ function buildHeatmapUrl(symbol: string): URL {
   })()
 
   baseUrl.searchParams.set('symbol', symbol)
+  if (typeof bars === 'number' && Number.isFinite(bars) && bars > 0) {
+    baseUrl.searchParams.set('bars', Math.floor(bars).toString())
+  }
   return baseUrl
 }
 
-export async function fetchHeatmapResults(symbol: string): Promise<HeatmapResult[]> {
+export async function fetchHeatmapResults(
+  symbol: string,
+  barLimit?: number,
+): Promise<HeatmapResult[]> {
   if (!symbol) {
     return []
   }
 
-  const url = buildHeatmapUrl(symbol)
+  const url = buildHeatmapUrl(symbol, barLimit)
   const response = await fetch(url.toString(), {
     headers: {
       Accept: 'application/json',

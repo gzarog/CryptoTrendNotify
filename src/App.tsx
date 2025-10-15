@@ -1044,8 +1044,8 @@ function App() {
   )
 
   const heatmapQuery = useQuery<HeatmapResult[]>({
-    queryKey: ['heatmap-results', normalizedSymbol],
-    queryFn: () => fetchHeatmapResults(normalizedSymbol),
+    queryKey: ['heatmap-results', normalizedSymbol, resolvedBarLimit],
+    queryFn: () => fetchHeatmapResults(normalizedSymbol, resolvedBarLimit),
     enabled: canStreamSymbol,
     refetchInterval: refreshInterval,
     refetchIntervalInBackground: true,
