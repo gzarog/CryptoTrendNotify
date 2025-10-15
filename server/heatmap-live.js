@@ -1,4 +1,12 @@
-import { calculateATR, calculateEMA, calculateRSI, calculateSMA, calculateStochasticRSI } from './indicators.js'
+import {
+  calculateADX,
+  calculateATR,
+  calculateEMA,
+  calculateMACD,
+  calculateRSI,
+  calculateSMA,
+  calculateStochasticRSI,
+} from './indicators.js'
 
 const TIMEFRAME_CONFIGS = [
   { value: '5', label: '5m', rsiPeriod: 8, stoch: { rsiLength: 7, stochLength: 7, kSmoothing: 2, dSmoothing: 2 } },
@@ -770,6 +778,7 @@ function buildBaseSnapshot(symbol, timeframe, label) {
     movingAverageCrosses: [],
     votes: { bull: 0, bear: 0, total: 0, mode: 'all', breakdown: [] },
     stochRsi: { k: null, d: null, rawNormalized: null },
+    macd: { value: null, signal: null, histogram: null },
     rsiLtf: { value: null, sma5: null, okLong: false, okShort: false },
     filters: {
       atrPct: null,
@@ -805,6 +814,7 @@ function buildBaseSnapshot(symbol, timeframe, label) {
     price: null,
     ma200: { value: null, slope: null },
     markov: { priorScore: 0, currentState: null, transitionMatrix: null },
+    adx: { value: null, plusDI: null, minusDI: null, slope: null },
   }
 }
 
@@ -829,6 +839,8 @@ export async function buildLiveSnapshots(symbol) {
         const rsiSeries = calculateRSI(closes, config.rsiPeriod)
         const stoch = calculateStochasticRSI(rsiSeries, config.stoch)
         const atrSeries = calculateATR(candles, ATR_PERIOD)
+        const macdSeries = calculateMACD(closes)
+        const adxSeries = calculateADX(candles)
 
         const price = closes[closes.length - 1] ?? null
         const ema10 = getLastFiniteValue(ema10Series)
@@ -844,6 +856,15 @@ export async function buildLiveSnapshots(symbol) {
         const prevStochK = getPreviousFiniteValue(stoch.kValues)
         const prevStochD = getPreviousFiniteValue(stoch.dValues)
         const atrValue = getLastFiniteValue(atrSeries)
+        const macdValue = getLastFiniteValue(macdSeries.macdLine)
+        const macdSignal = getLastFiniteValue(macdSeries.signalLine)
+        const macdHistogram = getLastFiniteValue(macdSeries.histogram)
+        const adxValue = getLastFiniteValue(adxSeries.adxLine)
+        const prevAdxValue = getPreviousFiniteValue(adxSeries.adxLine)
+        const adxSlope =
+          adxValue != null && prevAdxValue != null ? adxValue - prevAdxValue : null
+        const adxPlusDI = getLastFiniteValue(adxSeries.plusDi)
+        const adxMinusDI = getLastFiniteValue(adxSeries.minusDi)
 
         const markovStartIndex = Math.max(0, closes.length - MARKOV_WINDOW_BARS)
         const regimes = []
@@ -908,6 +929,11 @@ export async function buildLiveSnapshots(symbol) {
             d: stochD,
             rawNormalized: stochRaw != null ? stochRaw / 100 : null,
           },
+          macd: {
+            value: macdValue,
+            signal: macdSignal,
+            histogram: macdHistogram,
+          },
           markov,
           rsiLtf: {
             value: rsiValue,
@@ -921,6 +947,7 @@ export async function buildLiveSnapshots(symbol) {
           risk,
           price,
           ma200: { value: ma200, slope },
+          adx: { value: adxValue, plusDI: adxPlusDI, minusDI: adxMinusDI, slope: adxSlope },
         }
       } catch (error) {
         console.error(`Failed to compute heatmap snapshot for ${symbol} ${config.value}`, error)
