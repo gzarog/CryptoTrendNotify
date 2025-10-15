@@ -28,103 +28,9 @@ type ContributionRow = {
 }
 
 const ENGINE_METADATA = {
-  symbol: 'BTCUSDT',
   warmupBars: 300,
   vwapAnchors: ['session', 'day'] as const,
-  categoryWeights: {
-    trend: 2,
-    momentum: 2,
-    adx: 1,
-    microstructure: 2,
-    contrarian: 2,
-    onchain: 2,
-    vol_regime: 1,
-    markov: 2,
-    cross_tf: 1,
-  } as const,
-  categoryMultipliers: {
-    '5': {
-      trend: 0.8,
-      momentum: 1.3,
-      adx: 0.8,
-      micro: 1.6,
-      contrarian: 0.9,
-      onchain: 0.4,
-      vol_regime: 1,
-      markov: 0.6,
-    },
-    '15': {
-      trend: 0.9,
-      momentum: 1.2,
-      adx: 1,
-      micro: 1.4,
-      contrarian: 1,
-      onchain: 0.5,
-      vol_regime: 1,
-      markov: 0.7,
-    },
-    '30': {
-      trend: 1.1,
-      momentum: 1.1,
-      adx: 1.1,
-      micro: 1.2,
-      contrarian: 1,
-      onchain: 0.6,
-      vol_regime: 1,
-      markov: 0.9,
-    },
-    '60': {
-      trend: 1.3,
-      momentum: 1,
-      adx: 1.2,
-      micro: 1,
-      contrarian: 1,
-      onchain: 0.8,
-      vol_regime: 1,
-      markov: 1.1,
-    },
-    '120': {
-      trend: 1.4,
-      momentum: 0.9,
-      adx: 1.2,
-      micro: 0.8,
-      contrarian: 1.1,
-      onchain: 1,
-      vol_regime: 1,
-      markov: 1.2,
-    },
-    '240': {
-      trend: 1.5,
-      momentum: 0.8,
-      adx: 1.1,
-      micro: 0.7,
-      contrarian: 1.2,
-      onchain: 1.2,
-      vol_regime: 1.1,
-      markov: 1.3,
-    },
-    '360': {
-      trend: 1.6,
-      momentum: 0.7,
-      adx: 1,
-      micro: 0.6,
-      contrarian: 1.3,
-      onchain: 1.3,
-      vol_regime: 1.2,
-      markov: 1.4,
-    },
-  } as const,
-  thresholds: {
-    strongBuy: 7,
-    strongSell: -7,
-    neutral: [-2, 2] as const,
-  },
-  risk: {
-    riskPctPerTrade: 0.5,
-    atrStopMult: 1.5,
-    atrTrailMult: 2,
-    tpLadder: [1, 2, 3.5] as const,
-  },
+  crossTimeframeWeight: 1,
 } as const
 
 const PRESET_WEIGHT_OVERRIDES: Record<Exclude<PresetKey, 'BALANCED'>, FusionWeights> = {
@@ -356,7 +262,7 @@ export function ExpertSignalsPanel({
     const considered = available.length
     const majority = considered === 0 ? 0 : Math.max(bullish, bearish)
     const agreement = considered === 0 ? 0.5 : majority / considered
-    const crossContribution = (agreement - 0.5) * ENGINE_METADATA.categoryWeights.cross_tf
+    const crossContribution = (agreement - 0.5) * ENGINE_METADATA.crossTimeframeWeight
     const compositeScore = clamp(combinedScore + crossContribution, -10, 10)
     const compositeDirection = resolveBiasDirection(compositeScore)
     const strength = clampPercentage(Math.min(Math.abs(compositeScore) / 10, 1) * 100)
@@ -370,7 +276,7 @@ export function ExpertSignalsPanel({
       direction: compositeDirection,
       strength,
     }
-  }, [baseWeights, presetWeights, snapshotByTimeframe, timeframeKeys])
+  }, [baseWeights, presetWeights, snapshotByTimeframe, timeframeKeys, timeframeLabelMap])
 
   const compositeGradient =
     contributions.direction === 'Bullish'
