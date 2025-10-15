@@ -183,7 +183,7 @@ function resolveUpstreamBase() {
   return process.env.HEATMAP_SERVICE_URL || process.env.VITE_HEATMAP_API_URL || null
 }
 
-function buildUpstreamUrl(base, symbol) {
+function buildUpstreamUrl(base, symbol, barLimit) {
   let url
 
   try {
@@ -199,17 +199,21 @@ function buildUpstreamUrl(base, symbol) {
     url.searchParams.set('symbol', symbol)
   }
 
+  if (barLimit != null) {
+    url.searchParams.set('bars', String(barLimit))
+  }
+
   return url
 }
 
-async function fetchUpstreamSnapshots(symbol) {
+async function fetchUpstreamSnapshots(symbol, barLimit) {
   const base = resolveUpstreamBase()
   if (!base) {
     return null
   }
 
   try {
-    const url = buildUpstreamUrl(base, symbol)
+    const url = buildUpstreamUrl(base, symbol, barLimit)
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
     })
@@ -235,13 +239,23 @@ async function fetchUpstreamSnapshots(symbol) {
   }
 }
 
-export async function getHeatmapSnapshots(rawSymbol) {
-  const symbol = normalizeSymbol(rawSymbol)
+export async function getHeatmapSnapshots(rawSymbol, options) {
+  if (
+    !options ||
+    typeof options.barLimit !== 'number' ||
+    !Number.isFinite(options.barLimit) ||
+    options.barLimit <= 0
+  ) {
+    throw new Error('barLimit must be provided as a positive finite number')
+  }
 
-  const upstreamResults = await fetchUpstreamSnapshots(symbol)
+  const symbol = normalizeSymbol(rawSymbol)
+  const barLimit = Math.floor(options.barLimit)
+
+  const upstreamResults = await fetchUpstreamSnapshots(symbol, barLimit)
   if (Array.isArray(upstreamResults) && upstreamResults.length > 0) {
     return upstreamResults
   }
 
-  return buildLiveSnapshots(symbol)
+  return buildLiveSnapshots(symbol, { markovWindowBars: barLimit })
 }

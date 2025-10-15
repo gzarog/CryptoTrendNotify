@@ -23,7 +23,6 @@ const MAX_BAR_LIMIT = 500
 const BYBIT_REQUEST_LIMIT = 200
 const ATR_BOUNDS = { min: 0.5, max: 10 }
 const MA_DISTANCE_TOO_CLOSE_THRESHOLD = 0.25
-const MARKOV_WINDOW_BARS = 400
 const MARKOV_STATES = ['D', 'R', 'B', 'U']
 const MARKOV_STATE_INDEX = MARKOV_STATES.reduce((acc, state, index) => {
   acc[state] = index
@@ -818,7 +817,20 @@ function buildBaseSnapshot(symbol, timeframe, label) {
   }
 }
 
-export async function buildLiveSnapshots(symbol) {
+export async function buildLiveSnapshots(symbol, options) {
+  if (
+    !options ||
+    typeof options.markovWindowBars !== 'number' ||
+    !Number.isFinite(options.markovWindowBars) ||
+    options.markovWindowBars <= 0
+  ) {
+    throw new Error('markovWindowBars must be provided as a positive finite number')
+  }
+
+  const markovWindowBars = Math.min(
+    Math.max(Math.floor(options.markovWindowBars), 1),
+    MAX_BAR_LIMIT,
+  )
   const snapshots = await Promise.all(
     TIMEFRAME_CONFIGS.map(async (config) => {
       const base = buildBaseSnapshot(symbol, config.value, config.label)
@@ -866,7 +878,7 @@ export async function buildLiveSnapshots(symbol) {
         const adxPlusDI = getLastFiniteValue(adxSeries.plusDi)
         const adxMinusDI = getLastFiniteValue(adxSeries.minusDi)
 
-        const markovStartIndex = Math.max(0, closes.length - MARKOV_WINDOW_BARS)
+        const markovStartIndex = Math.max(0, closes.length - markovWindowBars)
         const regimes = []
 
         for (let i = markovStartIndex; i < closes.length; i += 1) {

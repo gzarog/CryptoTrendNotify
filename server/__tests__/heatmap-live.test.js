@@ -60,7 +60,7 @@ describe('buildLiveSnapshots fallback indicators', () => {
   })
 
   it('populates MACD and ADX values when Bybit data is fetched directly', async () => {
-    const snapshots = await buildLiveSnapshots('BTCUSDT')
+    const snapshots = await buildLiveSnapshots('BTCUSDT', { markovWindowBars: 200 })
 
     expect(Array.isArray(snapshots)).toBe(true)
     expect(snapshots.length).toBeGreaterThan(0)
