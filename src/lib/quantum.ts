@@ -39,6 +39,17 @@ type QuantumAmplitudes = Record<TrendState, Complex>
 
 type QuantumProbabilitiesRecord = QuantumVector
 
+export type OhlcvCandle = {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export type OHLCV = OhlcvCandle[]
+
 type MarkovProb = {
   pDown: number
   pBase: number
@@ -46,7 +57,7 @@ type MarkovProb = {
   pUp: number
 }
 
-type Indicators = {
+export type Indicators = {
   ema10: number | null
   ema50: number | null
   ma200: number | null
@@ -147,6 +158,24 @@ export type QuantumCompositeSignal = {
     }
     sampleCount: number
   }
+}
+
+export type RiskTarget = {
+  label: string
+  multiple: number
+  price: number | null
+  weight: number
+}
+
+export type RiskPlan = {
+  direction: 'LONG' | 'SHORT' | 'NEUTRAL'
+  directionSign: -1 | 0 | 1
+  size: number
+  entryPrice: number | null
+  stopLoss: number | null
+  targets: RiskTarget[]
+  trailing: { type: 'ATR'; multiple: number } | null
+  meta: QuantumCompositeSignal['debug'] | null
 }
 
 const DEFAULT_VECTOR: QuantumVector = {
@@ -1416,5 +1445,199 @@ export function deriveMultiTfQuantumComposite(
       weightedVotes,
       aggregatedVector: normalizedAggregated,
     },
+  }
+}
+
+type AtrRiskProfile = 'conservative' | 'balanced' | 'aggressive'
+
+const ATR_LADDER_PROFILES: Record<
+  AtrRiskProfile,
+  { stopMultiple: number; targetMultiples: number[]; trailingMultiple: number }
+> = {
+  conservative: { stopMultiple: 1.25, targetMultiples: [0.75, 1.5, 2.5], trailingMultiple: 1 },
+  balanced: { stopMultiple: 1.5, targetMultiples: [1, 2, 3], trailingMultiple: 1.5 },
+  aggressive: { stopMultiple: 1.8, targetMultiples: [1.5, 2.5, 4], trailingMultiple: 2 },
+}
+
+function deriveAtrFromOhlcv(ohlcv: OHLCV, period = 14): number | null {
+  if (!Array.isArray(ohlcv) || ohlcv.length < 2) {
+    return null
+  }
+
+  const startIndex = Math.max(0, ohlcv.length - (period + 1))
+  const segment = ohlcv.slice(startIndex)
+  if (segment.length < 2) {
+    return null
+  }
+
+  const trueRanges: number[] = []
+  for (let i = 1; i < segment.length; i += 1) {
+    const current = segment[i]
+    const prev = segment[i - 1]
+    if (!current || !prev) {
+      continue
+    }
+
+    const high = Number.isFinite(current.high) ? current.high : null
+    const low = Number.isFinite(current.low) ? current.low : null
+    const prevClose = Number.isFinite(prev.close) ? prev.close : null
+    if (high === null || low === null || prevClose === null) {
+      continue
+    }
+
+    const range = high - low
+    const highClose = Math.abs(high - prevClose)
+    const lowClose = Math.abs(low - prevClose)
+    const tr = Math.max(range, highClose, lowClose)
+    if (Number.isFinite(tr)) {
+      trueRanges.push(tr)
+    }
+  }
+
+  if (trueRanges.length === 0) {
+    return null
+  }
+
+  const atr = average(trueRanges)
+  return atr !== null && Number.isFinite(atr) ? atr : null
+}
+
+const PositionSizer = {
+  sizeFromConfidence(
+    confidence: number,
+    adx: number | null,
+    atr: number | null,
+    price: number | null,
+  ): number {
+    if (!Number.isFinite(confidence)) {
+      return 0
+    }
+
+    const base = clamp(confidence, 0, 1)
+
+    const adxStrength =
+      adx !== null && Number.isFinite(adx)
+        ? clamp((adx - 20) / 40, -0.5, 1)
+        : 0
+    const adxFactor = 1 + adxStrength * 0.5
+
+    let atrFactor = 1
+    if (
+      atr !== null &&
+      Number.isFinite(atr) &&
+      atr > 0 &&
+      price !== null &&
+      Number.isFinite(price) &&
+      price > 0
+    ) {
+      const atrPct = atr / price
+      atrFactor = clamp(1 - clamp(atrPct, 0, 0.12) * 4, 0.3, 1)
+    }
+
+    const size = base * adxFactor * atrFactor
+    if (!Number.isFinite(size)) {
+      return 0
+    }
+
+    return clamp(size, 0, 1)
+  },
+}
+
+const ATRLadder = {
+  build(
+    price: number | null,
+    atr: number | null,
+    direction: -1 | 0 | 1,
+    riskProfile: AtrRiskProfile = 'balanced',
+  ): { stopLoss: number | null; targets: RiskTarget[]; trailingMultiple: number | null } {
+    const profile = ATR_LADDER_PROFILES[riskProfile] ?? ATR_LADDER_PROFILES.balanced
+
+    if (
+      !Number.isFinite(price ?? NaN) ||
+      !Number.isFinite(atr ?? NaN) ||
+      atr === null ||
+      atr <= 0 ||
+      !Number.isFinite(direction) ||
+      direction === 0
+    ) {
+      return { stopLoss: null, targets: [], trailingMultiple: null }
+    }
+
+    const normalizedDirection: -1 | 1 = direction > 0 ? 1 : -1
+    const resolvedPrice = price as number
+    const resolvedAtr = atr as number
+
+    const stopLoss =
+      normalizedDirection === 1
+        ? Math.max(resolvedPrice - profile.stopMultiple * resolvedAtr, 0)
+        : Math.max(resolvedPrice + profile.stopMultiple * resolvedAtr, 0)
+
+    const targets = profile.targetMultiples.map((multiple, idx) => {
+      const rawPrice =
+        normalizedDirection === 1
+          ? resolvedPrice + multiple * resolvedAtr
+          : resolvedPrice - multiple * resolvedAtr
+      const priceValue = Number.isFinite(rawPrice) ? Math.max(rawPrice, 0) : null
+      const weight = profile.targetMultiples.length > 0 ? 1 / profile.targetMultiples.length : 0
+      return {
+        label: `TP${idx + 1}`,
+        multiple,
+        price: priceValue,
+        weight,
+      }
+    })
+
+    return {
+      stopLoss,
+      targets,
+      trailingMultiple: profile.trailingMultiple,
+    }
+  },
+}
+
+export function toRiskManagerInput(
+  signal: QuantumCompositeSignal | null,
+  indicators: Indicators,
+  ohlcv: OHLCV,
+): RiskPlan | null {
+  if (!signal) {
+    return null
+  }
+
+  const lastBar = Array.isArray(ohlcv) && ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : null
+  const closePrice =
+    lastBar && Number.isFinite(lastBar.close) ? (lastBar.close as number) : null
+
+  const atrCandidate =
+    indicators.atr !== null && Number.isFinite(indicators.atr)
+      ? (indicators.atr as number)
+      : deriveAtrFromOhlcv(ohlcv)
+  const atrValue = atrCandidate !== null && Number.isFinite(atrCandidate) ? atrCandidate : null
+  const adxValue = indicators.adx !== null && Number.isFinite(indicators.adx) ? indicators.adx : null
+
+  const directionSign: -1 | 0 | 1 =
+    signal.state === 'Up' || signal.state === 'Reversal'
+      ? 1
+      : signal.state === 'Down'
+        ? -1
+        : 0
+
+  const direction: RiskPlan['direction'] =
+    directionSign > 0 ? 'LONG' : directionSign < 0 ? 'SHORT' : 'NEUTRAL'
+
+  const computedSize = PositionSizer.sizeFromConfidence(signal.confidence, adxValue, atrValue, closePrice)
+  const size = directionSign === 0 ? 0 : computedSize
+
+  const ladder = ATRLadder.build(closePrice, atrValue, directionSign, 'balanced')
+
+  return {
+    direction,
+    directionSign,
+    size,
+    entryPrice: closePrice,
+    stopLoss: ladder.stopLoss,
+    targets: ladder.targets,
+    trailing: ladder.trailingMultiple !== null ? { type: 'ATR', multiple: ladder.trailingMultiple } : null,
+    meta: signal.debug ?? null,
   }
 }
