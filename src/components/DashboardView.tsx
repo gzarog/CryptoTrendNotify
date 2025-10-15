@@ -547,7 +547,10 @@ export function DashboardView({
 
                         if (notification.type === 'moving-average') {
                           const entry = notification.payload
-                          const cardClasses = MOMENTUM_CARD_CLASSES[entry.intensity]
+                          const cardClasses =
+                            entry.direction === 'death'
+                              ? MOMENTUM_CARD_CLASSES.red
+                              : MOMENTUM_CARD_CLASSES[entry.intensity]
                           const emoji = MOMENTUM_EMOJI_BY_INTENSITY[entry.intensity]
                           const directionLabel = MOVING_AVERAGE_DIRECTION_LABELS[entry.direction]
 
