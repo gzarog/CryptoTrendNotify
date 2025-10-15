@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { TIMEFRAMES } from '../../constants/timeframes'
+import { deriveQuantumCompositeSignal } from '../../lib/quantum'
 import { getMultiTimeframeSignal } from '../../lib/signals'
 import type { TimeframeSignalSnapshot, TradingSignal } from '../../types/signals'
 import { MultiTimeframeSummary } from './MultiTimeframeSummary'
 import { PlaceholderCard } from './PlaceholderCard'
+import { QuantumPredictionPanel } from './QuantumPredictionPanel'
 import { SignalHighlights } from './SignalHighlights'
 import { TimeframeOverviewCard } from './TimeframeOverviewCard'
 import { snapshotsToMap, sortSnapshotsByTimeframe } from './utils'
@@ -24,6 +26,7 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
 
   const primaryHighlights = useMemo(() => sortedSignals.slice(0, 6), [sortedSignals])
   const multiTimeframeSignal = useMemo(() => getMultiTimeframeSignal(snapshots), [snapshots])
+  const quantumSignal = useMemo(() => deriveQuantumCompositeSignal(snapshots), [snapshots])
   const normalizedSnapshots = useMemo(() => sortSnapshotsByTimeframe(snapshots), [snapshots])
   const snapshotsByTimeframe = useMemo(() => snapshotsToMap(normalizedSnapshots), [normalizedSnapshots])
 
@@ -66,6 +69,8 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
           </div>
 
           {multiTimeframeSignal && <MultiTimeframeSummary signal={multiTimeframeSignal} />}
+
+          <QuantumPredictionPanel data={quantumSignal} isLoading={isLoading} />
 
           <div className="grid gap-4 md:grid-cols-2">
             {TIMEFRAMES.map(({ value, label }) => {
