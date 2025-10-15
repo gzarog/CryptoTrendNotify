@@ -1056,6 +1056,7 @@ export function DashboardView({
             signals={signals}
             snapshots={timeframeSnapshots}
             isLoading={isFetching || signalsLoading}
+            symbol={symbol}
           />
           <ExpertSignalsPanel
             snapshots={timeframeSnapshots}
