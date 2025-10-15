@@ -77,6 +77,8 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const badgeClass = dominantState ? STATE_BADGE_CLASS[dominantState] : 'border-slate-400/40 bg-slate-500/10 text-slate-200'
   const stateLabel = dominantState ? STATE_LABELS[dominantState] : 'Pending synthesis'
   const confidenceLabel = data ? formatConfidence(data.confidence) : null
+  const sampleCount = data?.debug.sampleCount ?? 0
+  const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -113,7 +115,7 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                 </div>
               </div>
               <div className="text-xs text-slate-300">
-                Derived from {data.debug.sampleCount} timeframe snapshots with hybrid weighting across quantum, Markov and
+                Derived from {sampleCount} {sampleLabel} with hybrid weighting across quantum, Markov and
                 indicator inputs.
               </div>
             </section>
