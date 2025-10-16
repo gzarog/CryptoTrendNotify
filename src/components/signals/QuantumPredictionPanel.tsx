@@ -244,15 +244,6 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
               </div>
             </section>
 
-            {chatGptInterpretation && (
-              <section className="flex flex-col gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">ChatGPT interpretation</span>
-                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
-                  {chatGptInterpretation}
-                </p>
-              </section>
-            )}
-
             <section className="flex flex-col gap-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Phase diagnostics</span>
               <div className="grid gap-3 md:grid-cols-2">
@@ -281,16 +272,14 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
               </div>
             </section>
 
-            {data.insights.length > 0 && (
+            {chatGptInterpretation && (
               <section className="flex flex-col gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Quantum commentary</span>
-                <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-slate-200">
-                  {data.insights.map((insight, index) => (
-                    <li key={`insight-${index}`} className="marker:text-indigo-300">
-                      {insight}
-                    </li>
-                  ))}
-                </ul>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  ChatGPT interpretation
+                </span>
+                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
+                  {chatGptInterpretation}
+                </p>
               </section>
             )}
           </>
