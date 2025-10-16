@@ -7,7 +7,6 @@ import type {
 } from '../App'
 import type {
   CombinedSignalNotification,
-  MultiTimeframeSignalNotification,
   SignalNotification,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -113,13 +112,11 @@ type DashboardViewProps = {
   visibleMomentumNotifications: MomentumNotification[]
   visibleSignalNotifications: SignalNotification[]
   visibleCombinedSignalNotifications: CombinedSignalNotification[]
-  visibleMultiTimeframeSignalNotifications: MultiTimeframeSignalNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   onDismissSignalNotification: (notificationId: string) => void
   onDismissCombinedSignalNotification: (notificationId: string) => void
-  onDismissMultiTimeframeSignalNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -205,13 +202,11 @@ export function DashboardView({
   visibleMomentumNotifications,
   visibleSignalNotifications,
   visibleCombinedSignalNotifications,
-  visibleMultiTimeframeSignalNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   onDismissSignalNotification,
   onDismissCombinedSignalNotification,
-  onDismissMultiTimeframeSignalNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -243,11 +238,6 @@ export function DashboardView({
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
-        ...visibleMultiTimeframeSignalNotifications.map((entry) => ({
-          type: 'multi-timeframe' as const,
-          triggeredAt: entry.triggeredAt,
-          payload: entry,
-        })),
         ...visibleCombinedSignalNotifications.map((entry) => ({
           type: 'combined' as const,
           triggeredAt: entry.triggeredAt,
@@ -266,7 +256,6 @@ export function DashboardView({
       ].sort((a, b) => b.triggeredAt - a.triggeredAt),
     [
       visibleSignalNotifications,
-      visibleMultiTimeframeSignalNotifications,
       visibleMomentumNotifications,
       visibleMovingAverageNotifications,
       visibleCombinedSignalNotifications,
@@ -275,7 +264,6 @@ export function DashboardView({
 
   const totalNotificationCount =
     visibleSignalNotifications.length +
-    visibleMultiTimeframeSignalNotifications.length +
     visibleCombinedSignalNotifications.length +
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length
@@ -457,71 +445,6 @@ export function DashboardView({
                               <span className="text-[11px] text-white/80">{breakdownSummary}</span>
                               {entry.price != null && Number.isFinite(entry.price) && (
                                 <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
-                              )}
-                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
-                            </div>
-                          )
-                        }
-
-                        if (notification.type === 'multi-timeframe') {
-                          const entry = notification.payload
-                          const directionKey = entry.direction.toLowerCase()
-                          const cardClasses =
-                            COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
-                            COMBINED_DIRECTION_CARD_CLASSES.neutral
-                          const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
-                          const normalizedScoreValue = Object.is(entry.normalizedScore, -0)
-                            ? 0
-                            : entry.normalizedScore
-                          const formatSigned = (value: number) => {
-                            const raw = value.toFixed(1).replace(/\.0$/, '')
-                            return value > 0 ? `+${raw}` : raw
-                          }
-                          const normalizedLabel = formatSigned(normalizedScoreValue)
-                          const weightedScoreValue = entry.contributions.reduce(
-                            (sum, contribution) => sum + contribution.weightedScore,
-                            0,
-                          )
-                          const weightedLabel = formatSigned(weightedScoreValue)
-                          const contributionsSummary = entry.contributions
-                            .map((contribution) => {
-                              const contributionEmoji =
-                                contribution.signal.direction === 'Bullish'
-                                  ? '🟢'
-                                  : contribution.signal.direction === 'Bearish'
-                                  ? '🔴'
-                                  : '⚪️'
-                              return `${contributionEmoji} ${contribution.timeframeLabel} ${Math.round(contribution.signal.strength)}%`
-                            })
-                            .join(' • ')
-
-                          return (
-                            <div
-                              key={`multi-${entry.id}`}
-                              className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="text-[11px] font-semibold uppercase tracking-wide">
-                                  {emoji} Multi-timeframe {entry.direction.toLowerCase()} bias
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => onDismissMultiTimeframeSignalNotification(entry.id)}
-                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
-                                  aria-label="Dismiss multi-timeframe notification"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                              <span className="text-[11px] text-white/80">
-                                Norm {normalizedLabel} • Weighted {weightedLabel} • Strength {entry.strength}%
-                              </span>
-                              <span className="text-[11px] text-white/80">
-                                {entry.combinedBias.strength.toLowerCase()} bias • Timeframes {entry.contributions.length}
-                              </span>
-                              {contributionsSummary && (
-                                <span className="text-[11px] text-white/80">{contributionsSummary}</span>
                               )}
                               <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
                             </div>

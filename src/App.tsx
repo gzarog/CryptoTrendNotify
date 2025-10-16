@@ -11,11 +11,7 @@ import {
   calculateSMA,
   calculateStochasticRSI,
 } from './lib/indicators'
-import {
-  deriveSignalsFromHeatmap,
-  deriveTimeframeSnapshots,
-  getMultiTimeframeSignal,
-} from './lib/signals'
+import { deriveSignalsFromHeatmap, deriveTimeframeSnapshots } from './lib/signals'
 import { fetchHeatmapResults } from './lib/heatmap'
 import type { HeatmapResult } from './types/heatmap'
 import {
@@ -28,7 +24,6 @@ import {
 } from './lib/notifications'
 import type {
   CombinedSignalNotification,
-  MultiTimeframeSignalNotification,
   SignalNotification,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -247,7 +242,6 @@ const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 const MAX_SIGNAL_NOTIFICATIONS = 6
 const MAX_COMBINED_SIGNAL_NOTIFICATIONS = 6
-const MAX_MULTI_TIMEFRAME_SIGNAL_NOTIFICATIONS = 4
 const MIN_COMBINED_SIGNAL_SCORE = 2
 const SIGNAL_NOTIFICATION_MIN_SCORE = 60
 
@@ -536,15 +530,12 @@ function App() {
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const lastSignalTriggersRef = useRef<Record<string, string>>({})
   const lastCombinedSignalTriggersRef = useRef<Record<string, string>>({})
-  const lastMultiTimeframeTriggerRef = useRef<string | null>(null)
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [movingAverageNotifications, setMovingAverageNotifications] =
     useState<MovingAverageCrossNotification[]>([])
   const [signalNotifications, setSignalNotifications] = useState<SignalNotification[]>([])
   const [combinedSignalNotifications, setCombinedSignalNotifications] =
     useState<CombinedSignalNotification[]>([])
-  const [multiTimeframeSignalNotifications, setMultiTimeframeSignalNotifications] =
-    useState<MultiTimeframeSignalNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
@@ -877,11 +868,9 @@ function App() {
     lastMomentumTriggerRef.current = null
     lastMovingAverageTriggersRef.current = {}
     lastCombinedSignalTriggersRef.current = {}
-    lastMultiTimeframeTriggerRef.current = null
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setCombinedSignalNotifications([])
-    setMultiTimeframeSignalNotifications([])
   }, [normalizedSymbol])
 
   useEffect(() => {
@@ -889,7 +878,6 @@ function App() {
       lastMomentumTriggerRef.current = null
       lastMovingAverageTriggersRef.current = {}
       lastCombinedSignalTriggersRef.current = {}
-      lastMultiTimeframeTriggerRef.current = null
     }
   }, [pushNotificationsEnabled])
 
@@ -1045,11 +1033,6 @@ function App() {
     [heatmapResults],
   )
 
-  const multiTimeframeSignal = useMemo(
-    () => getMultiTimeframeSignal(timeframeSnapshots),
-    [timeframeSnapshots],
-  )
-
   const areSignalsLoading = heatmapQuery.isLoading || heatmapQuery.isFetching
 
   const momentumThresholds = useMemo(() => {
@@ -1177,17 +1160,11 @@ function App() {
     () => combinedSignalNotifications,
     [combinedSignalNotifications],
   )
-  const visibleMultiTimeframeSignalNotifications = useMemo(
-    () => multiTimeframeSignalNotifications,
-    [multiTimeframeSignalNotifications],
-  )
-
   const handleClearNotifications = useCallback(() => {
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setSignalNotifications([])
     setCombinedSignalNotifications([])
-    setMultiTimeframeSignalNotifications([])
   }, [])
 
   useEffect(() => {
@@ -1453,102 +1430,6 @@ function App() {
   ])
 
   useEffect(() => {
-    if (!multiTimeframeSignal) {
-      return
-    }
-
-    const { direction, normalizedScore, combinedScore, strength, combinedBias, contributions } =
-      multiTimeframeSignal
-
-    if (
-      direction === 'Neutral' ||
-      contributions.length === 0 ||
-      !Number.isFinite(strength) ||
-      Math.abs(strength) < 1
-    ) {
-      return
-    }
-
-    const normalizedScoreRounded = Math.round(normalizedScore * 10) / 10
-    const sanitizedNormalizedScore = Object.is(normalizedScoreRounded, -0) ? 0 : normalizedScoreRounded
-    const weightedScoreRounded = Math.round(combinedScore * 10) / 10
-    const normalizedStrength = Math.round(Math.min(Math.max(strength ?? 0, 0), 100))
-
-    const contributionSignature = contributions
-      .map((entry) => `${entry.timeframe}:${entry.signal.direction}:${Math.round(entry.signal.strength)}`)
-      .join('|')
-    const signature = `${normalizedSymbol}-${direction}-${sanitizedNormalizedScore}-${weightedScoreRounded}-${normalizedStrength}-${contributionSignature}`
-
-    if (lastMultiTimeframeTriggerRef.current === signature) {
-      return
-    }
-
-    lastMultiTimeframeTriggerRef.current = signature
-
-    const formatSigned = (value: number) => {
-      const raw = value.toFixed(1).replace(/\.0$/, '')
-      return value > 0 ? `+${raw}` : raw
-    }
-    const formattedNormalized = formatSigned(sanitizedNormalizedScore)
-    const formattedWeighted = formatSigned(weightedScoreRounded)
-    const topContributions = contributions
-      .slice()
-      .sort((a, b) => b.weight - a.weight)
-      .slice(0, 3)
-      .map((entry) => {
-        const directionEmoji =
-          entry.signal.direction === 'Bullish' ? '🟢' : entry.signal.direction === 'Bearish' ? '🔴' : '⚪️'
-        return `${directionEmoji} ${entry.timeframeLabel} ${Math.round(entry.signal.strength)}%`
-      })
-
-    const bodyParts = [
-      `Norm ${formattedNormalized}`,
-      `Weighted ${formattedWeighted}`,
-      `Strength ${normalizedStrength}%`,
-      `${combinedBias.strength.toLowerCase()} bias`,
-    ]
-    if (topContributions.length > 0) {
-      bodyParts.push(topContributions.join(' • '))
-    }
-
-    const emoji = direction === 'Bullish' ? '🟢' : '🔴'
-
-    void showAppNotification({
-      title: `${emoji} Multi-timeframe ${direction.toLowerCase()} bias`,
-      body: bodyParts.join(' — '),
-      tag: `multi-timeframe-${signature}`,
-      data: {
-        type: 'multi-timeframe',
-        symbol: normalizedSymbol,
-        direction,
-        strength: normalizedStrength,
-        normalizedScore: sanitizedNormalizedScore,
-      },
-    })
-
-    const triggeredAt = Date.now()
-    const entry: MultiTimeframeSignalNotification = {
-      id: signature,
-      symbol: normalizedSymbol,
-      direction,
-      normalizedScore: sanitizedNormalizedScore,
-      strength: normalizedStrength,
-      contributions,
-      combinedBias,
-      triggeredAt,
-    }
-
-    setMultiTimeframeSignalNotifications((previous) => {
-      const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-      return next.slice(0, MAX_MULTI_TIMEFRAME_SIGNAL_NOTIFICATIONS)
-    })
-  }, [
-    multiTimeframeSignal,
-    normalizedSymbol,
-    lastMultiTimeframeTriggerRef,
-  ])
-
-  useEffect(() => {
     const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
@@ -1743,12 +1624,6 @@ function App() {
     )
   }, [])
 
-  const dismissMultiTimeframeSignalNotification = useCallback((notificationId: string) => {
-    setMultiTimeframeSignalNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
   const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
 
   const handleInstall = async () => {
@@ -1834,13 +1709,11 @@ function App() {
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       visibleSignalNotifications={visibleSignalNotifications}
       visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
-      visibleMultiTimeframeSignalNotifications={visibleMultiTimeframeSignalNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}
       onDismissCombinedSignalNotification={dismissCombinedSignalNotification}
-      onDismissMultiTimeframeSignalNotification={dismissMultiTimeframeSignalNotification}
       onClearNotifications={handleClearNotifications}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}
