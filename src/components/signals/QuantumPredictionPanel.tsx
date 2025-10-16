@@ -84,28 +84,28 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
   const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
-  const topProbability = signal.probabilities.reduce<QuantumProbability | null>((current, candidate) => {
-    if (!current) {
-      return candidate
-    }
-    if (candidate.probability > current.probability) {
-      return candidate
-    }
-    return current
-  }, null)
-  const topProbabilityLabel = topProbability ? formatProbability(topProbability.probability) : null
-  const topProbabilityStateLabel = topProbability ? STATE_LABELS[topProbability.state].toLowerCase() : dominantStateLabel
 
-  const dominantComponent = signal.components.reduce<QuantumCompositeSignal['components'][number] | null>((current, candidate) => {
-    if (!current) {
-      return candidate
-    }
-    if (candidate.weight > current.weight) {
-      return candidate
-    }
-    return current
-  }, signal.components[0] ?? null)
-  const dominantComponentLabel = dominantComponent ? dominantComponent.label.toLowerCase() : 'fusion'
+  const sortedProbabilities = [...signal.probabilities].sort((a, b) => b.probability - a.probability)
+  const topProbability = sortedProbabilities[0] ?? null
+  const secondaryProbability = sortedProbabilities[1] ?? null
+  const topProbabilityLabel = topProbability ? formatProbability(topProbability.probability) : null
+  const topProbabilityStateLabel = topProbability
+    ? STATE_LABELS[topProbability.state].toLowerCase()
+    : dominantStateLabel
+  const probabilitySpread =
+    topProbability && secondaryProbability
+      ? Math.max(0, Math.round((topProbability.probability - secondaryProbability.probability) * 1000) / 10)
+      : null
+
+  const sortedComponents = [...signal.components].sort((a, b) => b.weight - a.weight)
+  const primaryComponents = sortedComponents.slice(0, 2)
+  const componentHighlights = primaryComponents
+    .filter((component) => component.weight >= 0.15)
+    .map((component) => {
+      const weightLabel = `${Math.round(component.weight * 100)}%`
+      const valueLabel = formatProbability(component.value)
+      return `${component.label.toLowerCase()} (${weightLabel} influence, projecting ${valueLabel})`
+    })
 
   const sampleCount = signal.debug.sampleCount
   const sampleDescriptor = describeSampleDensity(sampleCount)
@@ -120,16 +120,38 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
     return current
   }, signal.phases[0] ?? null)
 
-  const phaseSentence = notablePhase && notablePhase.magnitude >= 0.35
-    ? `Phase telemetry highlights ${notablePhase.label.toLowerCase()} with a ${notablePhase.direction} skew (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
-    : 'Phase telemetry remains orderly without a dominant skew.'
+  const phaseSentence = notablePhase
+    ? notablePhase.magnitude >= 0.35
+      ? `${notablePhase.label} is the loudest interference lane with a ${notablePhase.direction} bias and ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
+      : `${notablePhase.label} is showing a soft ${notablePhase.direction} drift (${formatPhaseShiftRadians(notablePhase.shift)}).`
+    : 'Phase telemetry is too muted to isolate a dominant interference lane yet.'
 
   const insightSnippets = signal.insights.slice(0, 2)
   const insightsSentence = insightSnippets.length > 0
-    ? `Key drivers: ${insightSnippets.join(' ')}`
-    : 'The engine has not flagged any notable external drivers yet.'
+    ? `Key catalysts: ${insightSnippets.join(' ')}`
+    : 'No external catalyst clusters have been elevated this cycle.'
 
-  return `ChatGPT interprets the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${topProbabilityLabel ?? 'n/a'} probability concentration around the ${topProbabilityStateLabel}). The signal is built on a ${sampleDescriptor} sample set (${sampleCount} snapshots) and is currently most influenced by the ${dominantComponentLabel} component. ${phaseSentence} ${insightsSentence}`
+  const paragraphs: string[] = []
+  paragraphs.push(
+    `ChatGPT reads the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
+      topProbabilityLabel ?? 'n/a'
+    } concentration around ${topProbabilityStateLabel}${probabilitySpread !== null ? `, ${probabilitySpread}% ahead of the next scenario` : ''}).`,
+  )
+
+  paragraphs.push(
+    `The composite was synthesized from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the model adequate depth for the current pass.`,
+  )
+
+  if (componentHighlights.length > 0) {
+    paragraphs.push(`Dominant drivers: ${componentHighlights.join(' • ')}.`)
+  } else {
+    paragraphs.push('Component weights are evenly distributed without a clear concentration driver yet.')
+  }
+
+  paragraphs.push(phaseSentence)
+  paragraphs.push(insightsSentence)
+
+  return paragraphs.join(' ')
 }
 
 function formatProbability(probability: number): string {
