@@ -1,6 +1,10 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
-import type { QuantumCompositeSignal, QuantumProbability, TrendState } from '../../lib/quantum'
+import type {
+  QuantumCompositeSignal,
+  QuantumProbability,
+  TrendState,
+} from '../../lib/quantum'
 
 const STATE_LABELS: Record<TrendState, string> = {
   Down: 'Downtrend',
@@ -38,6 +42,29 @@ const PHASE_DIRECTION_CLASS: Record<'bullish' | 'bearish' | 'neutral', string> =
 type QuantumPredictionPanelProps = {
   data: QuantumCompositeSignal | null
   isLoading: boolean
+}
+
+type DirectionalBias = 'LONG' | 'SHORT' | 'NEUTRAL'
+
+const DIRECTIONAL_BADGE_CLASS: Record<DirectionalBias, string> = {
+  LONG: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+  SHORT: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  NEUTRAL: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+}
+
+const DIRECTIONAL_TEXT_CLASS: Record<DirectionalBias, string> = {
+  LONG: 'text-emerald-300',
+  SHORT: 'text-rose-300',
+  NEUTRAL: 'text-slate-200',
+}
+
+type DirectionalCall = {
+  bias: DirectionalBias
+  label: string
+  summary: string
+  anchorProbability: number
+  counterProbability: number
+  spread: number
 }
 
 function describeConfidenceLevel(confidence: number): string {
@@ -84,6 +111,7 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
   const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
+  const directionalCall = evaluateDirectionalCall(signal)
 
   const sortedProbabilities = [...signal.probabilities].sort((a, b) => b.probability - a.probability)
   const topProbability = sortedProbabilities[0] ?? null
@@ -151,6 +179,14 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
       : 'State probabilities: distribution is too flat to call out leaders yet.',
   )
 
+  if (directionalCall.bias === 'NEUTRAL') {
+    paragraphs.push(`Trade posture: staying patient — ${directionalCall.summary}`)
+  } else {
+    paragraphs.push(
+      `Trade posture: leaning ${directionalCall.bias.toLowerCase()} — ${directionalCall.summary}`,
+    )
+  }
+
   paragraphs.push(componentSentence)
 
   paragraphs.push(
@@ -178,6 +214,50 @@ function formatPhaseShiftRadians(shift: number): string {
   return degrees > 0 ? `+${degrees}°` : `${degrees}°`
 }
 
+function evaluateDirectionalCall(signal: QuantumCompositeSignal): DirectionalCall {
+  const upProbability =
+    signal.probabilities.find((probability) => probability.state === 'Up')?.probability ?? 0
+  const downProbability =
+    signal.probabilities.find((probability) => probability.state === 'Down')?.probability ?? 0
+  const anchorIsLong = upProbability >= downProbability
+  const anchorProbability = anchorIsLong ? upProbability : downProbability
+  const counterProbability = anchorIsLong ? downProbability : upProbability
+  const spread = Math.round(Math.abs(anchorProbability - counterProbability) * 1000) / 10
+
+  let bias: DirectionalBias = 'NEUTRAL'
+  if (spread >= 2) {
+    bias = anchorIsLong ? 'LONG' : 'SHORT'
+  }
+
+  const anchorLabel = formatProbability(anchorProbability)
+  const counterLabel = formatProbability(counterProbability)
+
+  const summary =
+    bias === 'NEUTRAL'
+      ? `longs and shorts are effectively balanced (${formatProbability(upProbability)} vs ${formatProbability(
+          downProbability,
+        )}).`
+      : anchorIsLong
+        ? `longs carry a ${spread}% edge (${anchorLabel} vs ${counterLabel}).`
+        : `shorts carry a ${spread}% edge (${anchorLabel} vs ${counterLabel}).`
+
+  const label =
+    bias === 'NEUTRAL'
+      ? 'Neutral balance'
+      : anchorIsLong
+        ? 'Long bias'
+        : 'Short bias'
+
+  return {
+    bias,
+    label,
+    summary,
+    anchorProbability,
+    counterProbability,
+    spread,
+  }
+}
+
 function renderProbability(probability: QuantumProbability) {
   const label = STATE_LABELS[probability.state]
   const gradient = STATE_GRADIENT[probability.state]
@@ -202,6 +282,13 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const sampleCount = data?.debug.sampleCount ?? 0
   const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
   const quantumInterpretation = data ? generateQuantumInterpretation(data) : null
+  const directionalCall = data ? evaluateDirectionalCall(data) : null
+  const directionalBadgeClass = directionalCall
+    ? DIRECTIONAL_BADGE_CLASS[directionalCall.bias]
+    : DIRECTIONAL_BADGE_CLASS.NEUTRAL
+  const directionalTextClass = directionalCall
+    ? DIRECTIONAL_TEXT_CLASS[directionalCall.bias]
+    : DIRECTIONAL_TEXT_CLASS.NEUTRAL
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -212,7 +299,10 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
             Hybrid fusion of Markov priors, indicator bias and interference-aware probabilities
           </span>
         </div>
-        <Badge className={badgeClass}>{stateLabel}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={badgeClass}>{stateLabel}</Badge>
+          {directionalCall && <Badge className={directionalBadgeClass}>{directionalCall.label}</Badge>}
+        </div>
       </header>
 
       <div className="flex flex-col gap-6 px-5 py-5">
@@ -232,6 +322,17 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Dominant state</span>
                   <span className="text-lg font-semibold text-white">{stateLabel}</span>
                 </div>
+                {directionalCall && (
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Trade posture
+                    </span>
+                    <span className={`text-lg font-semibold ${directionalTextClass}`}>
+                      {directionalCall.label}
+                    </span>
+                    <span className="text-[11px] text-slate-400">{directionalCall.summary}</span>
+                  </div>
+                )}
                 <div className="flex flex-col text-right">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Confidence</span>
                   <span className="text-lg font-semibold text-white">{confidenceLabel}</span>
