@@ -2,6 +2,7 @@ import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
 import type {
   QuantumCompositeSignal,
+  QuantumFlipThreshold,
   QuantumProbability,
   TrendState,
 } from '../../lib/quantum'
@@ -33,10 +34,36 @@ const COMPONENT_GRADIENT: Record<'markov' | 'quantum' | 'bias', string> = {
   bias: 'from-emerald-400 to-emerald-500',
 }
 
+const FLIP_ZONE_LABELS: Record<QuantumFlipThreshold['state'], string> = {
+  BASE: 'Base zone hold',
+  BEARISH: 'Bearish pressure',
+  REVERSAL: 'Reversal attempt',
+}
+
+const FLIP_ZONE_BADGE_CLASS: Record<QuantumFlipThreshold['state'], string> = {
+  BASE: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+  BEARISH: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  REVERSAL: 'border-amber-400/40 bg-amber-500/10 text-amber-200',
+}
+
 const PHASE_DIRECTION_CLASS: Record<'bullish' | 'bearish' | 'neutral', string> = {
   bullish: 'text-emerald-300',
   bearish: 'text-rose-300',
   neutral: 'text-slate-300',
+}
+
+const FLIP_SIGNAL_CATEGORY: Record<QuantumFlipThreshold['signal'], 'long' | 'short' | 'neutral'> = {
+  'ENTER LONG': 'long',
+  'WATCH FOR LONG': 'long',
+  'ENTER SHORT': 'short',
+  'WATCH FOR SHORT': 'short',
+  'SIDEWAYS / BASE-BUILDING': 'neutral',
+}
+
+const FLIP_SIGNAL_BADGE_CLASS: Record<'long' | 'short' | 'neutral', string> = {
+  long: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+  short: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  neutral: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
 }
 
 type QuantumPredictionPanelProps = {
@@ -64,6 +91,24 @@ const DIRECTIONAL_TEXT_CLASS: Record<DirectionalBias, string> = {
   LONG: 'text-emerald-300',
   SHORT: 'text-rose-300',
   NEUTRAL: 'text-slate-200',
+}
+
+const FLIP_BIAS_LABELS: Record<QuantumFlipThreshold['bias'], string> = {
+  LONG: 'Long bias',
+  SHORT: 'Short bias',
+  NEUTRAL: 'Neutral bias',
+}
+
+const FLIP_BIAS_TEXT_CLASS: Record<QuantumFlipThreshold['bias'], string> = {
+  LONG: 'text-emerald-200',
+  SHORT: 'text-rose-200',
+  NEUTRAL: 'text-slate-200',
+}
+
+const BIAS_GRADIENT: Record<DirectionalBias, string> = {
+  LONG: 'from-emerald-400 to-emerald-500',
+  SHORT: 'from-rose-500 to-rose-400',
+  NEUTRAL: 'from-slate-500 to-slate-400',
 }
 
 type DirectionalCall = {
@@ -120,6 +165,7 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): QuantumI
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
   const directionalCall = evaluateDirectionalCall(signal)
+  const flipThreshold = signal.flipThreshold
 
   const sortedProbabilities = [...signal.probabilities].sort((a, b) => b.probability - a.probability)
   const topProbability = sortedProbabilities[0] ?? null
@@ -194,6 +240,31 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): QuantumI
         : `Leaning ${directionalCall.bias.toLowerCase()} — ${directionalCall.summary}`,
   })
 
+  if (flipThreshold) {
+    const zoneLabel = FLIP_ZONE_LABELS[flipThreshold.state].toLowerCase()
+    const strengthLabel = formatProbability(flipThreshold.biasStrength)
+    const phaseLabel = formatDegrees(flipThreshold.phaseAngle)
+    const signalNarrative =
+      flipThreshold.bias === 'NEUTRAL'
+        ? 'No trigger fired yet; thresholds are still balancing.'
+        : `${toSentenceCase(flipThreshold.signal)} with ${strengthLabel} conviction.`
+    const edgeValue =
+      flipThreshold.bias === 'SHORT'
+        ? flipThreshold.diagnostics.shortEdge
+        : flipThreshold.bias === 'LONG'
+          ? flipThreshold.diagnostics.longEdge
+          : flipThreshold.diagnostics.shortEdge
+    const edgeNarrative =
+      flipThreshold.bias === 'NEUTRAL'
+        ? `Down vs reversal spread parked at ${formatSignedPercent(flipThreshold.diagnostics.shortEdge)}.`
+        : `${formatSignedPercent(edgeValue)} edge versus the counter-trend.`
+
+    bullets.push({
+      title: 'Flip threshold',
+      body: `Flip engine anchored in the ${zoneLabel}. ${signalNarrative} Phase dial at ${phaseLabel} with ${edgeNarrative}`,
+    })
+  }
+
   bullets.push({
     title: 'Fusion components',
     body: componentSummary,
@@ -229,6 +300,30 @@ function formatPhaseShiftRadians(shift: number): string {
     return '0°'
   }
   return degrees > 0 ? `+${degrees}°` : `${degrees}°`
+}
+
+function formatSignedPercent(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0%'
+  }
+
+  const rounded = Math.round(value * 10) / 10
+  const normalized = Object.is(rounded, -0) ? 0 : rounded
+  return normalized > 0 ? `+${normalized}%` : `${normalized}%`
+}
+
+function formatDegrees(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0°'
+  }
+
+  const rounded = Math.round(value)
+  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
+}
+
+function toSentenceCase(value: string): string {
+  const lower = value.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
 }
 
 function evaluateDirectionalCall(signal: QuantumCompositeSignal): DirectionalCall {
@@ -306,6 +401,53 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const directionalTextClass = directionalCall
     ? DIRECTIONAL_TEXT_CLASS[directionalCall.bias]
     : DIRECTIONAL_TEXT_CLASS.NEUTRAL
+  const flipThreshold = data?.flipThreshold ?? null
+  const flipSignalCategory = flipThreshold ? FLIP_SIGNAL_CATEGORY[flipThreshold.signal] : 'neutral'
+  const flipBiasBadgeClass = flipThreshold
+    ? DIRECTIONAL_BADGE_CLASS[flipThreshold.bias]
+    : DIRECTIONAL_BADGE_CLASS.NEUTRAL
+  const flipBiasTextClass = flipThreshold
+    ? FLIP_BIAS_TEXT_CLASS[flipThreshold.bias]
+    : FLIP_BIAS_TEXT_CLASS.NEUTRAL
+  const flipZoneBadgeClass = flipThreshold ? FLIP_ZONE_BADGE_CLASS[flipThreshold.state] : FLIP_ZONE_BADGE_CLASS.BASE
+  const flipSignalBadgeClass = FLIP_SIGNAL_BADGE_CLASS[flipSignalCategory]
+  const biasStrengthPercentValue = flipThreshold
+    ? Math.round(flipThreshold.biasStrength * 1000) / 10
+    : 0
+  const compositePercent = flipThreshold ? Math.round(flipThreshold.compositeBias * 1000) / 10 : 0
+  const markovTiltPercent = flipThreshold
+    ? Math.round(flipThreshold.diagnostics.markovProjection * 1000) / 10
+    : 0
+  const quantumTiltPercent = flipThreshold
+    ? Math.round(flipThreshold.diagnostics.quantumProjection * 1000) / 10
+    : 0
+  const phaseProjectionPercent = flipThreshold
+    ? Math.round(flipThreshold.diagnostics.phaseProjection * 1000) / 10
+    : 0
+  const downVsReversalPercent = flipThreshold
+    ? Math.round(flipThreshold.diagnostics.shortEdge * 10) / 10
+    : 0
+  const baseProbabilityLabel = flipThreshold ? formatProbability(flipThreshold.diagnostics.P_base) : null
+  const phaseAngleClass = flipThreshold
+    ? flipThreshold.phaseAngle > 45
+      ? 'text-emerald-200'
+      : flipThreshold.phaseAngle < -45
+        ? 'text-rose-200'
+        : 'text-slate-200'
+    : 'text-slate-200'
+  const downVsReversalClass = downVsReversalPercent > 0
+    ? 'text-rose-200'
+    : downVsReversalPercent < 0
+      ? 'text-emerald-200'
+      : 'text-slate-200'
+  const markovTiltClass = markovTiltPercent > 0 ? 'text-emerald-200' : markovTiltPercent < 0 ? 'text-rose-200' : 'text-slate-200'
+  const quantumTiltClass =
+    quantumTiltPercent > 0 ? 'text-emerald-200' : quantumTiltPercent < 0 ? 'text-rose-200' : 'text-slate-200'
+  const compositeLabel = formatSignedPercent(compositePercent)
+  const markovTiltLabel = formatSignedPercent(markovTiltPercent)
+  const quantumTiltLabel = formatSignedPercent(quantumTiltPercent)
+  const phaseProjectionLabel = formatSignedPercent(phaseProjectionPercent)
+  const downVsReversalLabel = formatSignedPercent(downVsReversalPercent)
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -391,6 +533,79 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                 })}
               </div>
             </section>
+
+            {flipThreshold && (
+              <section className="flex flex-col gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Quantum–Markov flip threshold
+                </span>
+                <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={flipZoneBadgeClass}>{FLIP_ZONE_LABELS[flipThreshold.state]}</Badge>
+                    <Badge className={flipBiasBadgeClass}>{FLIP_BIAS_LABELS[flipThreshold.bias]}</Badge>
+                    <Badge className={flipSignalBadgeClass}>{toSentenceCase(flipThreshold.signal)}</Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-end justify-between gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Signal call</span>
+                      <span className={`text-lg font-semibold ${flipBiasTextClass}`}>
+                        {toSentenceCase(flipThreshold.signal)}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {FLIP_BIAS_LABELS[flipThreshold.bias]}
+                      </span>
+                    </div>
+                    <div className="flex flex-col text-right">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Phase angle</span>
+                      <span className={`text-lg font-semibold ${phaseAngleClass}`}>
+                        {formatDegrees(flipThreshold.phaseAngle)}
+                      </span>
+                      <span className="text-[11px] text-slate-400">Needs ±45° trigger.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Composite conviction
+                    </span>
+                    <PercentageBar
+                      gradient={BIAS_GRADIENT[flipThreshold.bias]}
+                      value={biasStrengthPercentValue}
+                      label={formatProbability(flipThreshold.biasStrength)}
+                    />
+                  </div>
+
+                  <p className="text-xs text-slate-300">
+                    Weighted bias {compositeLabel} (Markov {markovTiltLabel}, Quantum {quantumTiltLabel}, Phase{' '}
+                    {phaseProjectionLabel}).
+                  </p>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="flex flex-col gap-1 rounded-xl bg-slate-900/60 p-3">
+                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Down vs reversal spread</span>
+                      <span className={`text-sm font-semibold ${downVsReversalClass}`}>{downVsReversalLabel}</span>
+                      <span className="text-[11px] text-slate-400">Bearish trigger above +5%.</span>
+                    </div>
+                    <div className="flex flex-col gap-1 rounded-xl bg-slate-900/60 p-3">
+                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Base probability</span>
+                      <span className="text-sm font-semibold text-white">{baseProbabilityLabel}</span>
+                      <span className="text-[11px] text-slate-400">Comparing against down & reversal.</span>
+                    </div>
+                    <div className="flex flex-col gap-1 rounded-xl bg-slate-900/60 p-3">
+                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Markov tilt</span>
+                      <span className={`text-sm font-semibold ${markovTiltClass}`}>{markovTiltLabel}</span>
+                      <span className="text-[11px] text-slate-400">Up minus down prior.</span>
+                    </div>
+                    <div className="flex flex-col gap-1 rounded-xl bg-slate-900/60 p-3">
+                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Quantum tilt</span>
+                      <span className={`text-sm font-semibold ${quantumTiltClass}`}>{quantumTiltLabel}</span>
+                      <span className="text-[11px] text-slate-400">Interference walk bias.</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
             <section className="flex flex-col gap-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Phase diagnostics</span>
