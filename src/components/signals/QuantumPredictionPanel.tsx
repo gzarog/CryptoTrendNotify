@@ -80,7 +80,7 @@ function describeSampleDensity(sampleCount: number): string {
   return 'limited'
 }
 
-function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
+function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
   const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
@@ -96,6 +96,10 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
     topProbability && secondaryProbability
       ? Math.max(0, Math.round((topProbability.probability - secondaryProbability.probability) * 1000) / 10)
       : null
+  const probabilityBreakdown = sortedProbabilities
+    .slice(0, 3)
+    .map((probability) => `${STATE_LABELS[probability.state].toLowerCase()} ${formatProbability(probability.probability)}`)
+    .join(', ')
 
   const sortedComponents = [...signal.components].sort((a, b) => b.weight - a.weight)
   const primaryComponents = sortedComponents.slice(0, 2)
@@ -106,6 +110,10 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
       const valueLabel = formatProbability(component.value)
       return `${component.label.toLowerCase()} (${weightLabel} influence, projecting ${valueLabel})`
     })
+  const componentSentence =
+    componentHighlights.length > 0
+      ? `Fusion components: ${componentHighlights.join(' • ')}.`
+      : 'Fusion components: influence is evenly shared with no standout driver yet.'
 
   const sampleCount = signal.debug.sampleCount
   const sampleDescriptor = describeSampleDensity(sampleCount)
@@ -122,34 +130,34 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
 
   const phaseSentence = notablePhase
     ? notablePhase.magnitude >= 0.35
-      ? `${notablePhase.label} is the loudest interference lane with a ${notablePhase.direction} bias and ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
-      : `${notablePhase.label} is showing a soft ${notablePhase.direction} drift (${formatPhaseShiftRadians(notablePhase.shift)}).`
-    : 'Phase telemetry is too muted to isolate a dominant interference lane yet.'
-
-  const insightSnippets = signal.insights.slice(0, 2)
-  const insightsSentence = insightSnippets.length > 0
-    ? `Key catalysts: ${insightSnippets.join(' ')}`
-    : 'No external catalyst clusters have been elevated this cycle.'
+      ? `Phase diagnostic: ${notablePhase.label} is humming the loudest with a ${notablePhase.direction} lean and a ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
+      : `Phase diagnostic: ${notablePhase.label} is drifting ${notablePhase.direction} (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
+    : 'Phase diagnostic: telemetry is quiet, so no dominant interference lane is defined yet.'
 
   const paragraphs: string[] = []
   paragraphs.push(
-    `ChatGPT reads the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
+    `Here’s the quantum readout in plain language.`,
+  )
+
+  paragraphs.push(
+    `Dominant state: the field is leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
       topProbabilityLabel ?? 'n/a'
     } concentration around ${topProbabilityStateLabel}${probabilitySpread !== null ? `, ${probabilitySpread}% ahead of the next scenario` : ''}).`,
   )
 
   paragraphs.push(
-    `The composite was synthesized from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the model adequate depth for the current pass.`,
+    probabilityBreakdown
+      ? `State probabilities: ${probabilityBreakdown}.`
+      : 'State probabilities: distribution is too flat to call out leaders yet.',
   )
 
-  if (componentHighlights.length > 0) {
-    paragraphs.push(`Dominant drivers: ${componentHighlights.join(' • ')}.`)
-  } else {
-    paragraphs.push('Component weights are evenly distributed without a clear concentration driver yet.')
-  }
+  paragraphs.push(componentSentence)
+
+  paragraphs.push(
+    `Signal depth: the composite pulled from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, which gives this take the necessary texture.`,
+  )
 
   paragraphs.push(phaseSentence)
-  paragraphs.push(insightsSentence)
 
   return paragraphs.join(' ')
 }
@@ -193,7 +201,7 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const confidenceLabel = data ? formatConfidence(data.confidence) : null
   const sampleCount = data?.debug.sampleCount ?? 0
   const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
-  const chatGptInterpretation = data ? generateChatGPTInterpretation(data) : null
+  const quantumInterpretation = data ? generateQuantumInterpretation(data) : null
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -294,13 +302,13 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
               </div>
             </section>
 
-            {chatGptInterpretation && (
+            {quantumInterpretation && (
               <section className="flex flex-col gap-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  ChatGPT interpretation
+                  Quantum interpretation
                 </span>
                 <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
-                  {chatGptInterpretation}
+                  {quantumInterpretation}
                 </p>
               </section>
             )}
