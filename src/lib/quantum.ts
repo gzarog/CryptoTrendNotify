@@ -137,12 +137,45 @@ export type ConfigQuantum = {
   q_anneal: AnnealConfig
 }
 
+export type QuantumFlipThresholdBias = 'LONG' | 'SHORT' | 'NEUTRAL'
+
+export type QuantumFlipThresholdState = 'BASE' | 'BEARISH' | 'REVERSAL'
+
+export type QuantumFlipThresholdSignal =
+  | 'ENTER LONG'
+  | 'WATCH FOR LONG'
+  | 'ENTER SHORT'
+  | 'WATCH FOR SHORT'
+  | 'SIDEWAYS / BASE-BUILDING'
+
+export type QuantumFlipThresholdDiagnostics = {
+  P_base: number
+  P_down: number
+  P_reversal: number
+  longEdge: number
+  shortEdge: number
+  markovProjection: number
+  quantumProjection: number
+  phaseProjection: number
+}
+
+export type QuantumFlipThreshold = {
+  state: QuantumFlipThresholdState
+  bias: QuantumFlipThresholdBias
+  biasStrength: number
+  compositeBias: number
+  phaseAngle: number
+  signal: QuantumFlipThresholdSignal
+  diagnostics: QuantumFlipThresholdDiagnostics
+}
+
 export type QuantumCompositeSignal = {
   state: TrendState
   confidence: number
   probabilities: QuantumProbability[]
   components: QuantumComponent[]
   phases: QuantumPhase[]
+  flipThreshold: QuantumFlipThreshold
   insights: string[]
   debug: {
     markovVector: QuantumVector
@@ -409,6 +442,30 @@ const SMALL_EPSILON = 1e-6
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+function clamp01(value: number): number {
+  return clamp(value, 0, 1)
+}
+
+function weightedAverage(pairs: Array<[number, number]>): number {
+  let weightedSum = 0
+  let weightTotal = 0
+
+  for (const [value, weight] of pairs) {
+    if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) {
+      continue
+    }
+
+    weightedSum += value * weight
+    weightTotal += weight
+  }
+
+  if (weightTotal <= 0) {
+    return 0
+  }
+
+  return weightedSum / weightTotal
 }
 
 function complex(re: number, im: number): Complex {
@@ -859,6 +916,87 @@ function computeMarkovPrior(
       pUp: normalized.Up,
     },
     average: averagePrior,
+  }
+}
+
+function computeQuantumMarkovFlipThreshold(
+  fused: QuantumVector,
+  markov: QuantumVector,
+  quantum: QuantumVector,
+  phases: Record<TrendState, number>,
+): QuantumFlipThreshold {
+  const TH_FLIP_MAJOR = 5
+  const TH_PHASE_LONG = 45
+  const TH_PHASE_SHORT = -45
+
+  const P_base = clamp01(fused.Base)
+  const P_down = clamp01(fused.Down)
+  const P_reversal = clamp01(fused.Reversal)
+
+  const phaseAngle = clamp((phases.Up ?? 0) * (180 / Math.PI), -180, 180)
+
+  let state: QuantumFlipThresholdState = 'BASE'
+  if (P_base >= Math.max(P_down, P_reversal)) {
+    state = 'BASE'
+  } else if (P_down > P_reversal) {
+    state = 'BEARISH'
+  } else {
+    state = 'REVERSAL'
+  }
+
+  const shortEdge = (P_down - P_reversal) * 100
+  const longEdge = (P_reversal - P_down) * 100
+
+  let bias: QuantumFlipThresholdBias = 'NEUTRAL'
+  if (shortEdge > TH_FLIP_MAJOR && phaseAngle < TH_PHASE_SHORT) {
+    bias = 'SHORT'
+  } else if (longEdge > TH_FLIP_MAJOR && phaseAngle > TH_PHASE_LONG) {
+    bias = 'LONG'
+  }
+
+  const markovProjection = clamp(markov.Up - markov.Down, -1, 1)
+  const quantumProjection = clamp(quantum.Up - quantum.Down, -1, 1)
+  const phaseProjection = clamp(phaseAngle / 180, -1, 1)
+
+  const compositeBias = weightedAverage([
+    [markovProjection, 0.4],
+    [quantumProjection, 0.4],
+    [phaseProjection, 0.2],
+  ])
+
+  let biasStrength = 0
+  if (bias === 'LONG') {
+    biasStrength = clamp01(Math.max(0, compositeBias))
+  } else if (bias === 'SHORT') {
+    biasStrength = clamp01(Math.max(0, -compositeBias))
+  } else {
+    biasStrength = clamp01(Math.abs(compositeBias))
+  }
+
+  let signal: QuantumFlipThresholdSignal = 'SIDEWAYS / BASE-BUILDING'
+  if (bias === 'LONG') {
+    signal = biasStrength > 0.55 ? 'ENTER LONG' : 'WATCH FOR LONG'
+  } else if (bias === 'SHORT') {
+    signal = biasStrength > 0.55 ? 'ENTER SHORT' : 'WATCH FOR SHORT'
+  }
+
+  return {
+    state,
+    bias,
+    biasStrength,
+    compositeBias,
+    phaseAngle,
+    signal,
+    diagnostics: {
+      P_base,
+      P_down,
+      P_reversal,
+      longEdge,
+      shortEdge,
+      markovProjection,
+      quantumProjection,
+      phaseProjection,
+    },
   }
 }
 
@@ -1573,12 +1711,15 @@ export function deriveQuantumCompositeSignal(
 
   const insights = buildInsights(dominant, normalizedFused, indicators)
 
+  const flipThreshold = computeQuantumMarkovFlipThreshold(normalizedFused, markovVector, quantumVector, phases)
+
   return {
     state: dominant,
     confidence,
     probabilities,
     components,
     phases: phaseDiagnostics,
+    flipThreshold,
     insights,
     debug: {
       markovVector: Pc,
