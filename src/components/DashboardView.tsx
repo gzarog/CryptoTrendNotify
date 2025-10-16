@@ -13,10 +13,8 @@ import type {
   TradingSignal,
 } from '../types/signals'
 import { LineChart } from './LineChart'
-import { RiskManagementPanel } from './RiskManagementPanel'
 import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
-import type { HeatmapResult } from '../types/heatmap'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   green: '🟢',
@@ -108,12 +106,6 @@ type DashboardViewProps = {
   onStochasticLowerBoundInputChange: Dispatch<SetStateAction<string>>
   stochasticUpperBoundInput: string
   onStochasticUpperBoundInputChange: Dispatch<SetStateAction<string>>
-  currentEquity: string
-  onCurrentEquityChange: Dispatch<SetStateAction<string>>
-  riskBudgetPercent: string
-  onRiskBudgetPercentChange: Dispatch<SetStateAction<string>>
-  atrMultiplier: string
-  onAtrMultiplierChange: Dispatch<SetStateAction<string>>
   signals: TradingSignal[]
   signalsLoading: boolean
   timeframeSnapshots: TimeframeSignalSnapshot[]
@@ -156,7 +148,6 @@ type DashboardViewProps = {
     minusDi: Array<number | null>
     label: string
   }
-  heatmapResults: HeatmapResult[]
   rsiLengthDescription: string
   rsiValues: Array<number | null>
   labels: string[]
@@ -207,12 +198,6 @@ export function DashboardView({
   onStochasticLowerBoundInputChange,
   stochasticUpperBoundInput,
   onStochasticUpperBoundInputChange,
-  currentEquity,
-  onCurrentEquityChange,
-  riskBudgetPercent,
-  onRiskBudgetPercentChange,
-  atrMultiplier,
-  onAtrMultiplierChange,
   signals,
   signalsLoading,
   timeframeSnapshots,
@@ -239,7 +224,6 @@ export function DashboardView({
   movingAverageSeries,
   macdSeries,
   adxSeries,
-  heatmapResults,
   rsiLengthDescription,
   rsiValues,
   labels,
@@ -250,7 +234,6 @@ export function DashboardView({
 }: DashboardViewProps) {
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [isRiskPanelCollapsed, setIsRiskPanelCollapsed] = useState(false)
 
   const allNotifications = useMemo(
     () =>
@@ -1071,23 +1054,6 @@ export function DashboardView({
             stochasticLengthDescription={stochasticLengthDescription}
           />
         </section>
-        <aside
-          className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
-            isRiskPanelCollapsed ? 'lg:w-16' : 'lg:w-80'
-          }`}
-        >
-          <RiskManagementPanel
-            currentEquity={currentEquity}
-            onCurrentEquityChange={onCurrentEquityChange}
-            riskBudgetPercent={riskBudgetPercent}
-            onRiskBudgetPercentChange={onRiskBudgetPercentChange}
-            atrMultiplier={atrMultiplier}
-            onAtrMultiplierChange={onAtrMultiplierChange}
-            isCollapsed={isRiskPanelCollapsed}
-            onToggleCollapse={() => setIsRiskPanelCollapsed((previous) => !previous)}
-            results={heatmapResults}
-          />
-        </aside>
       </main>
 
       <footer className="border-t border-white/5 bg-slate-950/80">

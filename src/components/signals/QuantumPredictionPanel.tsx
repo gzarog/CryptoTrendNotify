@@ -1,6 +1,10 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
-import type { QuantumCompositeSignal, QuantumProbability, TrendState } from '../../lib/quantum'
+import type {
+  QuantumCompositeSignal,
+  QuantumProbability,
+  TrendState,
+} from '../../lib/quantum'
 
 const STATE_LABELS: Record<TrendState, string> = {
   Down: 'Downtrend',
@@ -38,6 +42,37 @@ const PHASE_DIRECTION_CLASS: Record<'bullish' | 'bearish' | 'neutral', string> =
 type QuantumPredictionPanelProps = {
   data: QuantumCompositeSignal | null
   isLoading: boolean
+}
+
+type DirectionalBias = 'LONG' | 'SHORT' | 'NEUTRAL'
+
+type QuantumInterpretation = {
+  intro: string
+  bullets: Array<{
+    title: string
+    body: string
+  }>
+}
+
+const DIRECTIONAL_BADGE_CLASS: Record<DirectionalBias, string> = {
+  LONG: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+  SHORT: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  NEUTRAL: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+}
+
+const DIRECTIONAL_TEXT_CLASS: Record<DirectionalBias, string> = {
+  LONG: 'text-emerald-300',
+  SHORT: 'text-rose-300',
+  NEUTRAL: 'text-slate-200',
+}
+
+type DirectionalCall = {
+  bias: DirectionalBias
+  label: string
+  summary: string
+  anchorProbability: number
+  counterProbability: number
+  spread: number
 }
 
 function describeConfidenceLevel(confidence: number): string {
@@ -80,10 +115,11 @@ function describeSampleDensity(sampleCount: number): string {
   return 'limited'
 }
 
-function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
+function generateQuantumInterpretation(signal: QuantumCompositeSignal): QuantumInterpretation {
   const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
+  const directionalCall = evaluateDirectionalCall(signal)
 
   const sortedProbabilities = [...signal.probabilities].sort((a, b) => b.probability - a.probability)
   const topProbability = sortedProbabilities[0] ?? null
@@ -96,6 +132,10 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
     topProbability && secondaryProbability
       ? Math.max(0, Math.round((topProbability.probability - secondaryProbability.probability) * 1000) / 10)
       : null
+  const probabilityBreakdown = sortedProbabilities
+    .slice(0, 3)
+    .map((probability) => `${STATE_LABELS[probability.state].toLowerCase()} ${formatProbability(probability.probability)}`)
+    .join(', ')
 
   const sortedComponents = [...signal.components].sort((a, b) => b.weight - a.weight)
   const primaryComponents = sortedComponents.slice(0, 2)
@@ -106,6 +146,10 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
       const valueLabel = formatProbability(component.value)
       return `${component.label.toLowerCase()} (${weightLabel} influence, projecting ${valueLabel})`
     })
+  const componentSummary =
+    componentHighlights.length > 0
+      ? `${componentHighlights.join(' • ')}.`
+      : 'Influence is evenly shared with no standout driver yet.'
 
   const sampleCount = signal.debug.sampleCount
   const sampleDescriptor = describeSampleDensity(sampleCount)
@@ -120,38 +164,55 @@ function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
     return current
   }, signal.phases[0] ?? null)
 
-  const phaseSentence = notablePhase
+  const phaseSummary = notablePhase
     ? notablePhase.magnitude >= 0.35
-      ? `${notablePhase.label} is the loudest interference lane with a ${notablePhase.direction} bias and ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
-      : `${notablePhase.label} is showing a soft ${notablePhase.direction} drift (${formatPhaseShiftRadians(notablePhase.shift)}).`
-    : 'Phase telemetry is too muted to isolate a dominant interference lane yet.'
+      ? `${notablePhase.label} is humming the loudest with a ${notablePhase.direction} lean and a ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
+      : `${notablePhase.label} is drifting ${notablePhase.direction} (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
+    : 'Telemetry is quiet, so no dominant interference lane is defined yet.'
 
-  const insightSnippets = signal.insights.slice(0, 2)
-  const insightsSentence = insightSnippets.length > 0
-    ? `Key catalysts: ${insightSnippets.join(' ')}`
-    : 'No external catalyst clusters have been elevated this cycle.'
+  const bullets: QuantumInterpretation['bullets'] = []
 
-  const paragraphs: string[] = []
-  paragraphs.push(
-    `ChatGPT reads the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
+  bullets.push({
+    title: 'Dominant state',
+    body: `Leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
       topProbabilityLabel ?? 'n/a'
     } concentration around ${topProbabilityStateLabel}${probabilitySpread !== null ? `, ${probabilitySpread}% ahead of the next scenario` : ''}).`,
-  )
+  })
 
-  paragraphs.push(
-    `The composite was synthesized from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the model adequate depth for the current pass.`,
-  )
+  bullets.push({
+    title: 'State probabilities',
+    body: probabilityBreakdown
+      ? probabilityBreakdown
+      : 'Distribution is too flat to call out leaders yet.',
+  })
 
-  if (componentHighlights.length > 0) {
-    paragraphs.push(`Dominant drivers: ${componentHighlights.join(' • ')}.`)
-  } else {
-    paragraphs.push('Component weights are evenly distributed without a clear concentration driver yet.')
+  bullets.push({
+    title: 'Trade posture',
+    body:
+      directionalCall.bias === 'NEUTRAL'
+        ? `Staying patient — ${directionalCall.summary}`
+        : `Leaning ${directionalCall.bias.toLowerCase()} — ${directionalCall.summary}`,
+  })
+
+  bullets.push({
+    title: 'Fusion components',
+    body: componentSummary,
+  })
+
+  bullets.push({
+    title: 'Signal depth',
+    body: `Composite pulled from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the readout its current texture.`,
+  })
+
+  bullets.push({
+    title: 'Phase diagnostic',
+    body: phaseSummary,
+  })
+
+  return {
+    intro: 'Here’s the quantum readout in plain language — distilled into quick bites.',
+    bullets,
   }
-
-  paragraphs.push(phaseSentence)
-  paragraphs.push(insightsSentence)
-
-  return paragraphs.join(' ')
 }
 
 function formatProbability(probability: number): string {
@@ -168,6 +229,50 @@ function formatPhaseShiftRadians(shift: number): string {
     return '0°'
   }
   return degrees > 0 ? `+${degrees}°` : `${degrees}°`
+}
+
+function evaluateDirectionalCall(signal: QuantumCompositeSignal): DirectionalCall {
+  const upProbability =
+    signal.probabilities.find((probability) => probability.state === 'Up')?.probability ?? 0
+  const downProbability =
+    signal.probabilities.find((probability) => probability.state === 'Down')?.probability ?? 0
+  const anchorIsLong = upProbability >= downProbability
+  const anchorProbability = anchorIsLong ? upProbability : downProbability
+  const counterProbability = anchorIsLong ? downProbability : upProbability
+  const spread = Math.round(Math.abs(anchorProbability - counterProbability) * 1000) / 10
+
+  let bias: DirectionalBias = 'NEUTRAL'
+  if (spread >= 2) {
+    bias = anchorIsLong ? 'LONG' : 'SHORT'
+  }
+
+  const anchorLabel = formatProbability(anchorProbability)
+  const counterLabel = formatProbability(counterProbability)
+
+  const summary =
+    bias === 'NEUTRAL'
+      ? `longs and shorts are effectively balanced (${formatProbability(upProbability)} vs ${formatProbability(
+          downProbability,
+        )}).`
+      : anchorIsLong
+        ? `longs carry a ${spread}% edge (${anchorLabel} vs ${counterLabel}).`
+        : `shorts carry a ${spread}% edge (${anchorLabel} vs ${counterLabel}).`
+
+  const label =
+    bias === 'NEUTRAL'
+      ? 'Neutral balance'
+      : anchorIsLong
+        ? 'Long bias'
+        : 'Short bias'
+
+  return {
+    bias,
+    label,
+    summary,
+    anchorProbability,
+    counterProbability,
+    spread,
+  }
 }
 
 function renderProbability(probability: QuantumProbability) {
@@ -193,7 +298,14 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const confidenceLabel = data ? formatConfidence(data.confidence) : null
   const sampleCount = data?.debug.sampleCount ?? 0
   const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
-  const chatGptInterpretation = data ? generateChatGPTInterpretation(data) : null
+  const quantumInterpretation = data ? generateQuantumInterpretation(data) : null
+  const directionalCall = data ? evaluateDirectionalCall(data) : null
+  const directionalBadgeClass = directionalCall
+    ? DIRECTIONAL_BADGE_CLASS[directionalCall.bias]
+    : DIRECTIONAL_BADGE_CLASS.NEUTRAL
+  const directionalTextClass = directionalCall
+    ? DIRECTIONAL_TEXT_CLASS[directionalCall.bias]
+    : DIRECTIONAL_TEXT_CLASS.NEUTRAL
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -204,7 +316,10 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
             Hybrid fusion of Markov priors, indicator bias and interference-aware probabilities
           </span>
         </div>
-        <Badge className={badgeClass}>{stateLabel}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={badgeClass}>{stateLabel}</Badge>
+          {directionalCall && <Badge className={directionalBadgeClass}>{directionalCall.label}</Badge>}
+        </div>
       </header>
 
       <div className="flex flex-col gap-6 px-5 py-5">
@@ -224,6 +339,17 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Dominant state</span>
                   <span className="text-lg font-semibold text-white">{stateLabel}</span>
                 </div>
+                {directionalCall && (
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Trade posture
+                    </span>
+                    <span className={`text-lg font-semibold ${directionalTextClass}`}>
+                      {directionalCall.label}
+                    </span>
+                    <span className="text-[11px] text-slate-400">{directionalCall.summary}</span>
+                  </div>
+                )}
                 <div className="flex flex-col text-right">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Confidence</span>
                   <span className="text-lg font-semibold text-white">{confidenceLabel}</span>
@@ -294,14 +420,27 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
               </div>
             </section>
 
-            {chatGptInterpretation && (
+            {quantumInterpretation && (
               <section className="flex flex-col gap-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  ChatGPT interpretation
+                  Quantum interpretation
                 </span>
-                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
-                  {chatGptInterpretation}
-                </p>
+                <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                  <p className="text-sm text-slate-300">{quantumInterpretation.intro}</p>
+                  <ul className="flex flex-col gap-2">
+                    {quantumInterpretation.bullets.map((bullet) => (
+                      <li
+                        key={`quantum-interpretation-${bullet.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                        className="flex flex-col gap-1 rounded-xl bg-slate-900/60 px-3 py-2"
+                      >
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {bullet.title}
+                        </span>
+                        <span className="text-sm text-slate-200">{bullet.body}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </section>
             )}
           </>

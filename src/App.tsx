@@ -270,9 +270,6 @@ const STORAGE_KEYS = {
   rsiUpperBound: 'ctn:rsiUpperBound',
   stochasticLowerBound: 'ctn:stochasticLowerBound',
   stochasticUpperBound: 'ctn:stochasticUpperBound',
-  currentEquity: 'ctn:currentEquity',
-  riskBudgetPercent: 'ctn:riskBudgetPercent',
-  atrMultiplier: 'ctn:atrMultiplier',
 } as const
 
 const isBrowser = typeof window !== 'undefined'
@@ -534,15 +531,6 @@ function App() {
       readLocalStorage(STORAGE_KEYS.stochasticUpperBound) ??
       DEFAULT_MOMENTUM_BOUNDS.stochasticUpper.toString(),
   )
-  const [currentEquityInput, setCurrentEquityInput] = useState(
-    () => readLocalStorage(STORAGE_KEYS.currentEquity) ?? '',
-  )
-  const [riskBudgetPercentInput, setRiskBudgetPercentInput] = useState(
-    () => readLocalStorage(STORAGE_KEYS.riskBudgetPercent) ?? '0.75',
-  )
-  const [atrMultiplierInput, setAtrMultiplierInput] = useState(
-    () => readLocalStorage(STORAGE_KEYS.atrMultiplier) ?? '1',
-  )
   const notificationTimeframes = MOMENTUM_SIGNAL_TIMEFRAMES
   const lastMomentumTriggerRef = useRef<string | null>(null)
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
@@ -608,18 +596,6 @@ function App() {
   useEffect(() => {
     writeLocalStorage(STORAGE_KEYS.stochasticUpperBound, stochasticUpperBoundInput)
   }, [stochasticUpperBoundInput])
-
-  useEffect(() => {
-    writeLocalStorage(STORAGE_KEYS.currentEquity, currentEquityInput)
-  }, [currentEquityInput])
-
-  useEffect(() => {
-    writeLocalStorage(STORAGE_KEYS.riskBudgetPercent, riskBudgetPercentInput)
-  }, [riskBudgetPercentInput])
-
-  useEffect(() => {
-    writeLocalStorage(STORAGE_KEYS.atrMultiplier, atrMultiplierInput)
-  }, [atrMultiplierInput])
 
   const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
 
@@ -1851,12 +1827,6 @@ function App() {
       onStochasticLowerBoundInputChange={setStochasticLowerBoundInput}
       stochasticUpperBoundInput={stochasticUpperBoundInput}
       onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
-      currentEquity={currentEquityInput}
-      onCurrentEquityChange={setCurrentEquityInput}
-      riskBudgetPercent={riskBudgetPercentInput}
-      onRiskBudgetPercentChange={setRiskBudgetPercentInput}
-      atrMultiplier={atrMultiplierInput}
-      onAtrMultiplierChange={setAtrMultiplierInput}
       signals={tradingSignals}
       signalsLoading={areSignalsLoading}
       timeframeSnapshots={timeframeSnapshots}
@@ -1883,7 +1853,6 @@ function App() {
       movingAverageSeries={movingAverageSeries}
       macdSeries={macdSeries}
       adxSeries={adxSeries}
-      heatmapResults={heatmapResults}
       rsiLengthDescription={rsiLengthDescription}
       rsiValues={rsiValues}
       labels={labels}
