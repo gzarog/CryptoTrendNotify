@@ -40,6 +40,98 @@ type QuantumPredictionPanelProps = {
   isLoading: boolean
 }
 
+function describeConfidenceLevel(confidence: number): string {
+  if (!Number.isFinite(confidence)) {
+    return 'low conviction'
+  }
+
+  if (confidence >= 0.85) {
+    return 'strong conviction'
+  }
+
+  if (confidence >= 0.7) {
+    return 'constructive conviction'
+  }
+
+  if (confidence >= 0.55) {
+    return 'balanced conviction'
+  }
+
+  return 'cautious conviction'
+}
+
+function describeSampleDensity(sampleCount: number): string {
+  if (!Number.isFinite(sampleCount) || sampleCount <= 0) {
+    return 'sparse'
+  }
+
+  if (sampleCount >= 12) {
+    return 'rich'
+  }
+
+  if (sampleCount >= 6) {
+    return 'healthy'
+  }
+
+  if (sampleCount >= 3) {
+    return 'developing'
+  }
+
+  return 'limited'
+}
+
+function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
+  const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
+  const confidenceLabel = formatConfidence(signal.confidence)
+  const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
+  const topProbability = signal.probabilities.reduce<QuantumProbability | null>((current, candidate) => {
+    if (!current) {
+      return candidate
+    }
+    if (candidate.probability > current.probability) {
+      return candidate
+    }
+    return current
+  }, null)
+  const topProbabilityLabel = topProbability ? formatProbability(topProbability.probability) : null
+  const topProbabilityStateLabel = topProbability ? STATE_LABELS[topProbability.state].toLowerCase() : dominantStateLabel
+
+  const dominantComponent = signal.components.reduce<QuantumCompositeSignal['components'][number] | null>((current, candidate) => {
+    if (!current) {
+      return candidate
+    }
+    if (candidate.weight > current.weight) {
+      return candidate
+    }
+    return current
+  }, signal.components[0] ?? null)
+  const dominantComponentLabel = dominantComponent ? dominantComponent.label.toLowerCase() : 'fusion'
+
+  const sampleCount = signal.debug.sampleCount
+  const sampleDescriptor = describeSampleDensity(sampleCount)
+
+  const notablePhase = signal.phases.reduce<QuantumCompositeSignal['phases'][number] | null>((current, candidate) => {
+    if (!current) {
+      return candidate
+    }
+    if (candidate.magnitude > current.magnitude) {
+      return candidate
+    }
+    return current
+  }, signal.phases[0] ?? null)
+
+  const phaseSentence = notablePhase && notablePhase.magnitude >= 0.35
+    ? `Phase telemetry highlights ${notablePhase.label.toLowerCase()} with a ${notablePhase.direction} skew (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
+    : 'Phase telemetry remains orderly without a dominant skew.'
+
+  const insightSnippets = signal.insights.slice(0, 2)
+  const insightsSentence = insightSnippets.length > 0
+    ? `Key drivers: ${insightSnippets.join(' ')}`
+    : 'The engine has not flagged any notable external drivers yet.'
+
+  return `ChatGPT interprets the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${topProbabilityLabel ?? 'n/a'} probability concentration around the ${topProbabilityStateLabel}). The signal is built on a ${sampleDescriptor} sample set (${sampleCount} snapshots) and is currently most influenced by the ${dominantComponentLabel} component. ${phaseSentence} ${insightsSentence}`
+}
+
 function formatProbability(probability: number): string {
   return `${Math.round(probability * 1000) / 10}%`
 }
@@ -79,6 +171,7 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const confidenceLabel = data ? formatConfidence(data.confidence) : null
   const sampleCount = data?.debug.sampleCount ?? 0
   const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
+  const chatGptInterpretation = data ? generateChatGPTInterpretation(data) : null
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -150,6 +243,15 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                 })}
               </div>
             </section>
+
+            {chatGptInterpretation && (
+              <section className="flex flex-col gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">ChatGPT interpretation</span>
+                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
+                  {chatGptInterpretation}
+                </p>
+              </section>
+            )}
 
             <section className="flex flex-col gap-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Phase diagnostics</span>
