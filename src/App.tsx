@@ -12,6 +12,7 @@ import {
   calculateStochasticRSI,
 } from './lib/indicators'
 import { deriveSignalsFromHeatmap, deriveTimeframeSnapshots } from './lib/signals'
+import { deriveQuantumCompositeSignal } from './lib/quantum'
 import { fetchHeatmapResults } from './lib/heatmap'
 import type { HeatmapResult } from './types/heatmap'
 import {
@@ -108,6 +109,17 @@ export type MovingAverageCrossNotification = {
   direction: 'golden' | 'death'
   intensity: Exclude<MomentumIntensity, 'red'>
   price: number
+  triggeredAt: number
+}
+
+export type QuantumPhaseNotification = {
+  id: string
+  symbol: string
+  direction: 'long' | 'short'
+  phaseAngle: number
+  compositeBias: number
+  flipSignal: string
+  flipBias: 'LONG' | 'SHORT' | 'NEUTRAL'
   triggeredAt: number
 }
 
@@ -242,6 +254,7 @@ const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 const MAX_SIGNAL_NOTIFICATIONS = 6
 const MAX_COMBINED_SIGNAL_NOTIFICATIONS = 6
+const MAX_QUANTUM_PHASE_NOTIFICATIONS = 6
 const MIN_COMBINED_SIGNAL_SCORE = 2
 const SIGNAL_NOTIFICATION_MIN_SCORE = 60
 
@@ -444,6 +457,29 @@ function formatTriggeredAt(timestamp: number): string {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
 }
 
+function formatDegrees(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0°'
+  }
+
+  const rounded = Math.round(value)
+  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
+}
+
+function formatSignedPercent(value: number, decimals = 1): string {
+  if (!Number.isFinite(value)) {
+    return '0%'
+  }
+
+  const multiplier = 10 ** decimals
+  const scaled = Math.round(value * 100 * multiplier) / multiplier
+  const normalized = Object.is(scaled, -0) ? 0 : scaled
+
+  return normalized > 0
+    ? `+${normalized.toFixed(decimals)}%`
+    : `${normalized.toFixed(decimals)}%`
+}
+
 function resolveBarLimit(selection: string, customValue: string): number | null {
   const parseValue = (value: string) => {
     const parsed = Number.parseInt(value, 10)
@@ -530,12 +566,14 @@ function App() {
   const lastMovingAverageTriggersRef = useRef<Record<string, string>>({})
   const lastSignalTriggersRef = useRef<Record<string, string>>({})
   const lastCombinedSignalTriggersRef = useRef<Record<string, string>>({})
+  const lastQuantumPhaseTriggerRef = useRef<'long' | 'short' | null>(null)
   const [momentumNotifications, setMomentumNotifications] = useState<MomentumNotification[]>([])
   const [movingAverageNotifications, setMovingAverageNotifications] =
     useState<MovingAverageCrossNotification[]>([])
   const [signalNotifications, setSignalNotifications] = useState<SignalNotification[]>([])
   const [combinedSignalNotifications, setCombinedSignalNotifications] =
     useState<CombinedSignalNotification[]>([])
+  const [quantumPhaseNotifications, setQuantumPhaseNotifications] = useState<QuantumPhaseNotification[]>([])
   const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
@@ -868,9 +906,11 @@ function App() {
     lastMomentumTriggerRef.current = null
     lastMovingAverageTriggersRef.current = {}
     lastCombinedSignalTriggersRef.current = {}
+    lastQuantumPhaseTriggerRef.current = null
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setCombinedSignalNotifications([])
+    setQuantumPhaseNotifications([])
   }, [normalizedSymbol])
 
   useEffect(() => {
@@ -878,6 +918,7 @@ function App() {
       lastMomentumTriggerRef.current = null
       lastMovingAverageTriggersRef.current = {}
       lastCombinedSignalTriggersRef.current = {}
+      lastQuantumPhaseTriggerRef.current = null
     }
   }, [pushNotificationsEnabled])
 
@@ -1033,6 +1074,11 @@ function App() {
     [heatmapResults],
   )
 
+  const compositeQuantumSignal = useMemo(
+    () => deriveQuantumCompositeSignal(timeframeSnapshots),
+    [timeframeSnapshots],
+  )
+
   const areSignalsLoading = heatmapQuery.isLoading || heatmapQuery.isFetching
 
   const momentumThresholds = useMemo(() => {
@@ -1160,11 +1206,16 @@ function App() {
     () => combinedSignalNotifications,
     [combinedSignalNotifications],
   )
+  const visibleQuantumPhaseNotifications = useMemo(
+    () => quantumPhaseNotifications,
+    [quantumPhaseNotifications],
+  )
   const handleClearNotifications = useCallback(() => {
     setMomentumNotifications([])
     setMovingAverageNotifications([])
     setSignalNotifications([])
     setCombinedSignalNotifications([])
+    setQuantumPhaseNotifications([])
   }, [])
 
   useEffect(() => {
@@ -1430,6 +1481,78 @@ function App() {
   ])
 
   useEffect(() => {
+    if (!compositeQuantumSignal) {
+      lastQuantumPhaseTriggerRef.current = null
+      return
+    }
+
+    const { flipThreshold } = compositeQuantumSignal
+    const phaseAngle = flipThreshold.phaseAngle
+
+    if (!Number.isFinite(phaseAngle)) {
+      lastQuantumPhaseTriggerRef.current = null
+      return
+    }
+
+    if (phaseAngle > -45 && phaseAngle < 45) {
+      lastQuantumPhaseTriggerRef.current = null
+      return
+    }
+
+    const direction: 'long' | 'short' | null = phaseAngle >= 45 ? 'long' : phaseAngle <= -45 ? 'short' : null
+
+    if (!direction) {
+      return
+    }
+
+    if (lastQuantumPhaseTriggerRef.current === direction) {
+      return
+    }
+
+    lastQuantumPhaseTriggerRef.current = direction
+
+    const triggeredAt = Date.now()
+    const id = `${normalizedSymbol}-quantum-phase-${direction}-${triggeredAt}`
+    const entry: QuantumPhaseNotification = {
+      id,
+      symbol: normalizedSymbol,
+      direction,
+      phaseAngle,
+      compositeBias: flipThreshold.compositeBias,
+      flipSignal: flipThreshold.signal,
+      flipBias: flipThreshold.bias,
+      triggeredAt,
+    }
+
+    setQuantumPhaseNotifications((previous) => {
+      const next = [entry, ...previous]
+      return next.slice(0, MAX_QUANTUM_PHASE_NOTIFICATIONS)
+    })
+
+    const emoji = direction === 'long' ? '🟢' : '🔴'
+    const angleLabel = formatDegrees(phaseAngle)
+    const compositeBiasLabel = formatSignedPercent(flipThreshold.compositeBias)
+    const bodyParts = [
+      `Phase angle ${angleLabel}`,
+      `Composite bias ${compositeBiasLabel}`,
+      flipThreshold.signal,
+    ]
+
+    void showAppNotification({
+      title: `${emoji} ${normalizedSymbol} quantum phase ${direction === 'long' ? 'upswing' : 'downswing'}`,
+      body: bodyParts.join(' — '),
+      tag: `quantum-phase-${normalizedSymbol}-${direction}`,
+      data: {
+        type: 'quantum-phase',
+        symbol: normalizedSymbol,
+        direction,
+        phaseAngle,
+        signal: flipThreshold.signal,
+      },
+    })
+  }, [compositeQuantumSignal, normalizedSymbol])
+
+  useEffect(() => {
     const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
       const query = notificationQueries[index]
       const candles = query?.data
@@ -1624,6 +1747,12 @@ function App() {
     )
   }, [])
 
+  const dismissQuantumPhaseNotification = useCallback((notificationId: string) => {
+    setQuantumPhaseNotifications((previous) =>
+      previous.filter((notification) => notification.id !== notificationId),
+    )
+  }, [])
+
   const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
 
   const handleInstall = async () => {
@@ -1709,11 +1838,13 @@ function App() {
       visibleMovingAverageNotifications={visibleMovingAverageNotifications}
       visibleSignalNotifications={visibleSignalNotifications}
       visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
+      visibleQuantumPhaseNotifications={visibleQuantumPhaseNotifications}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}
       onDismissMovingAverageNotification={dismissMovingAverageNotification}
       onDismissCombinedSignalNotification={dismissCombinedSignalNotification}
+      onDismissQuantumPhaseNotification={dismissQuantumPhaseNotification}
       onClearNotifications={handleClearNotifications}
       lastUpdatedLabel={lastUpdatedLabel}
       refreshInterval={refreshInterval}
