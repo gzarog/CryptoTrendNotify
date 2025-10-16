@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { TIMEFRAMES } from '../../constants/timeframes'
+import { showAppNotification } from '../../lib/notifications'
+import { deriveQuantumCompositeSignal, type TrendState } from '../../lib/quantum'
 import { getMultiTimeframeSignal } from '../../lib/signals'
 import type { TimeframeSignalSnapshot, TradingSignal } from '../../types/signals'
 import { MultiTimeframeSummary } from './MultiTimeframeSummary'
 import { PlaceholderCard } from './PlaceholderCard'
+import { QuantumPredictionPanel } from './QuantumPredictionPanel'
 import { SignalHighlights } from './SignalHighlights'
 import { TimeframeOverviewCard } from './TimeframeOverviewCard'
 import { snapshotsToMap, sortSnapshotsByTimeframe } from './utils'
@@ -12,9 +15,10 @@ type SignalsPanelProps = {
   signals: TradingSignal[]
   snapshots: TimeframeSignalSnapshot[]
   isLoading: boolean
+  symbol: string
 }
 
-export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProps) {
+export function SignalsPanel({ signals, snapshots, isLoading, symbol }: SignalsPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   const sortedSignals = useMemo(
@@ -24,8 +28,81 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
 
   const primaryHighlights = useMemo(() => sortedSignals.slice(0, 6), [sortedSignals])
   const multiTimeframeSignal = useMemo(() => getMultiTimeframeSignal(snapshots), [snapshots])
+  const quantumSignal = useMemo(() => deriveQuantumCompositeSignal(snapshots), [snapshots])
   const normalizedSnapshots = useMemo(() => sortSnapshotsByTimeframe(snapshots), [snapshots])
   const snapshotsByTimeframe = useMemo(() => snapshotsToMap(normalizedSnapshots), [normalizedSnapshots])
+
+  const lastQuantumStateRef = useRef<TrendState | null>(null)
+
+  useEffect(() => {
+    lastQuantumStateRef.current = null
+  }, [symbol])
+
+  useEffect(() => {
+    if (!quantumSignal) {
+      lastQuantumStateRef.current = null
+      return
+    }
+
+    const previousState = lastQuantumStateRef.current
+    const nextState = quantumSignal.state
+    const meetsConfidence = Number.isFinite(quantumSignal.confidence) && quantumSignal.confidence >= 0.72
+
+    if (previousState && previousState !== nextState && meetsConfidence) {
+      const quantumVector = quantumSignal.debug?.quantumVector
+      const markovVector = quantumSignal.debug?.markovVector
+
+      const safeValues = (values: number[] | undefined): number[] =>
+        Array.isArray(values) ? values.filter((value) => Number.isFinite(value)) : []
+
+      const maxFromVector = (vector: typeof quantumVector): number => {
+        if (!vector) {
+          return 0
+        }
+        const values = safeValues(Object.values(vector))
+        return values.length > 0 ? Math.max(...values) : 0
+      }
+
+      const clamp01 = (value: number): number =>
+        Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0
+
+      const formatPercent = (value: number): string => `${Math.round(clamp01(value) * 1000) / 10}%`
+
+      const maxQuantumProb = maxFromVector(quantumVector)
+      const maxMarkovProb = maxFromVector(markovVector)
+
+      const debugSnippet = {
+        state: nextState,
+        confidence: quantumSignal.confidence,
+        fused: quantumSignal.debug?.fusedVector ?? null,
+        quantum: quantumVector ?? null,
+        markov: markovVector ?? null,
+        weights: quantumSignal.debug?.weights ?? null,
+        phases: quantumSignal.phases.map((phase) => ({
+          key: phase.key,
+          shift: phase.shift,
+          direction: phase.direction,
+          magnitude: phase.magnitude,
+        })),
+      }
+
+      void showAppNotification({
+        title: `[Quantum] Strong ${nextState}`,
+        body: `Conf=${formatPercent(quantumSignal.confidence)} | Pq=${formatPercent(maxQuantumProb)} | Pc=${formatPercent(maxMarkovProb)} | TF=Composite`,
+        tag: `quantum-${symbol.toLowerCase()}`,
+        data: {
+          type: 'quantum-signal',
+          symbol,
+          timeframe: 'composite',
+          state: nextState,
+          confidence: quantumSignal.confidence,
+          debug: debugSnippet,
+        },
+      })
+    }
+
+    lastQuantumStateRef.current = nextState
+  }, [quantumSignal, symbol])
 
   return (
     <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 shadow-xl">
@@ -66,6 +143,8 @@ export function SignalsPanel({ signals, snapshots, isLoading }: SignalsPanelProp
           </div>
 
           {multiTimeframeSignal && <MultiTimeframeSummary signal={multiTimeframeSignal} />}
+
+          <QuantumPredictionPanel data={quantumSignal} isLoading={isLoading} />
 
           <div className="grid gap-4 md:grid-cols-2">
             {TIMEFRAMES.map(({ value, label }) => {
