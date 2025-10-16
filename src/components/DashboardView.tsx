@@ -4,10 +4,10 @@ import type {
   MomentumNotification,
   MovingAverageCrossNotification,
   MovingAverageMarker,
+  QuantumPhaseNotification,
 } from '../App'
 import type {
   CombinedSignalNotification,
-  MultiTimeframeSignalNotification,
   SignalNotification,
   TimeframeSignalSnapshot,
   TradingSignal,
@@ -28,6 +28,16 @@ const MOMENTUM_CARD_CLASSES: Record<MomentumIntensity, string> = {
   yellow: 'border-amber-400/40 bg-amber-500/10 text-amber-100',
   orange: 'border-orange-400/40 bg-orange-500/10 text-orange-100',
   red: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+}
+
+const QUANTUM_PHASE_CARD_CLASSES: Record<'long' | 'short', string> = {
+  long: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100',
+  short: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
+}
+
+const QUANTUM_PHASE_EMOJI: Record<'long' | 'short', string> = {
+  long: '🟢',
+  short: '🔴',
 }
 
 const MOVING_AVERAGE_DIRECTION_LABELS: Record<'golden' | 'death', string> = {
@@ -51,6 +61,29 @@ function getHeatmapCardClass(strength: string | null | undefined): string {
 
   const normalized = strength.toLowerCase()
   return HEATMAP_CARD_CLASS_BY_STRENGTH[normalized] ?? HEATMAP_DEFAULT_CARD_CLASS
+}
+
+function formatDegrees(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0°'
+  }
+
+  const rounded = Math.round(value)
+  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
+}
+
+function formatSignedPercent(value: number, decimals = 1): string {
+  if (!Number.isFinite(value)) {
+    return '0%'
+  }
+
+  const multiplier = 10 ** decimals
+  const scaled = Math.round(value * 100 * multiplier) / multiplier
+  const normalized = Object.is(scaled, -0) ? 0 : scaled
+
+  return normalized > 0
+    ? `+${normalized.toFixed(decimals)}%`
+    : `${normalized.toFixed(decimals)}%`
 }
 
 const COMBINED_DIRECTION_CARD_CLASSES: Record<string, string> = {
@@ -113,13 +146,13 @@ type DashboardViewProps = {
   visibleMomentumNotifications: MomentumNotification[]
   visibleSignalNotifications: SignalNotification[]
   visibleCombinedSignalNotifications: CombinedSignalNotification[]
-  visibleMultiTimeframeSignalNotifications: MultiTimeframeSignalNotification[]
+  visibleQuantumPhaseNotifications: QuantumPhaseNotification[]
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
   onDismissSignalNotification: (notificationId: string) => void
   onDismissCombinedSignalNotification: (notificationId: string) => void
-  onDismissMultiTimeframeSignalNotification: (notificationId: string) => void
+  onDismissQuantumPhaseNotification: (notificationId: string) => void
   onClearNotifications: () => void
   lastUpdatedLabel: string
   refreshInterval: number | false
@@ -205,13 +238,13 @@ export function DashboardView({
   visibleMomentumNotifications,
   visibleSignalNotifications,
   visibleCombinedSignalNotifications,
-  visibleMultiTimeframeSignalNotifications,
+  visibleQuantumPhaseNotifications,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
   onDismissSignalNotification,
   onDismissCombinedSignalNotification,
-  onDismissMultiTimeframeSignalNotification,
+  onDismissQuantumPhaseNotification,
   onClearNotifications,
   lastUpdatedLabel,
   refreshInterval,
@@ -243,13 +276,13 @@ export function DashboardView({
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
-        ...visibleMultiTimeframeSignalNotifications.map((entry) => ({
-          type: 'multi-timeframe' as const,
+        ...visibleCombinedSignalNotifications.map((entry) => ({
+          type: 'combined' as const,
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
-        ...visibleCombinedSignalNotifications.map((entry) => ({
-          type: 'combined' as const,
+        ...visibleQuantumPhaseNotifications.map((entry) => ({
+          type: 'quantum-phase' as const,
           triggeredAt: entry.triggeredAt,
           payload: entry,
         })),
@@ -266,17 +299,17 @@ export function DashboardView({
       ].sort((a, b) => b.triggeredAt - a.triggeredAt),
     [
       visibleSignalNotifications,
-      visibleMultiTimeframeSignalNotifications,
       visibleMomentumNotifications,
       visibleMovingAverageNotifications,
       visibleCombinedSignalNotifications,
+      visibleQuantumPhaseNotifications,
     ],
   )
 
   const totalNotificationCount =
     visibleSignalNotifications.length +
-    visibleMultiTimeframeSignalNotifications.length +
     visibleCombinedSignalNotifications.length +
+    visibleQuantumPhaseNotifications.length +
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length
 
@@ -463,66 +496,45 @@ export function DashboardView({
                           )
                         }
 
-                        if (notification.type === 'multi-timeframe') {
+                        if (notification.type === 'quantum-phase') {
                           const entry = notification.payload
-                          const directionKey = entry.direction.toLowerCase()
-                          const cardClasses =
-                            COMBINED_DIRECTION_CARD_CLASSES[directionKey] ??
-                            COMBINED_DIRECTION_CARD_CLASSES.neutral
-                          const emoji = COMBINED_DIRECTION_EMOJI[entry.direction] ?? '⚪️'
-                          const normalizedScoreValue = Object.is(entry.normalizedScore, -0)
-                            ? 0
-                            : entry.normalizedScore
-                          const formatSigned = (value: number) => {
-                            const raw = value.toFixed(1).replace(/\.0$/, '')
-                            return value > 0 ? `+${raw}` : raw
-                          }
-                          const normalizedLabel = formatSigned(normalizedScoreValue)
-                          const weightedScoreValue = entry.contributions.reduce(
-                            (sum, contribution) => sum + contribution.weightedScore,
-                            0,
-                          )
-                          const weightedLabel = formatSigned(weightedScoreValue)
-                          const contributionsSummary = entry.contributions
-                            .map((contribution) => {
-                              const contributionEmoji =
-                                contribution.signal.direction === 'Bullish'
-                                  ? '🟢'
-                                  : contribution.signal.direction === 'Bearish'
-                                  ? '🔴'
-                                  : '⚪️'
-                              return `${contributionEmoji} ${contribution.timeframeLabel} ${Math.round(contribution.signal.strength)}%`
-                            })
-                            .join(' • ')
+                          const cardClasses = QUANTUM_PHASE_CARD_CLASSES[entry.direction]
+                          const emoji = QUANTUM_PHASE_EMOJI[entry.direction]
+                          const angleLabel = formatDegrees(entry.phaseAngle)
+                          const compositeBiasLabel = formatSignedPercent(entry.compositeBias)
+                          const biasLabel =
+                            entry.flipBias === 'NEUTRAL'
+                              ? 'Neutral bias'
+                              : entry.flipBias === 'LONG'
+                                ? 'Long bias'
+                                : 'Short bias'
+                          const signalLabel = (() => {
+                            const normalized = entry.flipSignal.replace(/_/g, ' ').toLowerCase()
+                            return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+                          })()
 
                           return (
                             <div
-                              key={`multi-${entry.id}`}
+                              key={`quantum-phase-${entry.id}`}
                               className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <span className="text-[11px] font-semibold uppercase tracking-wide">
-                                  {emoji} Multi-timeframe {entry.direction.toLowerCase()} bias
+                                  {emoji} Quantum phase {entry.direction === 'long' ? 'upswing' : 'downswing'}
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => onDismissMultiTimeframeSignalNotification(entry.id)}
+                                  onClick={() => onDismissQuantumPhaseNotification(entry.id)}
                                   className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
-                                  aria-label="Dismiss multi-timeframe notification"
+                                  aria-label="Dismiss quantum phase notification"
                                 >
                                   ×
                                 </button>
                               </div>
                               <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                              <span className="text-[11px] text-white/80">
-                                Norm {normalizedLabel} • Weighted {weightedLabel} • Strength {entry.strength}%
-                              </span>
-                              <span className="text-[11px] text-white/80">
-                                {entry.combinedBias.strength.toLowerCase()} bias • Timeframes {entry.contributions.length}
-                              </span>
-                              {contributionsSummary && (
-                                <span className="text-[11px] text-white/80">{contributionsSummary}</span>
-                              )}
+                              <span className="text-[11px] text-white/80">Phase angle {angleLabel}</span>
+                              <span className="text-[11px] text-white/80">Composite bias {compositeBiasLabel}</span>
+                              <span className="text-[11px] text-white/80">{signalLabel} • {biasLabel.toLowerCase()}</span>
                               <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
                             </div>
                           )
