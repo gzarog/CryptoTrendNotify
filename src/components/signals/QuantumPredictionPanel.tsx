@@ -40,6 +40,120 @@ type QuantumPredictionPanelProps = {
   isLoading: boolean
 }
 
+function describeConfidenceLevel(confidence: number): string {
+  if (!Number.isFinite(confidence)) {
+    return 'low conviction'
+  }
+
+  if (confidence >= 0.85) {
+    return 'strong conviction'
+  }
+
+  if (confidence >= 0.7) {
+    return 'constructive conviction'
+  }
+
+  if (confidence >= 0.55) {
+    return 'balanced conviction'
+  }
+
+  return 'cautious conviction'
+}
+
+function describeSampleDensity(sampleCount: number): string {
+  if (!Number.isFinite(sampleCount) || sampleCount <= 0) {
+    return 'sparse'
+  }
+
+  if (sampleCount >= 12) {
+    return 'rich'
+  }
+
+  if (sampleCount >= 6) {
+    return 'healthy'
+  }
+
+  if (sampleCount >= 3) {
+    return 'developing'
+  }
+
+  return 'limited'
+}
+
+function generateChatGPTInterpretation(signal: QuantumCompositeSignal): string {
+  const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
+  const confidenceLabel = formatConfidence(signal.confidence)
+  const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
+
+  const sortedProbabilities = [...signal.probabilities].sort((a, b) => b.probability - a.probability)
+  const topProbability = sortedProbabilities[0] ?? null
+  const secondaryProbability = sortedProbabilities[1] ?? null
+  const topProbabilityLabel = topProbability ? formatProbability(topProbability.probability) : null
+  const topProbabilityStateLabel = topProbability
+    ? STATE_LABELS[topProbability.state].toLowerCase()
+    : dominantStateLabel
+  const probabilitySpread =
+    topProbability && secondaryProbability
+      ? Math.max(0, Math.round((topProbability.probability - secondaryProbability.probability) * 1000) / 10)
+      : null
+
+  const sortedComponents = [...signal.components].sort((a, b) => b.weight - a.weight)
+  const primaryComponents = sortedComponents.slice(0, 2)
+  const componentHighlights = primaryComponents
+    .filter((component) => component.weight >= 0.15)
+    .map((component) => {
+      const weightLabel = `${Math.round(component.weight * 100)}%`
+      const valueLabel = formatProbability(component.value)
+      return `${component.label.toLowerCase()} (${weightLabel} influence, projecting ${valueLabel})`
+    })
+
+  const sampleCount = signal.debug.sampleCount
+  const sampleDescriptor = describeSampleDensity(sampleCount)
+
+  const notablePhase = signal.phases.reduce<QuantumCompositeSignal['phases'][number] | null>((current, candidate) => {
+    if (!current) {
+      return candidate
+    }
+    if (candidate.magnitude > current.magnitude) {
+      return candidate
+    }
+    return current
+  }, signal.phases[0] ?? null)
+
+  const phaseSentence = notablePhase
+    ? notablePhase.magnitude >= 0.35
+      ? `${notablePhase.label} is the loudest interference lane with a ${notablePhase.direction} bias and ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
+      : `${notablePhase.label} is showing a soft ${notablePhase.direction} drift (${formatPhaseShiftRadians(notablePhase.shift)}).`
+    : 'Phase telemetry is too muted to isolate a dominant interference lane yet.'
+
+  const insightSnippets = signal.insights.slice(0, 2)
+  const insightsSentence = insightSnippets.length > 0
+    ? `Key catalysts: ${insightSnippets.join(' ')}`
+    : 'No external catalyst clusters have been elevated this cycle.'
+
+  const paragraphs: string[] = []
+  paragraphs.push(
+    `ChatGPT reads the quantum engine as leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
+      topProbabilityLabel ?? 'n/a'
+    } concentration around ${topProbabilityStateLabel}${probabilitySpread !== null ? `, ${probabilitySpread}% ahead of the next scenario` : ''}).`,
+  )
+
+  paragraphs.push(
+    `The composite was synthesized from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the model adequate depth for the current pass.`,
+  )
+
+  if (componentHighlights.length > 0) {
+    paragraphs.push(`Dominant drivers: ${componentHighlights.join(' • ')}.`)
+  } else {
+    paragraphs.push('Component weights are evenly distributed without a clear concentration driver yet.')
+  }
+
+  paragraphs.push(phaseSentence)
+  paragraphs.push(insightsSentence)
+
+  return paragraphs.join(' ')
+}
+
 function formatProbability(probability: number): string {
   return `${Math.round(probability * 1000) / 10}%`
 }
@@ -79,6 +193,7 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
   const confidenceLabel = data ? formatConfidence(data.confidence) : null
   const sampleCount = data?.debug.sampleCount ?? 0
   const sampleLabel = sampleCount === 1 ? 'timeframe snapshot' : 'timeframe snapshots'
+  const chatGptInterpretation = data ? generateChatGPTInterpretation(data) : null
 
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/70 shadow-lg">
@@ -179,16 +294,14 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
               </div>
             </section>
 
-            {data.insights.length > 0 && (
+            {chatGptInterpretation && (
               <section className="flex flex-col gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Quantum commentary</span>
-                <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-slate-200">
-                  {data.insights.map((insight, index) => (
-                    <li key={`insight-${index}`} className="marker:text-indigo-300">
-                      {insight}
-                    </li>
-                  ))}
-                </ul>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  ChatGPT interpretation
+                </span>
+                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
+                  {chatGptInterpretation}
+                </p>
               </section>
             )}
           </>
