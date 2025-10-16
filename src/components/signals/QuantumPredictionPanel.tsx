@@ -46,6 +46,14 @@ type QuantumPredictionPanelProps = {
 
 type DirectionalBias = 'LONG' | 'SHORT' | 'NEUTRAL'
 
+type QuantumInterpretation = {
+  intro: string
+  bullets: Array<{
+    title: string
+    body: string
+  }>
+}
+
 const DIRECTIONAL_BADGE_CLASS: Record<DirectionalBias, string> = {
   LONG: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
   SHORT: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
@@ -107,7 +115,7 @@ function describeSampleDensity(sampleCount: number): string {
   return 'limited'
 }
 
-function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
+function generateQuantumInterpretation(signal: QuantumCompositeSignal): QuantumInterpretation {
   const dominantStateLabel = STATE_LABELS[signal.state].toLowerCase()
   const confidenceLabel = formatConfidence(signal.confidence)
   const confidenceDescriptor = describeConfidenceLevel(signal.confidence)
@@ -138,10 +146,10 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
       const valueLabel = formatProbability(component.value)
       return `${component.label.toLowerCase()} (${weightLabel} influence, projecting ${valueLabel})`
     })
-  const componentSentence =
+  const componentSummary =
     componentHighlights.length > 0
-      ? `Fusion components: ${componentHighlights.join(' • ')}.`
-      : 'Fusion components: influence is evenly shared with no standout driver yet.'
+      ? `${componentHighlights.join(' • ')}.`
+      : 'Influence is evenly shared with no standout driver yet.'
 
   const sampleCount = signal.debug.sampleCount
   const sampleDescriptor = describeSampleDensity(sampleCount)
@@ -156,46 +164,55 @@ function generateQuantumInterpretation(signal: QuantumCompositeSignal): string {
     return current
   }, signal.phases[0] ?? null)
 
-  const phaseSentence = notablePhase
+  const phaseSummary = notablePhase
     ? notablePhase.magnitude >= 0.35
-      ? `Phase diagnostic: ${notablePhase.label} is humming the loudest with a ${notablePhase.direction} lean and a ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
-      : `Phase diagnostic: ${notablePhase.label} is drifting ${notablePhase.direction} (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
-    : 'Phase diagnostic: telemetry is quiet, so no dominant interference lane is defined yet.'
+      ? `${notablePhase.label} is humming the loudest with a ${notablePhase.direction} lean and a ${formatPhaseShiftRadians(notablePhase.shift)} shift.`
+      : `${notablePhase.label} is drifting ${notablePhase.direction} (${formatPhaseShiftRadians(notablePhase.shift)} shift).`
+    : 'Telemetry is quiet, so no dominant interference lane is defined yet.'
 
-  const paragraphs: string[] = []
-  paragraphs.push(
-    `Here’s the quantum readout in plain language.`,
-  )
+  const bullets: QuantumInterpretation['bullets'] = []
 
-  paragraphs.push(
-    `Dominant state: the field is leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
+  bullets.push({
+    title: 'Dominant state',
+    body: `Leaning toward a ${dominantStateLabel} with ${confidenceDescriptor} (${confidenceLabel} confidence, ${
       topProbabilityLabel ?? 'n/a'
     } concentration around ${topProbabilityStateLabel}${probabilitySpread !== null ? `, ${probabilitySpread}% ahead of the next scenario` : ''}).`,
-  )
+  })
 
-  paragraphs.push(
-    probabilityBreakdown
-      ? `State probabilities: ${probabilityBreakdown}.`
-      : 'State probabilities: distribution is too flat to call out leaders yet.',
-  )
+  bullets.push({
+    title: 'State probabilities',
+    body: probabilityBreakdown
+      ? probabilityBreakdown
+      : 'Distribution is too flat to call out leaders yet.',
+  })
 
-  if (directionalCall.bias === 'NEUTRAL') {
-    paragraphs.push(`Trade posture: staying patient — ${directionalCall.summary}`)
-  } else {
-    paragraphs.push(
-      `Trade posture: leaning ${directionalCall.bias.toLowerCase()} — ${directionalCall.summary}`,
-    )
+  bullets.push({
+    title: 'Trade posture',
+    body:
+      directionalCall.bias === 'NEUTRAL'
+        ? `Staying patient — ${directionalCall.summary}`
+        : `Leaning ${directionalCall.bias.toLowerCase()} — ${directionalCall.summary}`,
+  })
+
+  bullets.push({
+    title: 'Fusion components',
+    body: componentSummary,
+  })
+
+  bullets.push({
+    title: 'Signal depth',
+    body: `Composite pulled from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, giving the readout its current texture.`,
+  })
+
+  bullets.push({
+    title: 'Phase diagnostic',
+    body: phaseSummary,
+  })
+
+  return {
+    intro: 'Here’s the quantum readout in plain language — distilled into quick bites.',
+    bullets,
   }
-
-  paragraphs.push(componentSentence)
-
-  paragraphs.push(
-    `Signal depth: the composite pulled from a ${sampleDescriptor} archive of ${sampleCount} timeframe snapshot${sampleCount === 1 ? '' : 's'}, which gives this take the necessary texture.`,
-  )
-
-  paragraphs.push(phaseSentence)
-
-  return paragraphs.join(' ')
 }
 
 function formatProbability(probability: number): string {
@@ -408,9 +425,22 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Quantum interpretation
                 </span>
-                <p className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
-                  {quantumInterpretation}
-                </p>
+                <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                  <p className="text-sm text-slate-300">{quantumInterpretation.intro}</p>
+                  <ul className="flex flex-col gap-2">
+                    {quantumInterpretation.bullets.map((bullet) => (
+                      <li
+                        key={`quantum-interpretation-${bullet.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                        className="flex flex-col gap-1 rounded-xl bg-slate-900/60 px-3 py-2"
+                      >
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {bullet.title}
+                        </span>
+                        <span className="text-sm text-slate-200">{bullet.body}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </section>
             )}
           </>
