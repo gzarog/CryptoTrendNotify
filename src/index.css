@@ -1,5 +1,32 @@
 @import "tailwindcss";
-@plugin "tailwindcss-animate";
+
+@theme {
+  --color-background: 225 48% 6%;
+  --color-foreground: 217 100% 97%;
+  --color-card: 222 47% 11%;
+  --color-card-foreground: 217 100% 96%;
+  --color-popover: 222 47% 13%;
+  --color-popover-foreground: 217 100% 96%;
+  --color-primary: 222 89% 66%;
+  --color-primary-foreground: 210 40% 96%;
+  --color-secondary: 225 32% 20%;
+  --color-secondary-foreground: 217 100% 96%;
+  --color-muted: 225 32% 20%;
+  --color-muted-foreground: 215 20% 65%;
+  --color-accent: 226 72% 37%;
+  --color-accent-foreground: 210 40% 96%;
+  --color-destructive: 0 84% 60%;
+  --color-destructive-foreground: 210 40% 96%;
+  --color-border: 223 47% 18%;
+  --color-input: 223 47% 18%;
+  --color-ring: 222 89% 66%;
+  --color-ring-offset-background: 225 48% 6%;
+  --radius-lg: 0.9rem;
+  --radius-md: calc(0.9rem - 2px);
+  --radius-sm: calc(0.9rem - 4px);
+  --font-sans: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  --shadow-glow: 0 0 0 1px hsla(222 89% 66% / 0.4), 0 20px 45px -20px rgba(15, 23, 42, 0.75);
+}
 
 @layer base {
   :root {
@@ -31,7 +58,9 @@
   }
 
   body {
-    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+    @apply min-h-screen font-sans antialiased;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
     background-image: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.15), transparent 45%),
       radial-gradient(circle at 80% 0%, rgba(236, 72, 153, 0.12), transparent 40%),
       radial-gradient(circle at 30% 75%, rgba(14, 165, 233, 0.12), transparent 55%),

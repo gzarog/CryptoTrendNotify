@@ -8,7 +8,7 @@ const STYLESHEET_CANDIDATES = [
 async function loadTremorStyles(): Promise<void> {
   for (const candidate of STYLESHEET_CANDIDATES) {
     try {
-      await import(candidate)
+      await import(/* @vite-ignore */ candidate)
       if (import.meta.env.DEV) {
         console.debug(`[tremor] loaded styles from "${candidate}"`)
       }
