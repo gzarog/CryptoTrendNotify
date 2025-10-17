@@ -64,10 +64,11 @@ export function formatSignedPercent(value: number, decimals = 1): string {
   }
 
   const multiplier = 10 ** decimals
-  const scaled = Math.round(value * 100 * multiplier) / multiplier
-  const normalized = Object.is(scaled, -0) ? 0 : scaled
+  const rounded = Math.round(value * multiplier) / multiplier
+  const normalized = Object.is(rounded, -0) ? 0 : rounded
+  const formatted = Number(normalized.toFixed(decimals))
 
-  return normalized > 0 ? `+${normalized.toFixed(decimals)}%` : `${normalized.toFixed(decimals)}%`
+  return normalized > 0 ? `+${formatted}%` : `${formatted}%`
 }
 
 export function formatDegrees(value: number): string {
