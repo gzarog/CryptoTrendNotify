@@ -3,6 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { DashboardView } from './components/DashboardView'
+import { formatDegrees } from './components/signals/quantumFlipThresholdShared'
 import {
   calculateEMA,
   calculateADX,
@@ -455,15 +456,6 @@ function formatTriggeredAt(timestamp: number): string {
   const seconds = date.getSeconds().toString().padStart(2, '0')
 
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
-}
-
-function formatDegrees(value: number): string {
-  if (!Number.isFinite(value)) {
-    return '0°'
-  }
-
-  const rounded = Math.round(value)
-  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
 }
 
 function formatSignedPercent(value: number, decimals = 1): string {

@@ -77,15 +77,6 @@ function getHeatmapCardClass(strength: string | null | undefined): string {
   return HEATMAP_CARD_CLASS_BY_STRENGTH[normalized] ?? HEATMAP_DEFAULT_CARD_CLASS
 }
 
-function formatDegrees(value: number): string {
-  if (!Number.isFinite(value)) {
-    return '0°'
-  }
-
-  const rounded = Math.round(value)
-  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
-}
-
 function formatSignedPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) {
     return '0%'
