@@ -1,8 +1,8 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
 import type { QuantumCompositeSignal, QuantumProbability, TrendState } from '../../lib/quantum'
+import type { DirectionalBias } from './quantumFlipThresholdShared'
 import {
-  DirectionalBias,
   DIRECTIONAL_BADGE_CLASS,
   DIRECTIONAL_TEXT_CLASS,
   FLIP_ZONE_LABELS,
