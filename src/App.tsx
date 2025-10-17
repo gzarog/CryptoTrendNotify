@@ -3,6 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 import { DashboardView } from './components/DashboardView'
+import { formatDegrees } from './components/signals/quantumFlipThresholdShared'
 import {
   calculateEMA,
   calculateADX,
@@ -200,6 +201,7 @@ const MACD_SETTINGS: Record<
 const DEFAULT_MACD_SETTING = { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' }
 
 const REFRESH_OPTIONS: RefreshOption[] = [
+  { value: '0.5', label: '30s' },
   { value: '1', label: '1m' },
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
@@ -455,15 +457,6 @@ function formatTriggeredAt(timestamp: number): string {
   const seconds = date.getSeconds().toString().padStart(2, '0')
 
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
-}
-
-function formatDegrees(value: number): string {
-  if (!Number.isFinite(value)) {
-    return '0°'
-  }
-
-  const rounded = Math.round(value)
-  return rounded > 0 ? `+${rounded}°` : `${rounded}°`
 }
 
 function formatSignedPercent(value: number, decimals = 1): string {
@@ -1839,6 +1832,7 @@ function App() {
       visibleSignalNotifications={visibleSignalNotifications}
       visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
       visibleQuantumPhaseNotifications={visibleQuantumPhaseNotifications}
+      quantumFlipThreshold={compositeQuantumSignal?.flipThreshold ?? null}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}
