@@ -6,6 +6,7 @@ import type {
   MovingAverageMarker,
   QuantumPhaseNotification,
 } from '../App'
+import type { QuantumFlipThreshold } from '../lib/quantum'
 import type {
   CombinedSignalNotification,
   SignalNotification,
@@ -15,6 +16,19 @@ import type {
 import { LineChart } from './LineChart'
 import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
+import { Badge } from './signals/Badge'
+import {
+  DIRECTIONAL_BADGE_CLASS,
+  FLIP_BIAS_LABELS,
+  FLIP_BIAS_TEXT_CLASS,
+  FLIP_SIGNAL_BADGE_CLASS,
+  FLIP_SIGNAL_CATEGORY,
+  FLIP_ZONE_BADGE_CLASS,
+  FLIP_ZONE_LABELS,
+  formatDegrees,
+  getPhaseAngleClass,
+  toSentenceCase,
+} from './signals/quantumFlipThresholdShared'
 
 const MOMENTUM_EMOJI_BY_INTENSITY: Record<MomentumIntensity, string> = {
   green: '🟢',
@@ -147,6 +161,7 @@ type DashboardViewProps = {
   visibleSignalNotifications: SignalNotification[]
   visibleCombinedSignalNotifications: CombinedSignalNotification[]
   visibleQuantumPhaseNotifications: QuantumPhaseNotification[]
+  quantumFlipThreshold: QuantumFlipThreshold | null
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
@@ -239,6 +254,7 @@ export function DashboardView({
   visibleSignalNotifications,
   visibleCombinedSignalNotifications,
   visibleQuantumPhaseNotifications,
+  quantumFlipThreshold,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
@@ -313,6 +329,26 @@ export function DashboardView({
     visibleMomentumNotifications.length +
     visibleMovingAverageNotifications.length
 
+  const quantumFlipSummary = useMemo(() => {
+    if (!quantumFlipThreshold) {
+      return null
+    }
+
+    const signalCategory = FLIP_SIGNAL_CATEGORY[quantumFlipThreshold.signal]
+
+    return {
+      zoneLabel: FLIP_ZONE_LABELS[quantumFlipThreshold.state],
+      zoneBadgeClass: FLIP_ZONE_BADGE_CLASS[quantumFlipThreshold.state],
+      biasLabel: FLIP_BIAS_LABELS[quantumFlipThreshold.bias],
+      biasBadgeClass: DIRECTIONAL_BADGE_CLASS[quantumFlipThreshold.bias],
+      biasTextClass: FLIP_BIAS_TEXT_CLASS[quantumFlipThreshold.bias],
+      signalLabel: toSentenceCase(quantumFlipThreshold.signal),
+      signalBadgeClass: FLIP_SIGNAL_BADGE_CLASS[signalCategory],
+      phaseAngleLabel: formatDegrees(quantumFlipThreshold.phaseAngle),
+      phaseAngleClass: getPhaseAngleClass(quantumFlipThreshold.phaseAngle),
+    }
+  }, [quantumFlipThreshold])
+
   const handleToggleNotifications = () => {
     if (totalNotificationCount === 0) {
       return
@@ -338,6 +374,32 @@ export function DashboardView({
             <p className="text-sm text-slate-400">Live Bybit OHLCV data with RSI signals ready for the web and PWA.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {quantumFlipSummary && (
+              <div className="flex flex-col items-end gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-right">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Badge className={quantumFlipSummary.zoneBadgeClass}>{quantumFlipSummary.zoneLabel}</Badge>
+                  <Badge className={quantumFlipSummary.biasBadgeClass}>{quantumFlipSummary.biasLabel}</Badge>
+                  <Badge className={quantumFlipSummary.signalBadgeClass}>{quantumFlipSummary.signalLabel}</Badge>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
+                  <span className="font-semibold uppercase tracking-wide">Signal call</span>
+                  <span className={`text-xs font-semibold ${quantumFlipSummary.biasTextClass}`}>
+                    {quantumFlipSummary.signalLabel}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
+                  <span className="font-semibold uppercase tracking-wide">Bias</span>
+                  <span className="text-xs font-semibold text-slate-200">{quantumFlipSummary.biasLabel}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
+                  <span className="font-semibold uppercase tracking-wide">Phase angle</span>
+                  <span className={`text-xs font-semibold ${quantumFlipSummary.phaseAngleClass}`}>
+                    {quantumFlipSummary.phaseAngleLabel}
+                  </span>
+                  <span className="text-[10px] text-slate-500">Needs ±45° trigger.</span>
+                </div>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => void onManualRefresh()}

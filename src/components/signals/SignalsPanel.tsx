@@ -7,6 +7,7 @@ import type { TimeframeSignalSnapshot, TradingSignal } from '../../types/signals
 import { MultiTimeframeSummary } from './MultiTimeframeSummary'
 import { PlaceholderCard } from './PlaceholderCard'
 import { QuantumPredictionPanel } from './QuantumPredictionPanel'
+import { QuantumFlipThresholdCard } from './QuantumFlipThresholdCard'
 import { SignalHighlights } from './SignalHighlights'
 import { TimeframeOverviewCard } from './TimeframeOverviewCard'
 import { snapshotsToMap, sortSnapshotsByTimeframe } from './utils'
@@ -123,6 +124,8 @@ export function SignalsPanel({ signals, snapshots, isLoading, symbol }: SignalsP
 
       {!collapsed && (
         <div className="flex flex-col gap-5 px-6 py-6">
+          <QuantumFlipThresholdCard threshold={quantumSignal?.flipThreshold ?? null} isLoading={isLoading} />
+
           <div className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-5">
             <header className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
