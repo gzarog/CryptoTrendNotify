@@ -366,29 +366,25 @@ export function DashboardView({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {quantumFlipSummary && (
-              <div className="flex flex-col items-end gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-right">
+              <div className="flex min-w-[240px] flex-col items-end gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-right sm:min-w-[320px]">
                 <div className="flex flex-wrap justify-end gap-2">
                   <Badge className={quantumFlipSummary.zoneBadgeClass}>{quantumFlipSummary.zoneLabel}</Badge>
                   <Badge className={quantumFlipSummary.biasBadgeClass}>{quantumFlipSummary.biasLabel}</Badge>
                   <Badge className={quantumFlipSummary.signalBadgeClass}>{quantumFlipSummary.signalLabel}</Badge>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
-                  <span className="font-semibold uppercase tracking-wide">Signal call</span>
-                  <span className={`text-xs font-semibold ${quantumFlipSummary.biasTextClass}`}>
+                <dl className="grid grid-cols-[auto_auto] items-center justify-items-end gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                  <dt className="font-semibold uppercase tracking-wide">Signal call</dt>
+                  <dd className={`text-xs font-semibold ${quantumFlipSummary.biasTextClass}`}>
                     {quantumFlipSummary.signalLabel}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
-                  <span className="font-semibold uppercase tracking-wide">Bias</span>
-                  <span className="text-xs font-semibold text-slate-200">{quantumFlipSummary.biasLabel}</span>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400">
-                  <span className="font-semibold uppercase tracking-wide">Phase angle</span>
-                  <span className={`text-xs font-semibold ${quantumFlipSummary.phaseAngleClass}`}>
-                    {quantumFlipSummary.phaseAngleLabel}
-                  </span>
-                  <span className="text-[10px] text-slate-500">Needs ±45° trigger.</span>
-                </div>
+                  </dd>
+                  <dt className="font-semibold uppercase tracking-wide">Bias</dt>
+                  <dd className="text-xs font-semibold text-slate-200">{quantumFlipSummary.biasLabel}</dd>
+                  <dt className="font-semibold uppercase tracking-wide">Phase angle</dt>
+                  <dd className="flex items-center justify-end gap-2 text-xs font-semibold text-slate-200">
+                    <span className={quantumFlipSummary.phaseAngleClass}>{quantumFlipSummary.phaseAngleLabel}</span>
+                    <span className="text-[10px] text-slate-500">Needs ±45° trigger.</span>
+                  </dd>
+                </dl>
               </div>
             )}
             <button
