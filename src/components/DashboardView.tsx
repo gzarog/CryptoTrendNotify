@@ -13,10 +13,18 @@ import type {
   TimeframeSignalSnapshot,
   TradingSignal,
 } from '../types/signals'
+import { Select, SelectItem } from '@tremor/react'
+
 import { LineChart } from './LineChart'
 import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
-import { Badge } from './signals/Badge'
+import { DashboardMetrics } from './DashboardMetrics'
+import { Badge as SignalBadge } from './signals/Badge'
+import { Button } from './ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Badge as UiBadge } from './ui/badge'
 import {
   DIRECTIONAL_BADGE_CLASS,
   FLIP_BIAS_LABELS,
@@ -353,6 +361,12 @@ export function DashboardView({
     setIsNotificationPopupOpen(false)
   }
 
+  const refreshSummary = refreshInterval
+    ? `Every ${
+        refreshSelection === 'custom' ? `${customRefresh || '—'}m` : formatIntervalLabel(refreshSelection)
+      }`
+    : 'Auto refresh disabled'
+
   return (
     <div
       className="flex min-h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100"
@@ -366,13 +380,21 @@ export function DashboardView({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {quantumFlipSummary && (
-              <div className="flex min-w-[260px] flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-left shadow-[0_0_20px_rgba(15,23,42,0.45)] sm:min-w-[380px] sm:gap-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge className={quantumFlipSummary.zoneBadgeClass}>{quantumFlipSummary.zoneLabel}</Badge>
-                  <Badge className={quantumFlipSummary.biasBadgeClass}>{quantumFlipSummary.biasLabel}</Badge>
-                  <Badge className={quantumFlipSummary.signalBadgeClass}>{quantumFlipSummary.signalLabel}</Badge>
-                </div>
-                <dl className="grid gap-y-2 text-[11px] text-slate-400 sm:grid-cols-2 sm:items-start sm:gap-x-8">
+              <Card className="min-w-[260px] bg-slate-950/70 sm:min-w-[360px]">
+                <CardHeader className="gap-3 p-0">
+                  <div className="flex flex-wrap gap-2">
+                    <SignalBadge className={quantumFlipSummary.zoneBadgeClass}>
+                      {quantumFlipSummary.zoneLabel}
+                    </SignalBadge>
+                    <SignalBadge className={quantumFlipSummary.biasBadgeClass}>
+                      {quantumFlipSummary.biasLabel}
+                    </SignalBadge>
+                    <SignalBadge className={quantumFlipSummary.signalBadgeClass}>
+                      {quantumFlipSummary.signalLabel}
+                    </SignalBadge>
+                  </div>
+                </CardHeader>
+                <CardContent className="mt-3 grid gap-y-2 text-[11px] text-slate-400 sm:grid-cols-2 sm:items-start sm:gap-x-8">
                   <div className="space-y-1">
                     <dt className="font-semibold uppercase tracking-[0.18em] text-slate-500">Signal call</dt>
                     <dd className={`text-sm font-semibold leading-tight text-slate-100 ${quantumFlipSummary.biasTextClass}`}>
@@ -387,22 +409,24 @@ export function DashboardView({
                     </dd>
                     <dd className="text-xs text-slate-500">Needs ±45° trigger.</dd>
                   </div>
-                </dl>
-              </div>
+                </CardContent>
+              </Card>
             )}
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => void onManualRefresh()}
               disabled={isFetching}
-              className="rounded-full border border-indigo-400/60 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isFetching ? 'Refreshing…' : 'Refresh now'}
-            </button>
+            </Button>
             <div className="relative">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="icon"
                 onClick={handleToggleNotifications}
-                className="relative flex items-center justify-center rounded-full border border-indigo-400/60 bg-slate-950/80 px-3 py-2 text-lg text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label={
                   totalNotificationCount > 0
                     ? `View ${totalNotificationCount} notifications`
@@ -413,12 +437,15 @@ export function DashboardView({
                 disabled={totalNotificationCount === 0}
               >
                 <span aria-hidden="true">🔔</span>
-                {totalNotificationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-semibold text-white">
-                    {totalNotificationCount}
-                  </span>
-                )}
-              </button>
+              </Button>
+              {totalNotificationCount > 0 && (
+                <UiBadge
+                  variant="danger"
+                  className="absolute -right-2 -top-2 rounded-full px-2 py-0 text-[10px] tracking-wider"
+                >
+                  {totalNotificationCount}
+                </UiBadge>
+              )}
               {isNotificationPopupOpen && (
                 <div className="absolute right-0 z-50 mt-3 w-80 rounded-2xl border border-white/10 bg-slate-900/95 p-4 text-sm shadow-xl">
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -736,300 +763,237 @@ export function DashboardView({
               isSidebarCollapsed ? 'items-center gap-4 px-3 py-4' : 'p-6'
             }`}
           >
-            <div
-              className={`flex w-full items-center ${
-                isSidebarCollapsed ? 'justify-center' : 'justify-between'
-              } gap-3`}
-            >
+            <div className="flex w-full flex-col gap-6">
+              <div className="flex w-full items-center justify-between gap-3">
+                {!isSidebarCollapsed && (
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">Filters</h2>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                  onClick={() => setIsSidebarCollapsed((previous) => !previous)}
+                  aria-expanded={!isSidebarCollapsed}
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">
+                    {isSidebarCollapsed ? '⟩' : '⟨'}
+                  </span>
+                  <span className="text-xs font-semibold">
+                    {isSidebarCollapsed ? 'Show filters' : 'Hide filters'}
+                  </span>
+                </Button>
+              </div>
               {!isSidebarCollapsed && (
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-                  Filters
-                </h2>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed((previous) => !previous)}
-                className={`flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/60 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white ${
-                  isSidebarCollapsed ? 'px-2 py-2' : 'px-3 py-1'
-                }`}
-                aria-expanded={!isSidebarCollapsed}
-              >
-                <span className="sr-only">
-                  {isSidebarCollapsed ? 'Show dashboard filters' : 'Hide dashboard filters'}
-                </span>
-                <span aria-hidden="true" className="text-lg leading-none">
-                  {isSidebarCollapsed ? '⟩' : '⟨'}
-                </span>
-                {!isSidebarCollapsed && <span aria-hidden="true">Hide</span>}
-                {isSidebarCollapsed && <span aria-hidden="true" className="text-[11px]">Show</span>}
-              </button>
-            </div>
-            {!isSidebarCollapsed && (
-              <>
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Push server</span>
-                      {pushServerConnected === null ? (
-                        <span className="text-[11px] text-slate-500">Checking…</span>
-                      ) : pushServerConnected ? (
-                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-200">Connected</span>
-                      ) : (
-                        <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[11px] font-semibold text-rose-200">Offline</span>
-                      )}
-                    </div>
-                    {pushServerConnected === false && (
-                      <span className="text-[11px] text-rose-300">
-                        Unable to reach the push server. Start the backend service to deliver notifications.
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Notifications</span>
-                      {supportsNotifications ? (
-                        notificationPermission === 'granted' ? (
-                          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300">Enabled</span>
+                <>
+                  <div className="grid gap-6">
+                  <Card className="bg-slate-950/70">
+                    <CardHeader>
+                      <CardTitle className="text-base text-white">Realtime services</CardTitle>
+                      <CardDescription>Connectivity and alert delivery status.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="mt-4 space-y-5">
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Push server</span>
+                        {pushServerConnected === null ? (
+                          <UiBadge variant="outline" className="w-fit px-3 py-1 text-[11px]">
+                            Checking…
+                          </UiBadge>
+                        ) : pushServerConnected ? (
+                          <UiBadge variant="success" className="w-fit px-3 py-1 text-[11px]">
+                            Connected
+                          </UiBadge>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => void onEnableNotifications()}
-                            className="rounded-full border border-indigo-400/60 px-3 py-1 text-[11px] font-semibold text-indigo-100 transition hover:border-indigo-300 hover:text-white"
-                          >
-                            Enable alerts
-                          </button>
-                        )
-                      ) : (
-                        <span className="text-[11px] text-slate-500">Not supported in this browser</span>
+                          <UiBadge variant="danger" className="w-fit px-3 py-1 text-[11px]">
+                            Offline
+                          </UiBadge>
+                        )}
+                        {pushServerConnected === false && (
+                          <p className="text-[11px] text-rose-300">
+                            Unable to reach the push server. Start the backend service to deliver notifications.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Notifications</span>
+                        {supportsNotifications ? (
+                          notificationPermission === 'granted' ? (
+                            <UiBadge variant="success" className="w-fit px-3 py-1 text-[11px]">
+                              Enabled
+                            </UiBadge>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="w-fit"
+                              onClick={() => void onEnableNotifications()}
+                            >
+                              Enable alerts
+                            </Button>
+                          )
+                        ) : (
+                          <UiBadge variant="outline" className="w-fit px-3 py-1 text-[11px]">
+                            Not supported in this browser
+                          </UiBadge>
+                        )}
+                        {notificationPermission === 'denied' && supportsNotifications && (
+                          <p className="text-[11px] text-rose-300">
+                            Notifications are blocked. Update your browser settings to enable alerts.
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-slate-950/70">
+                    <CardHeader>
+                      <CardTitle className="text-base text-white">Signal filters</CardTitle>
+                      <CardDescription>Tune the analytics engine for your strategy.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="mt-6 grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label htmlFor="symbol">Crypto</Label>
+                        <Input
+                          id="symbol"
+                          value={symbol}
+                          onChange={(event) =>
+                            onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
+                          }
+                          placeholder="e.g. BTCUSDT"
+                          className="uppercase tracking-[0.2em]"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="timeframe">Timeframe</Label>
+                        <Select
+                          value={timeframe}
+                          onValueChange={onTimeframeChange}
+                          className="rounded-2xl border border-input bg-background/60 px-3 py-2 text-sm"
+                        >
+                          {timeframeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="text-sm text-foreground">
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="bar-count">Bars</Label>
+                        <Select
+                          value={barSelection}
+                          onValueChange={onBarSelectionChange}
+                          className="rounded-2xl border border-input bg-background/60 px-3 py-2 text-sm"
+                        >
+                          {barCountOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="text-sm text-foreground">
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </Select>
+                      </div>
+                      {barSelection === 'custom' && (
+                        <div className="grid gap-2 sm:col-span-2">
+                          <Label htmlFor="custom-bar-count">Custom bars</Label>
+                          <Input
+                            id="custom-bar-count"
+                            inputMode="numeric"
+                            value={customBarCount}
+                            onChange={(event) => onCustomBarCountChange(event.target.value.replace(/[^0-9]/g, ''))}
+                            placeholder={`Max ${maxBarLimit}`}
+                          />
+                        </div>
                       )}
-                    </div>
-                    {notificationPermission === 'denied' && supportsNotifications && (
-                      <span className="text-[11px] text-rose-300">
-                        Notifications are blocked. Update your browser settings to enable alerts.
-                      </span>
-                    )}
-                  </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="refresh-interval">Auto refresh</Label>
+                        <Select
+                          value={refreshSelection}
+                          onValueChange={onRefreshSelectionChange}
+                          className="rounded-2xl border border-input bg-background/60 px-3 py-2 text-sm"
+                        >
+                          {refreshOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="text-sm text-foreground">
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </Select>
+                      </div>
+                      {refreshSelection === 'custom' && (
+                        <div className="grid gap-2 sm:col-span-2">
+                          <Label htmlFor="custom-refresh">Custom refresh (minutes)</Label>
+                          <Input
+                            id="custom-refresh"
+                            inputMode="numeric"
+                            value={customRefresh}
+                            onChange={(event) => onCustomRefreshChange(event.target.value.replace(/[^0-9]/g, ''))}
+                            placeholder="e.g. 5"
+                          />
+                        </div>
+                      )}
+                      <div className="grid gap-2">
+                        <Label htmlFor="rsi-lower-bound">RSI lower bound</Label>
+                        <Input
+                          id="rsi-lower-bound"
+                          inputMode="numeric"
+                          value={rsiLowerBoundInput}
+                          onChange={(event) =>
+                            onRsiLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                          }
+                          placeholder="30"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="rsi-upper-bound">RSI upper bound</Label>
+                        <Input
+                          id="rsi-upper-bound"
+                          inputMode="numeric"
+                          value={rsiUpperBoundInput}
+                          onChange={(event) =>
+                            onRsiUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                          }
+                          placeholder="70"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="stochastic-lower-bound">Stochastic RSI lower bound</Label>
+                        <Input
+                          id="stochastic-lower-bound"
+                          inputMode="numeric"
+                          value={stochasticLowerBoundInput}
+                          onChange={(event) =>
+                            onStochasticLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                          }
+                          placeholder="20"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="stochastic-upper-bound">Stochastic RSI upper bound</Label>
+                        <Input
+                          id="stochastic-upper-bound"
+                          inputMode="numeric"
+                          value={stochasticUpperBoundInput}
+                          onChange={(event) =>
+                            onStochasticUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
+                          }
+                          placeholder="80"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="symbol" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Crypto
-                    </label>
-                    <input
-                      id="symbol"
-                      type="text"
-                      value={symbol}
-                      onChange={(event) =>
-                        onSymbolChange(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())
-                      }
-                      placeholder="e.g. BTCUSDT"
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium uppercase tracking-wide text-white shadow focus:border-indigo-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="timeframe" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Timeframe
-                    </label>
-                    <select
-                      id="timeframe"
-                      value={timeframe}
-                      onChange={(event) => onTimeframeChange(event.target.value)}
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    >
-                      {timeframeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Bars
-                    </label>
-                    <select
-                      id="bar-count"
-                      value={barSelection}
-                      onChange={(event) => onBarSelectionChange(event.target.value)}
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    >
-                      {barCountOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {barSelection === 'custom' && (
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="custom-bar-count" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Custom bars
-                      </label>
-                      <input
-                        id="custom-bar-count"
-                        inputMode="numeric"
-                        value={customBarCount}
-                        onChange={(event) => onCustomBarCountChange(event.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder={`Max ${maxBarLimit}`}
-                        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                      />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="refresh-interval" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Auto refresh
-                    </label>
-                    <select
-                      id="refresh-interval"
-                      value={refreshSelection}
-                      onChange={(event) => onRefreshSelectionChange(event.target.value)}
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    >
-                      {refreshOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {refreshSelection === 'custom' && (
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="custom-refresh" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Custom refresh (minutes)
-                      </label>
-                      <input
-                        id="custom-refresh"
-                        inputMode="numeric"
-                        value={customRefresh}
-                        onChange={(event) => onCustomRefreshChange(event.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="e.g. 5"
-                        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                      />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="rsi-lower-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      RSI lower bound
-                    </label>
-                    <input
-                      id="rsi-lower-bound"
-                      inputMode="numeric"
-                      value={rsiLowerBoundInput}
-                      onChange={(event) =>
-                        onRsiLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
-                      }
-                      placeholder="30"
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="rsi-upper-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      RSI upper bound
-                    </label>
-                    <input
-                      id="rsi-upper-bound"
-                      inputMode="numeric"
-                      value={rsiUpperBoundInput}
-                      onChange={(event) =>
-                        onRsiUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
-                      }
-                      placeholder="70"
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="stochastic-lower-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Stochastic RSI lower bound
-                    </label>
-                    <input
-                      id="stochastic-lower-bound"
-                      inputMode="numeric"
-                      value={stochasticLowerBoundInput}
-                      onChange={(event) =>
-                        onStochasticLowerBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
-                      }
-                      placeholder="20"
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="stochastic-upper-bound" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Stochastic RSI upper bound
-                    </label>
-                    <input
-                      id="stochastic-upper-bound"
-                      inputMode="numeric"
-                      value={stochasticUpperBoundInput}
-                      onChange={(event) =>
-                        onStochasticUpperBoundInputChange(event.target.value.replace(/[^0-9.]/g, ''))
-                      }
-                      placeholder="80"
-                      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-medium text-white shadow focus:border-indigo-400 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
+                </>
+              )}
+            </div>
           </section>
           {!isSidebarCollapsed && !isLoading && !isError && (
-            <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-base font-semibold text-white">Market snapshot</h2>
-                  <p className="text-xs text-slate-400">Applied across all charts</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onToggleMarketSummary}
-                  className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
-                  aria-expanded={!isMarketSummaryCollapsed}
-                >
-                  {isMarketSummaryCollapsed ? 'Expand' : 'Collapse'}
-                  <span aria-hidden="true">{isMarketSummaryCollapsed ? '▾' : '▴'}</span>
-                </button>
-              </div>
-              {!isMarketSummaryCollapsed && (
-                <div className="grid gap-6 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs uppercase tracking-wider text-slate-400">Last auto refresh</span>
-                    <span className="text-lg font-semibold text-white">{lastUpdatedLabel}</span>
-                    <span className="text-xs text-slate-400">
-                      {refreshInterval
-                        ? `Every ${
-                            refreshSelection === 'custom'
-                              ? `${customRefresh || '—'}m`
-                              : formatIntervalLabel(refreshSelection)
-                          }`
-                        : 'Auto refresh disabled'}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs uppercase tracking-wider text-slate-400">Data window</span>
-                    <span className="text-lg font-semibold text-white">Last {resolvedBarLimit} bars</span>
-                    <span className="text-xs text-slate-400">Refresh applies to RSI and Stochastic RSI panels</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs uppercase tracking-wider text-slate-400">Last close</span>
-                    <span className="text-lg font-semibold text-white">
-                      {latestCandle ? latestCandle.close.toFixed(5) : '—'}
-                    </span>
-                    {latestCandle && priceChange ? (
-                      <span
-                        className={`text-xs font-medium ${
-                          priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {priceChange.difference >= 0 ? '+' : ''}
-                        {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-500">Waiting for additional price data…</span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
+            <DashboardMetrics
+              lastUpdatedLabel={lastUpdatedLabel}
+              refreshLabel={refreshSummary}
+              resolvedBarLimit={resolvedBarLimit}
+              latestCandle={latestCandle ?? null}
+              priceChange={priceChange}
+              collapsed={isMarketSummaryCollapsed}
+              onToggle={onToggleMarketSummary}
+            />
           )}
         </aside>
         <section className="flex flex-1 flex-col gap-6">
