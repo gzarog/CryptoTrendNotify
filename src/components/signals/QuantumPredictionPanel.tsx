@@ -61,11 +61,6 @@ type QuantumInterpretation = {
   }>
 }
 
-type QuantumPredictionPanelProps = {
-  data: QuantumCompositeSignal | null
-  isLoading: boolean
-}
-
 function describeConfidenceLevel(confidence: number): string {
   if (!Number.isFinite(confidence)) {
     return 'low conviction'
