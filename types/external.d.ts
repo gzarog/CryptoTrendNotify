@@ -47,3 +47,5 @@ declare module '@tremor/react' {
     }
   >
 }
+
+declare module '@tremor/react/dist/esm/tremor.css'
