@@ -1,6 +1,8 @@
 import { cn } from '../../lib/utils'
 
-const variantClass: Record<BadgeProps['variant'], string> = {
+type BadgeVariant = 'default' | 'outline' | 'success' | 'warning' | 'danger'
+
+const variantClass: Record<BadgeVariant, string> = {
   default: 'border border-white/15 bg-white/10 text-xs font-semibold text-primary-foreground',
   outline: 'border border-white/15 bg-transparent text-xs font-semibold text-foreground',
   success: 'border border-emerald-500/20 bg-emerald-500/10 text-xs font-semibold text-emerald-200',
@@ -9,7 +11,7 @@ const variantClass: Record<BadgeProps['variant'], string> = {
 }
 
 export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & {
-  variant?: 'default' | 'outline' | 'success' | 'warning' | 'danger'
+  variant?: BadgeVariant
 }
 
 export function Badge({ className, variant = 'default', ...props }: BadgeProps) {
