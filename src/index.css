@@ -1,4 +1,4 @@
-@import "@tremor/react/dist/esm/tremor.css";
+@import "@tremor/react/dist/tremor.css";
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 
