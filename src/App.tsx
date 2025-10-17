@@ -201,6 +201,7 @@ const MACD_SETTINGS: Record<
 const DEFAULT_MACD_SETTING = { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' }
 
 const REFRESH_OPTIONS: RefreshOption[] = [
+  { value: '0.5', label: '30s' },
   { value: '1', label: '1m' },
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
