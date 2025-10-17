@@ -90,7 +90,7 @@ export function toSentenceCase(value: string): string {
 }
 
 export function getPhaseAngleClass(angle: number | null | undefined): string {
-  if (typeof angle !== 'number' || Number.isNaN(angle)) {
+  if (!Number.isFinite(angle)) {
     return 'text-slate-200'
   }
 
