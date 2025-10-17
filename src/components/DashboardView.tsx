@@ -366,24 +366,27 @@ export function DashboardView({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {quantumFlipSummary && (
-              <div className="flex min-w-[240px] flex-col items-end gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-right sm:min-w-[320px]">
-                <div className="flex flex-wrap justify-end gap-2">
+              <div className="flex min-w-[260px] flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-left shadow-[0_0_20px_rgba(15,23,42,0.45)] sm:min-w-[380px] sm:gap-4">
+                <div className="flex flex-wrap gap-2">
                   <Badge className={quantumFlipSummary.zoneBadgeClass}>{quantumFlipSummary.zoneLabel}</Badge>
                   <Badge className={quantumFlipSummary.biasBadgeClass}>{quantumFlipSummary.biasLabel}</Badge>
                   <Badge className={quantumFlipSummary.signalBadgeClass}>{quantumFlipSummary.signalLabel}</Badge>
                 </div>
-                <dl className="grid grid-cols-[auto_auto] items-center justify-items-end gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                  <dt className="font-semibold uppercase tracking-wide">Signal call</dt>
-                  <dd className={`text-xs font-semibold ${quantumFlipSummary.biasTextClass}`}>
-                    {quantumFlipSummary.signalLabel}
-                  </dd>
-                  <dt className="font-semibold uppercase tracking-wide">Bias</dt>
-                  <dd className="text-xs font-semibold text-slate-200">{quantumFlipSummary.biasLabel}</dd>
-                  <dt className="font-semibold uppercase tracking-wide">Phase angle</dt>
-                  <dd className="flex items-center justify-end gap-2 text-xs font-semibold text-slate-200">
-                    <span className={quantumFlipSummary.phaseAngleClass}>{quantumFlipSummary.phaseAngleLabel}</span>
-                    <span className="text-[10px] text-slate-500">Needs ±45° trigger.</span>
-                  </dd>
+                <dl className="grid gap-y-2 text-[11px] text-slate-400 sm:grid-cols-2 sm:items-start sm:gap-x-8">
+                  <div className="space-y-1">
+                    <dt className="font-semibold uppercase tracking-[0.18em] text-slate-500">Signal call</dt>
+                    <dd className={`text-sm font-semibold leading-tight text-slate-100 ${quantumFlipSummary.biasTextClass}`}>
+                      {quantumFlipSummary.signalLabel}
+                    </dd>
+                    <dd className="text-xs font-medium text-slate-400">{quantumFlipSummary.biasLabel}</dd>
+                  </div>
+                  <div className="space-y-1 text-left sm:text-right">
+                    <dt className="font-semibold uppercase tracking-[0.18em] text-slate-500">Phase angle</dt>
+                    <dd className={`text-sm font-semibold leading-tight ${quantumFlipSummary.phaseAngleClass}`}>
+                      {quantumFlipSummary.phaseAngleLabel}
+                    </dd>
+                    <dd className="text-xs text-slate-500">Needs ±45° trigger.</dd>
+                  </div>
                 </dl>
               </div>
             )}
