@@ -1058,6 +1058,18 @@ function App() {
     return heatmapQuery.data ?? []
   }, [canStreamSymbol, heatmapQuery.data])
 
+  const latestHeatmapSnapshot = useMemo<HeatmapResult | null>(
+    () => {
+      if (heatmapResults.length === 0) {
+        return null
+      }
+
+      const matching = heatmapResults.find((result) => result.entryTimeframe === timeframe)
+      return matching ?? heatmapResults[0] ?? null
+    },
+    [heatmapResults, timeframe],
+  )
+
   const tradingSignals = useMemo<TradingSignal[]>(() => deriveSignalsFromHeatmap(heatmapResults), [
     heatmapResults,
   ])
@@ -1834,6 +1846,7 @@ function App() {
       visibleQuantumPhaseNotifications={visibleQuantumPhaseNotifications}
       quantumFlipThreshold={compositeQuantumSignal?.flipThreshold ?? null}
       compositeQuantumSignal={compositeQuantumSignal}
+      latestHeatmapSnapshot={latestHeatmapSnapshot}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}

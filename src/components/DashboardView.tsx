@@ -13,6 +13,7 @@ import type {
   TimeframeSignalSnapshot,
   TradingSignal,
 } from '../types/signals'
+import type { HeatmapResult } from '../types/heatmap'
 import { LineChart } from './LineChart'
 import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
@@ -155,6 +156,7 @@ type DashboardViewProps = {
   visibleQuantumPhaseNotifications: QuantumPhaseNotification[]
   quantumFlipThreshold: QuantumFlipThreshold | null
   compositeQuantumSignal: QuantumCompositeSignal | null
+  latestHeatmapSnapshot: HeatmapResult | null
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
@@ -249,6 +251,7 @@ export function DashboardView({
   visibleQuantumPhaseNotifications,
   quantumFlipThreshold,
   compositeQuantumSignal,
+  latestHeatmapSnapshot,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
@@ -1121,9 +1124,11 @@ export function DashboardView({
             stochasticLengthDescription={stochasticLengthDescription}
           />
           <HedgingCalculatorPanel
+            symbol={symbol}
             currentPrice={latestCandle?.close ?? null}
             isPriceLoading={isFetching}
             quantumSignal={compositeQuantumSignal}
+            latestSnapshot={latestHeatmapSnapshot}
           />
         </section>
       </main>
