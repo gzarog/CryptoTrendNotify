@@ -128,6 +128,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
     let hedgeNotional: number | null = null
     let hedgeQuantity: number | null = null
     let hedgeMargin: number | null = null
+    let projectedBreakEvenPrice: number | null = null
 
     const normalizedSuggestedLeverage =
       suggestedLeverage !== null && Number.isFinite(suggestedLeverage) && suggestedLeverage > 0 ? suggestedLeverage : null
@@ -150,12 +151,29 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       hedgeMargin = leverage && hedgeNotional !== null ? hedgeNotional / leverage : null
     }
 
+    if (
+      entryPrice !== null &&
+      quantity !== null &&
+      hedgeQuantity !== null &&
+      normalizedCurrentPrice !== null
+    ) {
+      const exposureDelta = quantity - hedgeQuantity
+      if (Math.abs(exposureDelta) > 1e-9) {
+        const numerator = entryPrice * quantity - normalizedCurrentPrice * hedgeQuantity
+        const computedBreakEven = numerator / exposureDelta
+        if (Number.isFinite(computedBreakEven) && computedBreakEven > 0) {
+          projectedBreakEvenPrice = computedBreakEven
+        }
+      }
+    }
+
     return {
       direction: positionDirection === 'long' ? 'short' : 'long',
       quantity: hedgeQuantity,
       notional: hedgeNotional,
       margin: hedgeMargin,
       suggestedLeverage: normalizedSuggestedLeverage,
+      projectedBreakEvenPrice,
     }
   }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity, requiredMargin])
 
@@ -305,6 +323,19 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
             <span className="text-lg font-semibold text-white">
               {hedge && hedge.suggestedLeverage !== null ? formatNumber(hedge.suggestedLeverage, 2) : '—'}
             </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-slate-400">Projected break-even price</span>
+            <span className="text-lg font-semibold text-white">
+              {hedge && hedge.projectedBreakEvenPrice !== null
+                ? formatNumber(hedge.projectedBreakEvenPrice, 4)
+                : '—'}
+            </span>
+            {hedge && hedge.projectedBreakEvenPrice !== null && (
+              <span className="text-[11px] text-slate-400">
+                Price level where the original position and hedge would offset each other.
+              </span>
+            )}
           </div>
           {positionIsInLoss === false && (
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-200">
