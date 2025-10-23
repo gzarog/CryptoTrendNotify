@@ -98,21 +98,56 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       return null
     }
 
-    const hedgeQuantity = (entryPrice * quantity) / normalizedCurrentPrice
-    const hedgeNotional = hedgeQuantity * normalizedCurrentPrice
-    const hedgeMargin = leverage ? hedgeNotional / leverage : null
     const normalizedRequiredMargin =
       requiredMargin !== null && Number.isFinite(requiredMargin) && requiredMargin > 0 ? requiredMargin : null
 
+    const fallbackMarginFromInputs =
+      leverage !== null && Number.isFinite(leverage) && leverage > 0 ? (entryPrice * quantity) / leverage : null
+
+    const marginBasis =
+      normalizedRequiredMargin !== null && normalizedRequiredMargin > 0
+        ? normalizedRequiredMargin
+        : fallbackMarginFromInputs !== null && fallbackMarginFromInputs > 0
+          ? fallbackMarginFromInputs
+          : null
+
     let suggestedLeverage: number | null = null
 
-    if (normalizedRequiredMargin !== null) {
-      const derived = hedgeNotional / normalizedRequiredMargin
-      suggestedLeverage = Number.isFinite(derived) && derived > 0 ? derived : null
+    if (marginBasis !== null) {
+      const marketValue = normalizedCurrentPrice * quantity
+      const derived = marketValue / marginBasis
+      if (Number.isFinite(derived) && derived > 0) {
+        suggestedLeverage = derived
+      }
     }
 
-    if (suggestedLeverage === null && leverage !== null) {
-      suggestedLeverage = leverage
+    if ((suggestedLeverage === null || suggestedLeverage <= 0) && leverage !== null) {
+      suggestedLeverage = leverage > 0 ? leverage : null
+    }
+
+    let hedgeNotional: number | null = null
+    let hedgeQuantity: number | null = null
+    let hedgeMargin: number | null = null
+
+    const normalizedSuggestedLeverage =
+      suggestedLeverage !== null && Number.isFinite(suggestedLeverage) && suggestedLeverage > 0 ? suggestedLeverage : null
+
+    if (marginBasis !== null && normalizedSuggestedLeverage !== null) {
+      const computedNotional = marginBasis * normalizedSuggestedLeverage
+      if (Number.isFinite(computedNotional) && computedNotional > 0) {
+        hedgeNotional = computedNotional
+        const computedQuantity = hedgeNotional / normalizedCurrentPrice
+        hedgeQuantity = Number.isFinite(computedQuantity) && computedQuantity > 0 ? computedQuantity : null
+        hedgeMargin = marginBasis
+      }
+    }
+
+    if (hedgeNotional === null || hedgeQuantity === null) {
+      const fallbackNotional = entryPrice * quantity
+      const fallbackQuantity = fallbackNotional / normalizedCurrentPrice
+      hedgeNotional = Number.isFinite(fallbackNotional) && fallbackNotional > 0 ? fallbackNotional : null
+      hedgeQuantity = Number.isFinite(fallbackQuantity) && fallbackQuantity > 0 ? fallbackQuantity : null
+      hedgeMargin = leverage && hedgeNotional !== null ? hedgeNotional / leverage : null
     }
 
     return {
@@ -120,7 +155,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       quantity: hedgeQuantity,
       notional: hedgeNotional,
       margin: hedgeMargin,
-      suggestedLeverage,
+      suggestedLeverage: normalizedSuggestedLeverage,
     }
   }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity, requiredMargin])
 
@@ -253,7 +288,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
             <span className="text-lg font-semibold text-white">
               {hedge ? `${formatNumber(hedge.quantity, 6)} units` : '—'}
             </span>
-            {hedge && normalizedCurrentPrice !== null && (
+            {hedge && hedge.notional !== null && normalizedCurrentPrice !== null && (
               <span className="text-[11px] text-slate-400">
                 Matches approximately {currencyFormatter.format(hedge.notional)} of exposure at {formatNumber(normalizedCurrentPrice, 4)}.
               </span>
