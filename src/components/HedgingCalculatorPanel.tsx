@@ -94,7 +94,13 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
   }, [entryPrice, normalizedCurrentPrice, positionDirection])
 
   const hedge = useMemo(() => {
-    if (entryPrice === null || quantity === null || normalizedCurrentPrice === null || normalizedCurrentPrice <= 0) {
+    if (
+      positionIsInLoss !== true ||
+      entryPrice === null ||
+      quantity === null ||
+      normalizedCurrentPrice === null ||
+      normalizedCurrentPrice <= 0
+    ) {
       return null
     }
 
@@ -175,7 +181,15 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       suggestedLeverage: normalizedSuggestedLeverage,
       projectedBreakEvenPrice,
     }
-  }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity, requiredMargin])
+  }, [
+    entryPrice,
+    leverage,
+    normalizedCurrentPrice,
+    positionDirection,
+    positionIsInLoss,
+    quantity,
+    requiredMargin,
+  ])
 
   const pnlLabel = useMemo(() => {
     if (unrealizedPnl === null) {
