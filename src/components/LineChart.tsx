@@ -240,18 +240,18 @@ export function LineChart({
     [resolvedSeries],
   )
 
-  if (!chart) {
-    return (
-      <div className="flex h-full flex-col justify-center rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
-        <p>No data available for this selection.</p>
-      </div>
-    )
-  }
+  const hasChart = chart != null
+  const pointsBySeries = chart?.pointsBySeries ?? []
+  const ticks = chart?.ticks ?? []
+  const labelIndexes = chart?.labelIndexes ?? []
+  const markerPoints = chart?.markerPoints ?? []
+  const domainLength = chart?.domainLength ?? 1
+  const min = chart?.min ?? 0
+  const max = chart?.max ?? 0
 
   const hasSingleSeries = resolvedSeries.length === 1
   const primaryLatestValue = hasSingleSeries ? latestSeriesValues[0]?.value ?? null : null
   const gradientColor = resolvedSeries[0]?.color ?? color ?? DEFAULT_COLOR
-  const { pointsBySeries, ticks, labelIndexes, min, max, markerPoints, domainLength } = chart
 
   const getPointForIndex = useCallback(
     (index: number) => {
@@ -457,6 +457,14 @@ export function LineChart({
         ? tooltipLabelFormatter(labels[controlIndex] ?? '', controlIndex)
         : formatAxisLabel(labels[controlIndex] ?? `#${controlIndex + 1}`)
       : null
+
+  if (!hasChart) {
+    return (
+      <div className="flex h-full flex-col justify-center rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
+        <p>No data available for this selection.</p>
+      </div>
+    )
+  }
 
   return (
     <div
