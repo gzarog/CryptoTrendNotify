@@ -6,7 +6,7 @@ import type {
   MovingAverageMarker,
   QuantumPhaseNotification,
 } from '../App'
-import type { QuantumFlipThreshold } from '../lib/quantum'
+import type { QuantumCompositeSignal, QuantumFlipThreshold } from '../lib/quantum'
 import type {
   CombinedSignalNotification,
   SignalNotification,
@@ -154,6 +154,7 @@ type DashboardViewProps = {
   visibleCombinedSignalNotifications: CombinedSignalNotification[]
   visibleQuantumPhaseNotifications: QuantumPhaseNotification[]
   quantumFlipThreshold: QuantumFlipThreshold | null
+  compositeQuantumSignal: QuantumCompositeSignal | null
   formatTriggeredAt: (timestamp: number) => string
   onDismissMovingAverageNotification: (notificationId: string) => void
   onDismissMomentumNotification: (notificationId: string) => void
@@ -247,6 +248,7 @@ export function DashboardView({
   visibleCombinedSignalNotifications,
   visibleQuantumPhaseNotifications,
   quantumFlipThreshold,
+  compositeQuantumSignal,
   formatTriggeredAt,
   onDismissMovingAverageNotification,
   onDismissMomentumNotification,
@@ -1121,6 +1123,7 @@ export function DashboardView({
           <HedgingCalculatorPanel
             currentPrice={latestCandle?.close ?? null}
             isPriceLoading={isFetching}
+            quantumSignal={compositeQuantumSignal}
           />
         </section>
       </main>
