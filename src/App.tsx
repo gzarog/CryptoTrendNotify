@@ -1833,6 +1833,7 @@ function App() {
       visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
       visibleQuantumPhaseNotifications={visibleQuantumPhaseNotifications}
       quantumFlipThreshold={compositeQuantumSignal?.flipThreshold ?? null}
+      compositeQuantumSignal={compositeQuantumSignal}
       formatTriggeredAt={formatTriggeredAtLabel}
       onDismissSignalNotification={dismissSignalNotification}
       onDismissMomentumNotification={dismissMomentumNotification}

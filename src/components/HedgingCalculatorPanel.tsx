@@ -1,4 +1,34 @@
 import { useMemo, useState } from 'react'
+import type { QuantumCompositeSignal } from '../lib/quantum'
+
+const QUANTUM_TONE_STYLES = {
+  positive: {
+    container: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100',
+    label: 'text-emerald-300',
+    subtle: 'text-emerald-200',
+  },
+  negative: {
+    container: 'border-rose-500/40 bg-rose-500/10 text-rose-100',
+    label: 'text-rose-300',
+    subtle: 'text-rose-200',
+  },
+  neutral: {
+    container: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-100',
+    label: 'text-indigo-300',
+    subtle: 'text-indigo-200',
+  },
+} as const
+
+type QuantumTone = keyof typeof QUANTUM_TONE_STYLES
+
+type QuantumGuidance = {
+  multiplier: number
+  tone: QuantumTone
+  summary: string
+  confidenceLabel: string
+  stateLabel: string
+  flipSignalLabel: string
+}
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -23,9 +53,14 @@ function formatNumber(value: number | null, fractionDigits = 4): string {
 type HedgingCalculatorPanelProps = {
   currentPrice: number | null | undefined
   isPriceLoading: boolean
+  quantumSignal: QuantumCompositeSignal | null
 }
 
-export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: HedgingCalculatorPanelProps) {
+export function HedgingCalculatorPanel({
+  currentPrice,
+  isPriceLoading,
+  quantumSignal,
+}: HedgingCalculatorPanelProps) {
   const [positionDirection, setPositionDirection] = useState<'long' | 'short'>('long')
   const [entryPriceInput, setEntryPriceInput] = useState('')
   const [leverageInput, setLeverageInput] = useState('')
@@ -93,6 +128,85 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       : normalizedCurrentPrice > entryPrice
   }, [entryPrice, normalizedCurrentPrice, positionDirection])
 
+  const quantumGuidance = useMemo<QuantumGuidance | null>(() => {
+    if (!quantumSignal) {
+      return null
+    }
+
+    const normalizedConfidence = Math.min(Math.max(quantumSignal.confidence ?? 0, 0), 1)
+    const confidencePct = Math.round(normalizedConfidence * 100)
+    const convictionLabel =
+      normalizedConfidence >= 0.75
+        ? 'high'
+        : normalizedConfidence >= 0.55
+          ? 'moderate'
+          : 'developing'
+    const confidenceLabel = `${confidencePct}% ${convictionLabel} confidence`
+    const flipSignalLabel = quantumSignal.flipThreshold.signal.toLowerCase()
+    const lossActive = positionIsInLoss === true
+
+    let tone: QuantumTone = 'neutral'
+    let multiplier = 1
+    let summary = ''
+
+    if (quantumSignal.state === 'Up') {
+      if (positionDirection === 'long') {
+        tone = 'positive'
+        multiplier =
+          normalizedConfidence >= 0.75 ? 0.5 : normalizedConfidence >= 0.55 ? 0.7 : 0.85
+        summary = lossActive
+          ? `Quantum engine favors upside (${flipSignalLabel}), so the hedge suggestion is scaled down to keep long exposure while price stabilizes.`
+          : `Quantum engine favors upside (${flipSignalLabel}). If hedging becomes necessary, sizing will be tempered to preserve long exposure.`
+      } else {
+        tone = 'negative'
+        multiplier =
+          normalizedConfidence >= 0.75 ? 1.4 : normalizedConfidence >= 0.55 ? 1.2 : 1.05
+        summary = lossActive
+          ? `Quantum engine favors upside (${flipSignalLabel}), opposing the short. Hedge sizing is boosted to guard against a squeeze.`
+          : `Quantum engine favors upside (${flipSignalLabel}). If price turns against the short, expect a larger protective hedge.`
+      }
+    } else if (quantumSignal.state === 'Down') {
+      if (positionDirection === 'short') {
+        tone = 'positive'
+        multiplier =
+          normalizedConfidence >= 0.75 ? 0.5 : normalizedConfidence >= 0.55 ? 0.7 : 0.85
+        summary = lossActive
+          ? `Quantum engine favors further downside (${flipSignalLabel}), so the hedge is tempered to preserve your short exposure.`
+          : `Quantum engine favors further downside (${flipSignalLabel}). Future hedges will stay lighter to keep the short active.`
+      } else {
+        tone = 'negative'
+        multiplier =
+          normalizedConfidence >= 0.75 ? 1.4 : normalizedConfidence >= 0.55 ? 1.2 : 1.05
+        summary = lossActive
+          ? `Quantum engine points lower (${flipSignalLabel}), pressuring the long position. Hedge sizing is increased to absorb the move.`
+          : `Quantum engine points lower (${flipSignalLabel}). If losses develop, the hedge will scale up quickly to defend the long.`
+      }
+    } else if (quantumSignal.state === 'Reversal') {
+      tone = 'neutral'
+      multiplier = normalizedConfidence >= 0.55 ? 0.95 : 1
+      summary = lossActive
+        ? `Quantum engine is watching for a reversal (${flipSignalLabel}), so hedge sizing stays close to baseline while momentum pivots.`
+        : `Quantum engine is watching for a reversal (${flipSignalLabel}). We'll hold the baseline sizing until the move confirms.`
+    } else {
+      tone = 'neutral'
+      multiplier = 1
+      summary = lossActive
+        ? `Quantum engine reads a base-building phase (${flipSignalLabel}). Hedge sizing stays neutral until conviction returns.`
+        : `Quantum engine reads a base-building phase (${flipSignalLabel}). No adjustment is applied until stronger bias develops.`
+    }
+
+    const clampedMultiplier = Math.min(Math.max(multiplier, 0.35), 1.6)
+
+    return {
+      multiplier: clampedMultiplier,
+      tone,
+      summary,
+      confidenceLabel,
+      stateLabel: quantumSignal.state,
+      flipSignalLabel,
+    }
+  }, [positionDirection, positionIsInLoss, quantumSignal])
+
   const hedge = useMemo(() => {
     if (
       positionIsInLoss !== true ||
@@ -158,6 +272,20 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       hedgeMargin = leverage && hedgeNotional !== null ? hedgeNotional / leverage : null
     }
 
+    const adjustmentMultiplier = quantumGuidance?.multiplier ?? 1
+
+    if (hedgeQuantity !== null && adjustmentMultiplier !== 1) {
+      hedgeQuantity *= adjustmentMultiplier
+      if (normalizedCurrentPrice !== null) {
+        hedgeNotional = normalizedCurrentPrice * hedgeQuantity
+      } else if (hedgeNotional !== null) {
+        hedgeNotional *= adjustmentMultiplier
+      }
+      if (hedgeMargin !== null) {
+        hedgeMargin *= adjustmentMultiplier
+      }
+    }
+
     if (
       entryPrice !== null &&
       quantity !== null &&
@@ -184,6 +312,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       suggestedLeverage: normalizedSuggestedLeverage,
       projectedBreakEvenPrice,
       breakEvenLocked,
+      adjustmentMultiplier,
     }
   }, [
     entryPrice,
@@ -193,6 +322,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
     positionIsInLoss,
     quantity,
     requiredMargin,
+    quantumGuidance,
   ])
 
   const pnlLabel = useMemo(() => {
@@ -364,6 +494,32 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
               </span>
             )}
           </div>
+          {quantumGuidance && (
+            <div
+              className={`rounded-2xl border p-4 text-xs ${QUANTUM_TONE_STYLES[quantumGuidance.tone].container}`}
+            >
+              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wider">
+                <span>Quantum overlay</span>
+                <span className={QUANTUM_TONE_STYLES[quantumGuidance.tone].label}>
+                  {quantumGuidance.confidenceLabel}
+                </span>
+              </div>
+              <span className={`text-[11px] uppercase tracking-widest ${QUANTUM_TONE_STYLES[quantumGuidance.tone].label}`}>
+                Flip signal: {quantumGuidance.flipSignalLabel}
+              </span>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {quantumGuidance.stateLabel} bias
+              </p>
+              <p className={`mt-2 leading-relaxed ${QUANTUM_TONE_STYLES[quantumGuidance.tone].subtle}`}>
+                {quantumGuidance.summary}
+              </p>
+              {hedge && (
+                <p className={`mt-2 text-[11px] ${QUANTUM_TONE_STYLES[quantumGuidance.tone].label}`}>
+                  Hedge size tuned to {Math.round(hedge.adjustmentMultiplier * 100)}% of the base calculation.
+                </p>
+              )}
+            </div>
+          )}
           {positionIsInLoss === false && (
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-200">
               A hedge is optional while the position is in profit. Monitor price action before committing additional margin.
