@@ -135,6 +135,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
     let hedgeQuantity: number | null = null
     let hedgeMargin: number | null = null
     let projectedBreakEvenPrice: number | null = null
+    let breakEvenLocked: boolean = false
 
     const normalizedSuggestedLeverage =
       suggestedLeverage !== null && Number.isFinite(suggestedLeverage) && suggestedLeverage > 0 ? suggestedLeverage : null
@@ -164,7 +165,9 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       normalizedCurrentPrice !== null
     ) {
       const exposureDelta = quantity - hedgeQuantity
-      if (Math.abs(exposureDelta) > 1e-9) {
+      if (Math.abs(exposureDelta) <= 1e-9) {
+        breakEvenLocked = true
+      } else {
         const numerator = entryPrice * quantity - normalizedCurrentPrice * hedgeQuantity
         const computedBreakEven = numerator / exposureDelta
         if (Number.isFinite(computedBreakEven) && computedBreakEven > 0) {
@@ -180,6 +183,7 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
       margin: hedgeMargin,
       suggestedLeverage: normalizedSuggestedLeverage,
       projectedBreakEvenPrice,
+      breakEvenLocked,
     }
   }, [
     entryPrice,
@@ -341,13 +345,22 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
           <div className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-wider text-slate-400">Projected break-even price</span>
             <span className="text-lg font-semibold text-white">
-              {hedge && hedge.projectedBreakEvenPrice !== null
-                ? formatNumber(hedge.projectedBreakEvenPrice, 4)
+              {hedge
+                ? hedge.projectedBreakEvenPrice !== null
+                  ? formatNumber(hedge.projectedBreakEvenPrice, 4)
+                  : hedge.breakEvenLocked
+                    ? 'Not reachable (fully hedged)'
+                    : '—'
                 : '—'}
             </span>
             {hedge && hedge.projectedBreakEvenPrice !== null && (
               <span className="text-[11px] text-slate-400">
                 Price level where the original position and hedge would offset each other.
+              </span>
+            )}
+            {hedge && hedge.breakEvenLocked && hedge.projectedBreakEvenPrice === null && (
+              <span className="text-[11px] text-slate-400">
+                This hedge locks in the current loss. Adjust size or leverage to target a recoverable break-even level.
               </span>
             )}
           </div>
