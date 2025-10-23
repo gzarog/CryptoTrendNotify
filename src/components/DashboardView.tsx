@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type {
   MomentumIntensity,
   MomentumNotification,
@@ -19,6 +19,8 @@ import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
 import { HedgingCalculatorPanel } from './HedgingCalculatorPanel'
 import { Badge } from './signals/Badge'
+import { NotificationDialog } from './NotificationDialog'
+import { ChartSkeleton } from './skeletons'
 import {
   DIRECTIONAL_BADGE_CLASS,
   FLIP_BIAS_LABELS,
@@ -279,7 +281,41 @@ export function DashboardView({
   stochasticGuideLines,
 }: DashboardViewProps) {
   const [isNotificationPopupOpen, setIsNotificationPopupOpen] = useState(false)
+  const notificationButtonRef = useRef<HTMLButtonElement | null>(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  const tooltipDateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    [],
+  )
+
+  const formatTooltipLabel = (label: string): string => {
+    const parsed = new Date(label)
+    if (!Number.isNaN(parsed.getTime())) {
+      return tooltipDateFormatter.format(parsed)
+    }
+    return label
+  }
+
+  const formatPriceTooltip = (value: number | null): string => {
+    if (value == null) {
+      return '—'
+    }
+    return value.toFixed(5)
+  }
+
+  const formatOscillatorTooltip = (value: number | null): string => {
+    if (value == null) {
+      return '—'
+    }
+    return value.toFixed(2)
+  }
 
   const allNotifications = useMemo(
     () =>
@@ -406,6 +442,7 @@ export function DashboardView({
             </button>
             <div className="relative">
               <button
+                ref={notificationButtonRef}
                 type="button"
                 onClick={handleToggleNotifications}
                 className="relative flex items-center justify-center rounded-full border border-indigo-400/60 bg-slate-950/80 px-3 py-2 text-lg text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -425,25 +462,18 @@ export function DashboardView({
                   </span>
                 )}
               </button>
-              {isNotificationPopupOpen && (
-                <div className="absolute right-0 z-50 mt-3 w-80 rounded-2xl border border-white/10 bg-slate-900/95 p-4 text-sm shadow-xl">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Notifications
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsNotificationPopupOpen(false)}
-                      className="text-xs text-slate-400 transition hover:text-white"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
-                    {allNotifications.length === 0 ? (
-                      <p className="text-xs text-slate-500">No notifications available.</p>
-                    ) : (
-                      allNotifications.map((notification) => {
+              <NotificationDialog
+                isOpen={isNotificationPopupOpen}
+                onClose={() => setIsNotificationPopupOpen(false)}
+                anchorRef={notificationButtonRef}
+                title="Notifications"
+              >
+                {allNotifications.length === 0 ? (
+                  <p className="text-xs text-slate-500">No notifications available.</p>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-3">
+                      {allNotifications.map((notification) => {
                         if (notification.type === 'signal') {
                           const entry = notification.payload
                           const normalizedStrength = entry.strength.toLowerCase()
@@ -665,19 +695,18 @@ export function DashboardView({
                             <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
                           </div>
                         )
-                      })
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleClearNotifications}
-                    className="mt-4 w-full rounded-full border border-indigo-400/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition hover:border-indigo-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={allNotifications.length === 0}
-                  >
-                    Clear notifications
-                  </button>
-                </div>
-              )}
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearNotifications}
+                      className="w-full rounded-full border border-indigo-400/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition hover:border-indigo-300 hover:text-white"
+                    >
+                      Clear notifications
+                    </button>
+                  </>
+                )}
+              </NotificationDialog>
             </div>
             {canInstall && (
               <button
@@ -1040,8 +1069,10 @@ export function DashboardView({
         </aside>
         <section className="flex flex-1 flex-col gap-6">
           {isLoading && (
-            <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-6 text-sm text-slate-400">
-              <p>Loading live market data…</p>
+            <div className="grid gap-6 lg:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <ChartSkeleton key={`chart-skeleton-${index}`} />
+              ))}
             </div>
           )}
           {isError && (
@@ -1061,6 +1092,8 @@ export function DashboardView({
                 ]}
                 markers={movingAverageSeries.markers}
                 isLoading={isFetching}
+                tooltipLabelFormatter={formatTooltipLabel}
+                tooltipValueFormatter={(value) => formatPriceTooltip(value)}
               />
               <LineChart
                 title={`MACD (${macdSeries.label})`}
@@ -1071,6 +1104,7 @@ export function DashboardView({
                   { name: 'Histogram', data: macdSeries.histogram, color: '#34d399' },
                 ]}
                 isLoading={isFetching}
+                tooltipLabelFormatter={formatTooltipLabel}
               />
               <LineChart
                 title={`ADX (${adxSeries.label})`}
@@ -1082,6 +1116,7 @@ export function DashboardView({
                   { name: '-DI', data: adxSeries.minusDi, color: '#f87171' },
                 ]}
                 isLoading={isFetching}
+                tooltipLabelFormatter={formatTooltipLabel}
               />
               <LineChart
                 title={`RSI (${rsiLengthDescription})`}
@@ -1091,6 +1126,8 @@ export function DashboardView({
                 yDomain={{ min: 0, max: 100 }}
                 guideLines={rsiGuideLines}
                 isLoading={isFetching}
+                tooltipLabelFormatter={formatTooltipLabel}
+                tooltipValueFormatter={(value) => formatOscillatorTooltip(value)}
               />
               <LineChart
                 title={`Stochastic RSI (${stochasticLengthDescription})`}
@@ -1102,6 +1139,8 @@ export function DashboardView({
                 yDomain={{ min: 0, max: 100 }}
                 guideLines={stochasticGuideLines}
                 isLoading={isFetching}
+                tooltipLabelFormatter={formatTooltipLabel}
+                tooltipValueFormatter={(value) => formatOscillatorTooltip(value)}
               />
             </>
           )}

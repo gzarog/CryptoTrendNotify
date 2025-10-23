@@ -1,5 +1,6 @@
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
+import { Skeleton } from '../skeletons'
 import type { QuantumCompositeSignal, QuantumProbability, TrendState } from '../../lib/quantum'
 import type { DirectionalBias } from './quantumFlipThresholdShared'
 import {
@@ -334,7 +335,13 @@ export function QuantumPredictionPanel({ data, isLoading }: QuantumPredictionPan
       </header>
 
       <div className="flex flex-col gap-6 px-5 py-5">
-        {isLoading && !data && <p className="text-sm text-slate-400">Synthesizing quantum state…</p>}
+        {isLoading && !data && (
+          <div className="flex flex-col gap-3" role="status" aria-live="polite">
+            <Skeleton className="h-4 w-40 rounded-md" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-3 w-24 rounded-md" />
+          </div>
+        )}
 
         {!isLoading && !data && (
           <p className="text-sm text-slate-400">

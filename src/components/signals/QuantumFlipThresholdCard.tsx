@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { QuantumFlipThreshold } from '../../lib/quantum'
 import { Badge } from './Badge'
 import { PercentageBar } from './PercentageBar'
+import { Skeleton } from '../skeletons'
 import {
   BIAS_GRADIENT,
   DIRECTIONAL_BADGE_CLASS,
@@ -84,7 +85,11 @@ export function QuantumFlipThresholdCard({ threshold, isLoading }: QuantumFlipTh
       </header>
 
       {isLoading && !threshold && (
-        <p className="text-sm text-slate-400">Synthesizing flip threshold diagnostics…</p>
+        <div className="flex flex-col gap-3" role="status" aria-live="polite">
+          <Skeleton className="h-4 w-48 rounded-md" />
+          <Skeleton className="h-3 w-32 rounded-md" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+        </div>
       )}
 
       {!isLoading && !threshold && (

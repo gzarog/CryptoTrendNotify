@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { LineChart } from '../LineChart'
 
@@ -76,5 +76,49 @@ describe('LineChart', () => {
 
     expect(macdBadge).toBeInTheDocument()
     expect(signalBadge).toBeInTheDocument()
+  })
+
+  it('reveals tooltip details and keyboard controls when inspecting points', async () => {
+    const user = userEvent.setup()
+
+    const { container } = render(
+      <LineChart
+        title="RSI"
+        labels={['t0', 't1']}
+        data={[10, 20]}
+        tooltipLabelFormatter={(label) => label}
+        tooltipValueFormatter={(value) => (value != null ? value.toFixed(1) : '—')}
+      />,
+    )
+
+    const svg = container.querySelector('svg') as SVGSVGElement
+
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 640,
+      bottom: 260,
+      width: 640,
+      height: 260,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerMove(svg, { clientX: 640, clientY: 130 })
+
+    const tooltip = screen.getByRole('status')
+
+    expect(within(tooltip).getByText('t1')).toBeInTheDocument()
+    expect(within(tooltip).getByText('20.0')).toBeInTheDocument()
+
+    const previousButton = screen.getByRole('button', { name: /previous data point/i })
+
+    await user.click(previousButton)
+
+    const updatedTooltip = screen.getByRole('status')
+
+    expect(within(updatedTooltip).getByText('t0')).toBeInTheDocument()
+    expect(within(updatedTooltip).getByText('10.0')).toBeInTheDocument()
   })
 })

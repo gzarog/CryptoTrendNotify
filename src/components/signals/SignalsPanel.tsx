@@ -11,6 +11,7 @@ import { QuantumFlipThresholdCard } from './QuantumFlipThresholdCard'
 import { SignalHighlights } from './SignalHighlights'
 import { TimeframeOverviewCard } from './TimeframeOverviewCard'
 import { snapshotsToMap, sortSnapshotsByTimeframe } from './utils'
+import { SignalCardSkeleton } from '../skeletons'
 
 type SignalsPanelProps = {
   signals: TradingSignal[]
@@ -137,7 +138,11 @@ export function SignalsPanel({ signals, snapshots, isLoading, symbol }: SignalsP
             </header>
 
             {isLoading ? (
-              <p className="text-sm text-slate-400">Calculating signals…</p>
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <SignalCardSkeleton key={`signal-card-skeleton-${index}`} />
+                ))}
+              </div>
             ) : primaryHighlights.length === 0 ? (
               <p className="text-sm text-slate-400">No qualified signals yet. Check back soon.</p>
             ) : (

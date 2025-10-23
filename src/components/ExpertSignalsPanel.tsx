@@ -3,6 +3,7 @@ import type { TimeframeOption } from '../constants/timeframes'
 import { getBaseTimeframeWeights, getMultiTimeframeSignal } from '../lib/signals'
 import type { CombinedSignalDirection, TimeframeSignalSnapshot } from '../types/signals'
 import { Badge } from './signals/Badge'
+import { Skeleton } from './skeletons'
 import { PercentageBar } from './signals/PercentageBar'
 import {
   clampPercentage,
@@ -336,7 +337,11 @@ export function ExpertSignalsPanel({
           </header>
 
           {isLoading ? (
-            <p className="text-sm text-slate-400">Blending contributions…</p>
+            <div className="flex flex-col gap-4" role="status" aria-live="polite">
+              <Skeleton className="h-4 w-56 rounded-md" />
+              <Skeleton className="h-20 w-full rounded-2xl" />
+              <Skeleton className="h-48 w-full rounded-3xl" />
+            </div>
           ) : (
             <div className="flex flex-col gap-5">
               <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3 text-xs text-slate-300">
