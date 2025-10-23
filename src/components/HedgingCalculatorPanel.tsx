@@ -1,34 +1,13 @@
 import { useMemo, useState } from 'react'
+import type { HeatmapResult } from '../types/heatmap'
 import type { QuantumCompositeSignal } from '../lib/quantum'
-
-const QUANTUM_TONE_STYLES = {
-  positive: {
-    container: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100',
-    label: 'text-emerald-300',
-    subtle: 'text-emerald-200',
-  },
-  negative: {
-    container: 'border-rose-500/40 bg-rose-500/10 text-rose-100',
-    label: 'text-rose-300',
-    subtle: 'text-rose-200',
-  },
-  neutral: {
-    container: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-100',
-    label: 'text-indigo-300',
-    subtle: 'text-indigo-200',
-  },
-} as const
-
-type QuantumTone = keyof typeof QUANTUM_TONE_STYLES
-
-type QuantumGuidance = {
-  multiplier: number
-  tone: QuantumTone
-  summary: string
-  confidenceLabel: string
-  stateLabel: string
-  flipSignalLabel: string
-}
+import {
+  DEFAULT_HEDGE_CONFIG,
+  calculateHedge,
+  type HedgeDecision,
+  type HedgePrediction,
+  type HedgePosition,
+} from '../lib/hedging'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -38,28 +17,66 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 })
 
 function formatNumber(value: number | null, fractionDigits = 4): string {
-  const normalized = value ?? NaN
-
-  if (!Number.isFinite(normalized)) {
+  if (!Number.isFinite(value ?? NaN)) {
     return '—'
   }
 
-  return normalized.toLocaleString('en-US', {
+  return (value as number).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: fractionDigits,
   })
 }
 
+function formatPercent(value: number | null, fractionDigits = 1, signed = false): string {
+  if (!Number.isFinite(value ?? NaN)) {
+    return '—'
+  }
+
+  const multiplier = 10 ** fractionDigits
+  const scaled = Math.round((value as number) * 100 * multiplier) / multiplier
+  const normalized = Object.is(scaled, -0) ? 0 : scaled
+  const base = normalized.toFixed(fractionDigits)
+
+  if (signed && normalized > 0) {
+    return `+${base}%`
+  }
+
+  return `${base}%`
+}
+
+function toFiniteOrNull(value: unknown): number | null {
+  if (typeof value !== 'number') {
+    return null
+  }
+
+  return Number.isFinite(value) ? value : null
+}
+
 type HedgingCalculatorPanelProps = {
+  symbol: string
   currentPrice: number | null | undefined
   isPriceLoading: boolean
   quantumSignal: QuantumCompositeSignal | null
+  latestSnapshot: HeatmapResult | null
+}
+
+const TREND_STATES = ['Down', 'Base', 'Reversal', 'Up'] as const
+
+type ProbabilityVector = Record<(typeof TREND_STATES)[number], number>
+
+const DEFAULT_PROBABILITIES: ProbabilityVector = {
+  Down: 0,
+  Base: 0,
+  Reversal: 0,
+  Up: 0,
 }
 
 export function HedgingCalculatorPanel({
+  symbol,
   currentPrice,
   isPriceLoading,
   quantumSignal,
+  latestSnapshot,
 }: HedgingCalculatorPanelProps) {
   const [positionDirection, setPositionDirection] = useState<'long' | 'short'>('long')
   const [entryPriceInput, setEntryPriceInput] = useState('')
@@ -118,212 +135,96 @@ export function HedgingCalculatorPanel({
     return pnl
   }, [entryPrice, normalizedCurrentPrice, positionDirection, quantity])
 
-  const positionIsInLoss = useMemo(() => {
-    if (entryPrice === null || normalizedCurrentPrice === null) {
-      return null
-    }
-
-    return positionDirection === 'long'
-      ? normalizedCurrentPrice < entryPrice
-      : normalizedCurrentPrice > entryPrice
-  }, [entryPrice, normalizedCurrentPrice, positionDirection])
-
-  const quantumGuidance = useMemo<QuantumGuidance | null>(() => {
+  const probabilityVector = useMemo<ProbabilityVector>(() => {
     if (!quantumSignal) {
-      return null
+      return DEFAULT_PROBABILITIES
     }
 
-    const normalizedConfidence = Math.min(Math.max(quantumSignal.confidence ?? 0, 0), 1)
-    const confidencePct = Math.round(normalizedConfidence * 100)
-    const convictionLabel =
-      normalizedConfidence >= 0.75
-        ? 'high'
-        : normalizedConfidence >= 0.55
-          ? 'moderate'
-          : 'developing'
-    const confidenceLabel = `${confidencePct}% ${convictionLabel} confidence`
-    const flipSignalLabel = quantumSignal.flipThreshold.signal.toLowerCase()
-    const lossActive = positionIsInLoss === true
+    const base: ProbabilityVector = { ...DEFAULT_PROBABILITIES }
 
-    let tone: QuantumTone = 'neutral'
-    let multiplier = 1
-    let summary = ''
-
-    if (quantumSignal.state === 'Up') {
-      if (positionDirection === 'long') {
-        tone = 'positive'
-        multiplier =
-          normalizedConfidence >= 0.75 ? 0.5 : normalizedConfidence >= 0.55 ? 0.7 : 0.85
-        summary = lossActive
-          ? `Quantum engine favors upside (${flipSignalLabel}), so the hedge suggestion is scaled down to keep long exposure while price stabilizes.`
-          : `Quantum engine favors upside (${flipSignalLabel}). If hedging becomes necessary, sizing will be tempered to preserve long exposure.`
-      } else {
-        tone = 'negative'
-        multiplier =
-          normalizedConfidence >= 0.75 ? 1.4 : normalizedConfidence >= 0.55 ? 1.2 : 1.05
-        summary = lossActive
-          ? `Quantum engine favors upside (${flipSignalLabel}), opposing the short. Hedge sizing is boosted to guard against a squeeze.`
-          : `Quantum engine favors upside (${flipSignalLabel}). If price turns against the short, expect a larger protective hedge.`
+    for (const entry of quantumSignal.probabilities ?? []) {
+      if (!TREND_STATES.includes(entry.state)) {
+        continue
       }
-    } else if (quantumSignal.state === 'Down') {
-      if (positionDirection === 'short') {
-        tone = 'positive'
-        multiplier =
-          normalizedConfidence >= 0.75 ? 0.5 : normalizedConfidence >= 0.55 ? 0.7 : 0.85
-        summary = lossActive
-          ? `Quantum engine favors further downside (${flipSignalLabel}), so the hedge is tempered to preserve your short exposure.`
-          : `Quantum engine favors further downside (${flipSignalLabel}). Future hedges will stay lighter to keep the short active.`
-      } else {
-        tone = 'negative'
-        multiplier =
-          normalizedConfidence >= 0.75 ? 1.4 : normalizedConfidence >= 0.55 ? 1.2 : 1.05
-        summary = lossActive
-          ? `Quantum engine points lower (${flipSignalLabel}), pressuring the long position. Hedge sizing is increased to absorb the move.`
-          : `Quantum engine points lower (${flipSignalLabel}). If losses develop, the hedge will scale up quickly to defend the long.`
-      }
-    } else if (quantumSignal.state === 'Reversal') {
-      tone = 'neutral'
-      multiplier = normalizedConfidence >= 0.55 ? 0.95 : 1
-      summary = lossActive
-        ? `Quantum engine is watching for a reversal (${flipSignalLabel}), so hedge sizing stays close to baseline while momentum pivots.`
-        : `Quantum engine is watching for a reversal (${flipSignalLabel}). We'll hold the baseline sizing until the move confirms.`
-    } else {
-      tone = 'neutral'
-      multiplier = 1
-      summary = lossActive
-        ? `Quantum engine reads a base-building phase (${flipSignalLabel}). Hedge sizing stays neutral until conviction returns.`
-        : `Quantum engine reads a base-building phase (${flipSignalLabel}). No adjustment is applied until stronger bias develops.`
-    }
-
-    const clampedMultiplier = Math.min(Math.max(multiplier, 0.35), 1.6)
-
-    return {
-      multiplier: clampedMultiplier,
-      tone,
-      summary,
-      confidenceLabel,
-      stateLabel: quantumSignal.state,
-      flipSignalLabel,
-    }
-  }, [positionDirection, positionIsInLoss, quantumSignal])
-
-  const hedge = useMemo(() => {
-    if (
-      positionIsInLoss !== true ||
-      entryPrice === null ||
-      quantity === null ||
-      normalizedCurrentPrice === null ||
-      normalizedCurrentPrice <= 0
-    ) {
-      return null
-    }
-
-    const normalizedRequiredMargin =
-      requiredMargin !== null && Number.isFinite(requiredMargin) && requiredMargin > 0 ? requiredMargin : null
-
-    const fallbackMarginFromInputs =
-      leverage !== null && Number.isFinite(leverage) && leverage > 0 ? (entryPrice * quantity) / leverage : null
-
-    const marginBasis =
-      normalizedRequiredMargin !== null && normalizedRequiredMargin > 0
-        ? normalizedRequiredMargin
-        : fallbackMarginFromInputs !== null && fallbackMarginFromInputs > 0
-          ? fallbackMarginFromInputs
-          : null
-
-    let suggestedLeverage: number | null = null
-
-    if (marginBasis !== null) {
-      const marketValue = normalizedCurrentPrice * quantity
-      const derived = marketValue / marginBasis
-      if (Number.isFinite(derived) && derived > 0) {
-        suggestedLeverage = derived
+      const probability = toFiniteOrNull(entry.probability)
+      if (probability !== null) {
+        base[entry.state] = probability
       }
     }
 
-    if ((suggestedLeverage === null || suggestedLeverage <= 0) && leverage !== null) {
-      suggestedLeverage = leverage > 0 ? leverage : null
-    }
-
-    let hedgeNotional: number | null = null
-    let hedgeQuantity: number | null = null
-    let hedgeMargin: number | null = null
-    let projectedBreakEvenPrice: number | null = null
-    let breakEvenLocked: boolean = false
-
-    const normalizedSuggestedLeverage =
-      suggestedLeverage !== null && Number.isFinite(suggestedLeverage) && suggestedLeverage > 0 ? suggestedLeverage : null
-
-    if (marginBasis !== null && normalizedSuggestedLeverage !== null) {
-      const computedNotional = marginBasis * normalizedSuggestedLeverage
-      if (Number.isFinite(computedNotional) && computedNotional > 0) {
-        hedgeNotional = computedNotional
-        const computedQuantity = hedgeNotional / normalizedCurrentPrice
-        hedgeQuantity = Number.isFinite(computedQuantity) && computedQuantity > 0 ? computedQuantity : null
-        hedgeMargin = marginBasis
-      }
-    }
-
-    if (hedgeNotional === null || hedgeQuantity === null) {
-      const fallbackNotional = entryPrice * quantity
-      const fallbackQuantity = fallbackNotional / normalizedCurrentPrice
-      hedgeNotional = Number.isFinite(fallbackNotional) && fallbackNotional > 0 ? fallbackNotional : null
-      hedgeQuantity = Number.isFinite(fallbackQuantity) && fallbackQuantity > 0 ? fallbackQuantity : null
-      hedgeMargin = leverage && hedgeNotional !== null ? hedgeNotional / leverage : null
-    }
-
-    const adjustmentMultiplier = quantumGuidance?.multiplier ?? 1
-
-    if (hedgeQuantity !== null && adjustmentMultiplier !== 1) {
-      hedgeQuantity *= adjustmentMultiplier
-      if (normalizedCurrentPrice !== null) {
-        hedgeNotional = normalizedCurrentPrice * hedgeQuantity
-      } else if (hedgeNotional !== null) {
-        hedgeNotional *= adjustmentMultiplier
-      }
-      if (hedgeMargin !== null) {
-        hedgeMargin *= adjustmentMultiplier
-      }
-    }
-
-    if (
-      entryPrice !== null &&
-      quantity !== null &&
-      hedgeQuantity !== null &&
-      normalizedCurrentPrice !== null
-    ) {
-      const exposureDelta = quantity - hedgeQuantity
-      if (Math.abs(exposureDelta) <= 1e-9) {
-        breakEvenLocked = true
-      } else {
-        const numerator = entryPrice * quantity - normalizedCurrentPrice * hedgeQuantity
-        const computedBreakEven = numerator / exposureDelta
-        if (Number.isFinite(computedBreakEven) && computedBreakEven > 0) {
-          projectedBreakEvenPrice = computedBreakEven
+    const fused = quantumSignal.debug?.fusedVector
+    if (fused) {
+      for (const state of TREND_STATES) {
+        const candidate = toFiniteOrNull(fused[state])
+        if (candidate !== null) {
+          base[state] = candidate
         }
       }
     }
 
-    return {
-      direction: positionDirection === 'long' ? 'short' : 'long',
-      quantity: hedgeQuantity,
-      notional: hedgeNotional,
-      margin: hedgeMargin,
-      suggestedLeverage: normalizedSuggestedLeverage,
-      projectedBreakEvenPrice,
-      breakEvenLocked,
-      adjustmentMultiplier,
+    return base
+  }, [quantumSignal])
+
+  const prediction = useMemo<HedgePrediction | null>(() => {
+    if (normalizedCurrentPrice === null) {
+      return null
     }
-  }, [
-    entryPrice,
-    leverage,
-    normalizedCurrentPrice,
-    positionDirection,
-    positionIsInLoss,
-    quantity,
-    requiredMargin,
-    quantumGuidance,
-  ])
+
+    const atr = toFiniteOrNull(latestSnapshot?.risk?.atr)
+    const ema10 = toFiniteOrNull(latestSnapshot?.ema?.ema10)
+    const ema50 = toFiniteOrNull(latestSnapshot?.ema?.ema50)
+    const ma200 = toFiniteOrNull(latestSnapshot?.ma200?.value)
+    const macdValue = toFiniteOrNull(latestSnapshot?.macd?.value)
+    const macdSignal = toFiniteOrNull(latestSnapshot?.macd?.signal)
+    const macdHist = toFiniteOrNull(latestSnapshot?.macd?.histogram)
+    const adxValue = toFiniteOrNull(latestSnapshot?.adx?.value)
+    const timestamp = toFiniteOrNull(latestSnapshot?.evaluatedAt ?? latestSnapshot?.closedAt)
+
+    return {
+      currentPrice: normalizedCurrentPrice,
+      atr,
+      pUp: probabilityVector.Up,
+      pDown: probabilityVector.Down,
+      pReversal: probabilityVector.Reversal,
+      pBase: probabilityVector.Base,
+      ema10,
+      ema50,
+      ma200,
+      macd: { value: macdValue, signal: macdSignal, hist: macdHist },
+      adx: adxValue,
+      timestamp,
+    }
+  }, [latestSnapshot, normalizedCurrentPrice, probabilityVector])
+
+  const position = useMemo<HedgePosition | null>(() => {
+    if (entryPrice === null || quantity === null || normalizedCurrentPrice === null) {
+      return null
+    }
+
+    return {
+      symbol,
+      side: positionDirection === 'long' ? 'LONG' : 'SHORT',
+      entryPrice,
+      quantity,
+      leverage,
+    }
+  }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity, symbol])
+
+  const decision = useMemo<HedgeDecision | null>(() => {
+    if (!position || !prediction) {
+      return null
+    }
+
+    return calculateHedge(position, prediction, DEFAULT_HEDGE_CONFIG)
+  }, [position, prediction])
+
+  const hedgeNotional = useMemo(() => {
+    if (!decision?.hedgeQty || !prediction) {
+      return null
+    }
+
+    return decision.hedgeQty * prediction.currentPrice
+  }, [decision?.hedgeQty, prediction])
 
   const pnlLabel = useMemo(() => {
     if (unrealizedPnl === null) {
@@ -334,18 +235,61 @@ export function HedgingCalculatorPanel({
     return `${prefix}${currencyFormatter.format(unrealizedPnl)}`
   }, [unrealizedPnl])
 
+  const decisionReasons = useMemo(() => {
+    if (!decision) {
+      return []
+    }
+
+    if (decision.reasons.length > 0) {
+      return decision.reasons
+    }
+
+    return decision.shouldHedge ? ['Model triggered hedge without named condition'] : ['All hedge triggers idle']
+  }, [decision])
+
+  const context = decision?.context ?? null
+
+  const timestampLabel = useMemo(() => {
+    if (!prediction?.timestamp) {
+      return '—'
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(new Date(prediction.timestamp))
+  }, [prediction?.timestamp])
+
+  const probabilityEntries = useMemo(
+    () => [
+      { label: 'Down risk', value: probabilityVector.Down },
+      { label: 'Base consolidation', value: probabilityVector.Base },
+      { label: 'Reversal setup', value: probabilityVector.Reversal },
+      { label: 'Upside continuation', value: probabilityVector.Up },
+    ],
+    [probabilityVector.Base, probabilityVector.Down, probabilityVector.Reversal, probabilityVector.Up],
+  )
+
+  const decisionCardClass = !decision
+    ? 'border-slate-400/30 bg-slate-900/60 text-slate-200'
+    : decision.shouldHedge
+      ? 'border-rose-400/40 bg-rose-500/10 text-rose-100'
+      : 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
+
   return (
     <section className="flex flex-col gap-6 rounded-3xl border border-white/10 bg-slate-900/60 p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col">
           <h2 className="text-base font-semibold text-white">Hedging assistant</h2>
           <p className="text-xs text-slate-400">
-            Evaluate an opposite position to neutralize risk if your trade moves against you.
+            Provide your position details to evaluate a protective hedge for {symbol}.
           </p>
         </div>
-        <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-300">
-          Experimental
-        </span>
+        <div className="flex flex-col items-start text-xs text-slate-400 sm:items-end">
+          <span className="uppercase tracking-wider text-slate-300">Latest model snapshot</span>
+          <span>{timestampLabel}</span>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -404,137 +348,193 @@ export function HedgingCalculatorPanel({
         </div>
       </div>
 
-      <div className="grid gap-6 rounded-2xl border border-white/5 bg-slate-950/40 p-5 sm:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Latest price</span>
-            <span className="text-lg font-semibold text-white">
-              {normalizedCurrentPrice !== null ? formatNumber(normalizedCurrentPrice, 4) : 'Waiting for data…'}
-            </span>
-            {isPriceLoading && <span className="text-[11px] text-slate-500">Refreshing market data…</span>}
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Unrealized P&amp;L</span>
-            <span
-              className={`text-lg font-semibold ${
-                unrealizedPnl === null ? 'text-slate-300' : unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
+      <div className="grid gap-4 rounded-2xl border border-white/5 bg-slate-950/40 p-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Latest price</span>
+          <span className="text-lg font-semibold text-white">
+            {normalizedCurrentPrice !== null ? formatNumber(normalizedCurrentPrice, 4) : 'Waiting for data…'}
+          </span>
+          {isPriceLoading && <span className="text-[11px] text-slate-500">Refreshing market data…</span>}
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Unrealized P&amp;L</span>
+          <span
+            className={`text-lg font-semibold ${
+              unrealizedPnl === null ? 'text-slate-300' : unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            }`}
+          >
+            {pnlLabel}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Notional value</span>
+          <span className="text-lg font-semibold text-white">
+            {notional !== null ? currencyFormatter.format(notional) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Required margin</span>
+          <span className="text-lg font-semibold text-white">
+            {requiredMargin !== null ? currencyFormatter.format(requiredMargin) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">ATR (model)</span>
+          <span className="text-lg font-semibold text-white">
+            {prediction?.atr != null ? formatNumber(prediction.atr, 4) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs uppercase tracking-wider text-slate-400">ADX strength</span>
+          <span className="text-lg font-semibold text-white">
+            {prediction?.adx != null ? formatNumber(prediction.adx, 2) : '—'}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className={`flex flex-col gap-4 rounded-2xl border p-5 ${decisionCardClass}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wider">Model decision</span>
+              <span className="text-xl font-semibold">
+                {!decision
+                  ? 'Provide price, quantity, and live data'
+                  : decision.shouldHedge && decision.hedgeSide && decision.hedgeQty
+                    ? `Hedge ${decision.hedgeSide} ${formatNumber(decision.hedgeQty, 6)} units`
+                    : 'No hedge needed now'}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={!decision?.shouldHedge || !decision.hedgeQty}
+              title="Connect execution to place the hedge automatically"
+              className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wider transition ${
+                decision?.shouldHedge && decision.hedgeQty
+                  ? 'bg-white/10 text-white hover:bg-white/20'
+                  : 'bg-white/5 text-white/60'
               }`}
             >
-              {pnlLabel}
-            </span>
-            {positionIsInLoss === false && (
-              <span className="text-[11px] text-emerald-300">Your position is currently profitable.</span>
-            )}
-            {positionIsInLoss && (
-              <span className="text-[11px] text-rose-300">Loss detected based on the latest price.</span>
-            )}
+              Place hedge
+            </button>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Notional value</span>
-            <span className="text-lg font-semibold text-white">
-              {notional !== null ? currencyFormatter.format(notional) : '—'}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Required margin</span>
-            <span className="text-lg font-semibold text-white">
-              {requiredMargin !== null ? currencyFormatter.format(requiredMargin) : '—'}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Suggested hedge direction</span>
-            <span className="text-lg font-semibold text-white">
-              {hedge ? hedge.direction.toUpperCase() : '—'}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Suggested hedge size</span>
-            <span className="text-lg font-semibold text-white">
-              {hedge ? `${formatNumber(hedge.quantity, 6)} units` : '—'}
-            </span>
-            {hedge && hedge.notional !== null && normalizedCurrentPrice !== null && (
-              <span className="text-[11px] text-slate-400">
-                Matches approximately {currencyFormatter.format(hedge.notional)} of exposure at {formatNumber(normalizedCurrentPrice, 4)}.
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider">Suggested hedge direction</span>
+              <span className="text-sm font-semibold">
+                {decision?.hedgeSide ?? '—'}
               </span>
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Estimated hedge margin</span>
-            <span className="text-lg font-semibold text-white">
-              {hedge && hedge.margin !== null ? currencyFormatter.format(hedge.margin) : '—'}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Suggested hedge leverage</span>
-            <span className="text-lg font-semibold text-white">
-              {hedge && hedge.suggestedLeverage !== null ? formatNumber(hedge.suggestedLeverage, 2) : '—'}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-slate-400">Projected break-even price</span>
-            <span className="text-lg font-semibold text-white">
-              {hedge
-                ? hedge.projectedBreakEvenPrice !== null
-                  ? formatNumber(hedge.projectedBreakEvenPrice, 4)
-                  : hedge.breakEvenLocked
-                    ? 'Not reachable (fully hedged)'
-                    : '—'
-                : '—'}
-            </span>
-            {hedge && hedge.projectedBreakEvenPrice !== null && (
-              <span className="text-[11px] text-slate-400">
-                Price level where the original position and hedge would offset each other.
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider">Suggested hedge size</span>
+              <span className="text-sm font-semibold">
+                {decision?.hedgeQty ? `${formatNumber(decision.hedgeQty, 6)} units` : '—'}
               </span>
-            )}
-            {hedge && hedge.breakEvenLocked && hedge.projectedBreakEvenPrice === null && (
-              <span className="text-[11px] text-slate-400">
-                This hedge locks in the current loss. Adjust size or leverage to target a recoverable break-even level.
-              </span>
-            )}
-          </div>
-          {quantumGuidance && (
-            <div
-              className={`rounded-2xl border p-4 text-xs ${QUANTUM_TONE_STYLES[quantumGuidance.tone].container}`}
-            >
-              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wider">
-                <span>Quantum overlay</span>
-                <span className={QUANTUM_TONE_STYLES[quantumGuidance.tone].label}>
-                  {quantumGuidance.confidenceLabel}
-                </span>
-              </div>
-              <span className={`text-[11px] uppercase tracking-widest ${QUANTUM_TONE_STYLES[quantumGuidance.tone].label}`}>
-                Flip signal: {quantumGuidance.flipSignalLabel}
-              </span>
-              <p className="mt-2 text-sm font-semibold text-white">
-                {quantumGuidance.stateLabel} bias
-              </p>
-              <p className={`mt-2 leading-relaxed ${QUANTUM_TONE_STYLES[quantumGuidance.tone].subtle}`}>
-                {quantumGuidance.summary}
-              </p>
-              {hedge && (
-                <p className={`mt-2 text-[11px] ${QUANTUM_TONE_STYLES[quantumGuidance.tone].label}`}>
-                  Hedge size tuned to {Math.round(hedge.adjustmentMultiplier * 100)}% of the base calculation.
-                </p>
+              {hedgeNotional !== null && (
+                <span className="text-[11px]">≈ {currencyFormatter.format(hedgeNotional)}</span>
               )}
             </div>
-          )}
-          {positionIsInLoss === false && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-200">
-              A hedge is optional while the position is in profit. Monitor price action before committing additional margin.
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider">Target exposure after hedge</span>
+              <span className="text-sm font-semibold">
+                {decision?.targetExposureAfter != null ? `${formatNumber(decision.targetExposureAfter, 6)} units` : '—'}
+              </span>
             </div>
-          )}
-          {positionIsInLoss && (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200">
-              Consider entering the suggested hedge to lock in the current loss and prevent further downside.
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider">Estimated protection</span>
+              <span className="text-sm font-semibold">
+                {decision?.estProtectionQuote != null ? currencyFormatter.format(decision.estProtectionQuote) : '—'}
+              </span>
             </div>
-          )}
-          {positionIsInLoss === null && (
-            <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-xs text-indigo-200">
-              Provide your position details and wait for live pricing to explore hedge scenarios.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-5">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-slate-400">Trigger diagnostics</span>
+            <ul className="list-disc space-y-1 pl-4 text-sm text-slate-200">
+              {decisionReasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">PnL vs -R multiple</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? `${currencyFormatter.format(context.pnl)} / ${currencyFormatter.format(context.rPnl)}` : '—'}
+              </span>
             </div>
-          )}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">Expected downside</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? currencyFormatter.format(context.expectedDownside) : '—'}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Threshold {context ? currencyFormatter.format(context.thresholdQuote) : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">Prob gap (down - up)</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? formatPercent(context.probGapDown, 1, true) : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">Momentum against / Trend against</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? `${context.momentumAgainst ? 'Yes' : 'No'} / ${context.trendAgainst ? 'Yes' : 'No'}` : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">Current exposure</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? currencyFormatter.format(Math.abs(context.currentExposureQuote)) : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">Target exposure</span>
+              <span className="text-sm font-semibold text-white">
+                {context ? currencyFormatter.format(Math.abs(context.targetExposureQuote)) : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 rounded-2xl border border-white/5 bg-slate-950/40 p-5 sm:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Quantum probability mix</span>
+          <ul className="grid gap-2">
+            {probabilityEntries.map((entry) => (
+              <li key={entry.label} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-900/60 px-3 py-2 text-sm text-white">
+                <span>{entry.label}</span>
+                <span>{formatPercent(entry.value, 1)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-col gap-3">
+          <span className="text-xs uppercase tracking-wider text-slate-400">Momentum snapshot</span>
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-900/60 px-3 py-2 text-sm text-white">
+              <span>MACD histogram</span>
+              <span>{prediction?.macd.hist != null ? formatNumber(prediction.macd.hist, 4) : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-900/60 px-3 py-2 text-sm text-white">
+              <span>EMA10 / EMA50</span>
+              <span>
+                {prediction?.ema10 != null ? formatNumber(prediction.ema10, 4) : '—'}
+                {' / '}
+                {prediction?.ema50 != null ? formatNumber(prediction.ema50, 4) : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-900/60 px-3 py-2 text-sm text-white">
+              <span>MA200</span>
+              <span>{prediction?.ma200 != null ? formatNumber(prediction.ma200, 4) : '—'}</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
