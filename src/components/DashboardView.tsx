@@ -16,6 +16,7 @@ import type {
 import { LineChart } from './LineChart'
 import { SignalsPanel } from './SignalsPanel'
 import { ExpertSignalsPanel } from './ExpertSignalsPanel'
+import { HedgingCalculatorPanel } from './HedgingCalculatorPanel'
 import { Badge } from './signals/Badge'
 import {
   DIRECTIONAL_BADGE_CLASS,
@@ -1116,6 +1117,10 @@ export function DashboardView({
             adxLabel={adxSeries.label}
             rsiLengthDescription={rsiLengthDescription}
             stochasticLengthDescription={stochasticLengthDescription}
+          />
+          <HedgingCalculatorPanel
+            currentPrice={latestCandle?.close ?? null}
+            isPriceLoading={isFetching}
           />
         </section>
       </main>
