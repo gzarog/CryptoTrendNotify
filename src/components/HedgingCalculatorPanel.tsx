@@ -101,14 +101,28 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
     const hedgeQuantity = (entryPrice * quantity) / normalizedCurrentPrice
     const hedgeNotional = hedgeQuantity * normalizedCurrentPrice
     const hedgeMargin = leverage ? hedgeNotional / leverage : null
+    const normalizedRequiredMargin =
+      requiredMargin !== null && Number.isFinite(requiredMargin) && requiredMargin > 0 ? requiredMargin : null
+
+    let suggestedLeverage: number | null = null
+
+    if (normalizedRequiredMargin !== null) {
+      const derived = hedgeNotional / normalizedRequiredMargin
+      suggestedLeverage = Number.isFinite(derived) && derived > 0 ? derived : null
+    }
+
+    if (suggestedLeverage === null && leverage !== null) {
+      suggestedLeverage = leverage
+    }
 
     return {
       direction: positionDirection === 'long' ? 'short' : 'long',
       quantity: hedgeQuantity,
       notional: hedgeNotional,
       margin: hedgeMargin,
+      suggestedLeverage,
     }
-  }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity])
+  }, [entryPrice, leverage, normalizedCurrentPrice, positionDirection, quantity, requiredMargin])
 
   const pnlLabel = useMemo(() => {
     if (unrealizedPnl === null) {
@@ -249,6 +263,12 @@ export function HedgingCalculatorPanel({ currentPrice, isPriceLoading }: Hedging
             <span className="text-xs uppercase tracking-wider text-slate-400">Estimated hedge margin</span>
             <span className="text-lg font-semibold text-white">
               {hedge && hedge.margin !== null ? currencyFormatter.format(hedge.margin) : '—'}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-slate-400">Suggested hedge leverage</span>
+            <span className="text-lg font-semibold text-white">
+              {hedge && hedge.suggestedLeverage !== null ? formatNumber(hedge.suggestedLeverage, 2) : '—'}
             </span>
           </div>
           {positionIsInLoss === false && (
