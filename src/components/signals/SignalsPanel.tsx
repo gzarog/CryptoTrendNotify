@@ -4,7 +4,6 @@ import { showAppNotification } from '../../lib/notifications'
 import { deriveQuantumCompositeSignal, type TrendState } from '../../lib/quantum'
 import { getMultiTimeframeSignal } from '../../lib/signals'
 import type { TimeframeSignalSnapshot, TradingSignal } from '../../types/signals'
-import { MultiTimeframeSummary } from './MultiTimeframeSummary'
 import { PlaceholderCard } from './PlaceholderCard'
 import { QuantumPredictionPanel } from './QuantumPredictionPanel'
 import { QuantumFlipThresholdCard } from './QuantumFlipThresholdCard'
@@ -33,6 +32,9 @@ export function SignalsPanel({ signals, snapshots, isLoading, symbol }: SignalsP
   const quantumSignal = useMemo(() => deriveQuantumCompositeSignal(snapshots), [snapshots])
   const normalizedSnapshots = useMemo(() => sortSnapshotsByTimeframe(snapshots), [snapshots])
   const snapshotsByTimeframe = useMemo(() => snapshotsToMap(normalizedSnapshots), [normalizedSnapshots])
+
+  // Multi-timeframe bias calculations continue to run even though the panel is hidden.
+  void multiTimeframeSignal
 
   const lastQuantumStateRef = useRef<TrendState | null>(null)
 
@@ -149,8 +151,6 @@ export function SignalsPanel({ signals, snapshots, isLoading, symbol }: SignalsP
               <SignalHighlights signals={primaryHighlights} />
             )}
           </div>
-
-          {multiTimeframeSignal && <MultiTimeframeSummary signal={multiTimeframeSignal} />}
 
           <QuantumPredictionPanel data={quantumSignal} isLoading={isLoading} />
 
