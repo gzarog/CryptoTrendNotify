@@ -255,7 +255,6 @@ const MAX_BAR_LIMIT = 5000
 const MAX_MOMENTUM_NOTIFICATIONS = 6
 const MAX_MOVING_AVERAGE_NOTIFICATIONS = 6
 const MAX_SIGNAL_NOTIFICATIONS = 6
-const MAX_COMBINED_SIGNAL_NOTIFICATIONS = 6
 const MAX_QUANTUM_PHASE_NOTIFICATIONS = 6
 const MIN_COMBINED_SIGNAL_SCORE = 2
 const SIGNAL_NOTIFICATION_MIN_SCORE = 60
@@ -1376,9 +1375,11 @@ function App() {
       return
     }
 
+    setCombinedSignalNotifications((previous) => (previous.length === 0 ? previous : []))
+
     timeframeSnapshots.forEach((snapshot) => {
       const signatureKey = `${normalizedSymbol}-${snapshot.timeframe}`
-      const { direction, breakdown, strength } = snapshot.combined
+      const { direction, breakdown } = snapshot.combined
       const signature = `${signatureKey}-${direction}-${breakdown.signalStrength}-${breakdown.label}`
 
       if (lastCombinedSignalTriggersRef.current[signatureKey] === signature) {
@@ -1390,27 +1391,6 @@ function App() {
       if (direction === 'Neutral' || Math.abs(breakdown.signalStrength) < MIN_COMBINED_SIGNAL_SCORE) {
         return
       }
-
-      const normalizedStrength = Math.round(Math.min(Math.max(strength ?? 0, 0), 100))
-      const triggeredAt = Date.now()
-      const entry: CombinedSignalNotification = {
-        id: signature,
-        symbol: normalizedSymbol,
-        timeframe: snapshot.timeframe,
-        timeframeLabel: snapshot.timeframeLabel,
-        direction,
-        strength: normalizedStrength,
-        breakdown,
-        price: snapshot.price ?? null,
-        bias: snapshot.bias,
-        triggeredAt,
-      }
-
-      setCombinedSignalNotifications((previous) => {
-        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-        return next.slice(0, MAX_COMBINED_SIGNAL_NOTIFICATIONS)
-      })
-
     })
   }, [
     timeframeSnapshots,
