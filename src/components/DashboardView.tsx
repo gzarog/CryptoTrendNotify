@@ -5,7 +5,7 @@ import type {
   MovingAverageCrossNotification,
   MovingAverageMarker,
   QuantumPhaseNotification,
-} from '../App'
+} from '../types/app'
 import type { QuantumCompositeSignal, QuantumFlipThreshold } from '../lib/quantum'
 import type {
   CombinedSignalNotification,
@@ -408,7 +408,7 @@ export function DashboardView({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {quantumFlipSummary && (
-              <div className="flex min-w-[260px] flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-left shadow-[0_0_20px_rgba(15,23,42,0.45)] sm:min-w-[380px] sm:gap-4">
+              <div className="flex min-w-[260px] flex-col gap-3 glass-panel sm:min-w-[380px] sm:gap-4">
                 <div className="flex flex-wrap gap-2">
                   <Badge className={quantumFlipSummary.zoneBadgeClass}>{quantumFlipSummary.zoneLabel}</Badge>
                   <Badge className={quantumFlipSummary.biasBadgeClass}>{quantumFlipSummary.biasLabel}</Badge>
@@ -489,28 +489,28 @@ export function DashboardView({
                               key={`signal-${entry.id}`}
                               className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs ${cardClasses}`}
                             >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide">
-                                {emoji} {entry.side} signal
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide">
+                                  {emoji} {entry.side} signal
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissSignalNotification(entry.id)}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+                                  aria-label="Dismiss signal notification"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                              <span className="text-[11px] text-white/80">
+                                {entry.timeframeLabel} • Score {entry.confluenceScore} • Strength {entry.strength}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => onDismissSignalNotification(entry.id)}
-                                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-xs text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
-                                aria-label="Dismiss signal notification"
-                              >
-                                ×
-                              </button>
-                            </div>
-                            <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                            <span className="text-[11px] text-white/80">
-                              {entry.timeframeLabel} • Score {entry.confluenceScore} • Strength {entry.strength}
-                            </span>
-                            {entry.price != null && Number.isFinite(entry.price) && (
-                              <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
-                            )}
-                            <span className="text-[11px] text-white/80">Reasons: {reasonSummary}</span>
-                            <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
+                              {entry.price != null && Number.isFinite(entry.price) && (
+                                <span className="text-[11px] text-white/80">Price {entry.price.toFixed(5)}</span>
+                              )}
+                              <span className="text-[11px] text-white/80">Reasons: {reasonSummary}</span>
+                              <span className="text-[10px] text-white/60">{formatTriggeredAt(entry.triggeredAt)}</span>
                             </div>
                           )
                         }
@@ -528,8 +528,8 @@ export function DashboardView({
                             entry.breakdown.momentum === 'StrongBullish'
                               ? 'Strong bullish'
                               : entry.breakdown.momentum === 'StrongBearish'
-                              ? 'Strong bearish'
-                              : 'Weak'
+                                ? 'Strong bearish'
+                                : 'Weak'
                           const adxLabel = (() => {
                             if (entry.breakdown.adxDirection === 'ConfirmBull') {
                               return entry.breakdown.adxIsRising
@@ -761,20 +761,17 @@ export function DashboardView({
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-8 lg:flex-row lg:items-start lg:gap-10">
         <aside
           id="dashboard-sidebar"
-          className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${
-            isSidebarCollapsed ? 'lg:w-16' : 'lg:w-80'
-          }`}
+          className={`relative flex w-full flex-col gap-6 transition-[width] duration-300 lg:sticky lg:top-28 lg:flex-shrink-0 ${isSidebarCollapsed ? 'lg:w-16' : 'lg:w-80'
+            }`}
           aria-label="Dashboard filters and market snapshot"
         >
           <section
-            className={`flex flex-col gap-6 rounded-3xl border border-white/5 bg-slate-900/60 transition-[padding,opacity,transform] duration-300 ${
-              isSidebarCollapsed ? 'items-center gap-4 px-3 py-4' : 'p-6'
-            }`}
+            className={`flex flex-col gap-6 glass-panel transition-[padding,opacity,transform] duration-300 ${isSidebarCollapsed ? 'items-center gap-4 px-3 py-4' : 'p-6'
+              }`}
           >
             <div
-              className={`flex w-full items-center ${
-                isSidebarCollapsed ? 'justify-center' : 'justify-between'
-              } gap-3`}
+              className={`flex w-full items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } gap-3`}
             >
               {!isSidebarCollapsed && (
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
@@ -784,9 +781,8 @@ export function DashboardView({
               <button
                 type="button"
                 onClick={() => setIsSidebarCollapsed((previous) => !previous)}
-                className={`flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/60 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white ${
-                  isSidebarCollapsed ? 'px-2 py-2' : 'px-3 py-1'
-                }`}
+                className={`flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/60 text-xs font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white ${isSidebarCollapsed ? 'px-2 py-2' : 'px-3 py-1'
+                  }`}
                 aria-expanded={!isSidebarCollapsed}
               >
                 <span className="sr-only">
@@ -1031,11 +1027,10 @@ export function DashboardView({
                     <span className="text-lg font-semibold text-white">{lastUpdatedLabel}</span>
                     <span className="text-xs text-slate-400">
                       {refreshInterval
-                        ? `Every ${
-                            refreshSelection === 'custom'
-                              ? `${customRefresh || '—'}m`
-                              : formatIntervalLabel(refreshSelection)
-                          }`
+                        ? `Every ${refreshSelection === 'custom'
+                          ? `${customRefresh || '—'}m`
+                          : formatIntervalLabel(refreshSelection)
+                        }`
                         : 'Auto refresh disabled'}
                     </span>
                   </div>
@@ -1051,9 +1046,8 @@ export function DashboardView({
                     </span>
                     {latestCandle && priceChange ? (
                       <span
-                        className={`text-xs font-medium ${
-                          priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
+                        className={`text-xs font-medium ${priceChange.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
                       >
                         {priceChange.difference >= 0 ? '+' : ''}
                         {priceChange.difference.toFixed(5)} ({priceChange.percent.toFixed(2)}%)

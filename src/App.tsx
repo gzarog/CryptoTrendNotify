@@ -1,7 +1,8 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
+import { MainLayout } from './layouts/MainLayout'
 import { DashboardView } from './components/DashboardView'
 import { formatDegrees } from './components/signals/quantumFlipThresholdShared'
 import {
@@ -17,12 +18,7 @@ import { deriveQuantumCompositeSignal } from './lib/quantum'
 import { fetchHeatmapResults } from './lib/heatmap'
 import type { HeatmapResult } from './types/heatmap'
 import {
-  checkPushServerConnection,
-  ensurePushSubscription,
-  isNotificationSupported,
-  requestNotificationPermission,
   showAppNotification,
-  type PushSubscriptionFilters,
 } from './lib/notifications'
 import type {
   CombinedSignalNotification,
@@ -30,99 +26,22 @@ import type {
   TimeframeSignalSnapshot,
   TradingSignal,
 } from './types/signals'
+import type {
+  MomentumNotification,
+  MovingAverageCrossNotification,
+  MovingAverageMarker,
+  QuantumPhaseNotification,
+  MomentumIntensity,
+  MomentumReading,
+  MomentumComputation
+} from './types/app'
 import { TIMEFRAMES } from './constants/timeframes'
+import { useMarketData, useMultiFrameMarketData } from './hooks/useMarketData'
+import { usePushNotifications } from './hooks/usePushNotifications'
+import { useHeatmapData } from './hooks/useHeatmapData'
 
-export type Candle = {
-  openTime: number
-  closeTime: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  turnover: number
-}
-
-type BybitKlineResponse = {
-  retCode: number
-  retMsg: string
-  result?: {
-    list?: string[][]
-  }
-}
-
-type RefreshOption = {
-  value: string
-  label: string
-}
-
-type BarCountOption = {
-  value: string
-  label: string
-}
-
-type StochasticSetting = {
-  rsiLength: number
-  stochLength: number
-  kSmoothing: number
-  dSmoothing: number
-  label: string
-}
-
-export type MomentumIntensity = 'green' | 'yellow' | 'orange' | 'red'
-
-type MomentumReading = {
-  timeframe: string
-  timeframeLabel: string
-  rsi: number
-  stochasticD: number
-  openTime: number
-}
-
-export type MomentumNotification = {
-  id: string
-  symbol: string
-  direction: 'long' | 'short'
-  intensity: MomentumIntensity
-  label: string
-  timeframeSummary: string
-  rsiSummary: string
-  stochasticSummary: string
-  readings: MomentumReading[]
-  triggeredAt: number
-}
-
-type MomentumComputation = MomentumReading & { direction: 'long' | 'short' | null }
-
-export type MovingAverageMarker = {
-  index: number
-  value: number
-  color: string
-  label: string
-}
-
-export type MovingAverageCrossNotification = {
-  id: string
-  symbol: string
-  timeframe: string
-  timeframeLabel: string
-  pairLabel: string
-  direction: 'golden' | 'death'
-  intensity: Exclude<MomentumIntensity, 'red'>
-  price: number
-  triggeredAt: number
-}
-
-export type QuantumPhaseNotification = {
-  id: string
-  symbol: string
-  direction: 'long' | 'short'
-  phaseAngle: number
-  compositeBias: number
-  flipSignal: string
-  flipBias: 'LONG' | 'SHORT' | 'NEUTRAL'
-  triggeredAt: number
-}
+// Re-export types for backward compatibility if needed, though they are now in types/app
+export type { MomentumIntensity, MomentumNotification, MovingAverageCrossNotification, MovingAverageMarker, QuantumPhaseNotification } from './types/app'
 
 const MOMENTUM_SIGNAL_TIMEFRAMES = ['5', '15', '30', '60', '120', '240', '360'] as const
 const MOMENTUM_INTENSITY_BY_LEVEL: Record<number, MomentumIntensity> = {
@@ -154,7 +73,7 @@ const RSI_SETTINGS: Record<string, { period: number; label: string }> = {
 
 const DEFAULT_RSI_SETTING = { period: 14, label: '14' }
 
-const STOCHASTIC_SETTINGS: Record<string, StochasticSetting> = {
+const STOCHASTIC_SETTINGS: Record<string, { rsiLength: number; stochLength: number; kSmoothing: number; dSmoothing: number; label: string }> = {
   '5': { rsiLength: 7, stochLength: 7, kSmoothing: 2, dSmoothing: 2, label: 'RSI 7 • Stoch 7 • %K 2 • %D 2' },
   '15': { rsiLength: 9, stochLength: 9, kSmoothing: 2, dSmoothing: 3, label: 'RSI 9 • Stoch 9 • %K 2 • %D 3' },
   '30': { rsiLength: 12, stochLength: 12, kSmoothing: 3, dSmoothing: 3, label: 'RSI 12 • Stoch 12 • %K 3 • %D 3' },
@@ -164,7 +83,7 @@ const STOCHASTIC_SETTINGS: Record<string, StochasticSetting> = {
   '360': { rsiLength: 24, stochLength: 24, kSmoothing: 4, dSmoothing: 4, label: 'RSI 24 • Stoch 24 • %K 4 • %D 4' },
 }
 
-const DEFAULT_STOCHASTIC_SETTING: StochasticSetting = {
+const DEFAULT_STOCHASTIC_SETTING = {
   rsiLength: 14,
   stochLength: 14,
   kSmoothing: 3,
@@ -200,7 +119,7 @@ const MACD_SETTINGS: Record<
 
 const DEFAULT_MACD_SETTING = { fast: 12, slow: 26, signal: 9, label: 'EMA 12 • EMA 26 • Signal 9' }
 
-const REFRESH_OPTIONS: RefreshOption[] = [
+const REFRESH_OPTIONS = [
   { value: '0.5', label: '30s' },
   { value: '1', label: '1m' },
   { value: '5', label: '5m' },
@@ -212,7 +131,7 @@ const REFRESH_OPTIONS: RefreshOption[] = [
 
 const DEFAULT_REFRESH_SELECTION = '1'
 
-const BAR_COUNT_OPTIONS: BarCountOption[] = [
+const BAR_COUNT_OPTIONS = [
   { value: '100', label: '100' },
   { value: '200', label: '200' },
   { value: '400', label: '400' },
@@ -351,80 +270,6 @@ function writeLocalStorage(key: string, value: string) {
     // Ignore write errors (e.g., storage full or disabled)
   }
 }
-// Bybit caps the /market/kline endpoint at 200 results per response, so the fetcher
-// issues batched requests when callers ask for a larger window.
-const BYBIT_REQUEST_LIMIT = 200
-
-async function fetchBybitOHLCV(symbol: string, interval: string, limit: number): Promise<Candle[]> {
-  const sanitizedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_BAR_LIMIT)
-  const collected: Candle[] = []
-  let nextEndTime: number | undefined
-
-  while (collected.length < sanitizedLimit) {
-    const url = new URL('https://api.bybit.com/v5/market/kline')
-    url.searchParams.set('category', 'linear')
-    url.searchParams.set('symbol', symbol)
-    url.searchParams.set('interval', interval)
-
-    const batchLimit = Math.min(sanitizedLimit - collected.length, BYBIT_REQUEST_LIMIT)
-    url.searchParams.set('limit', batchLimit.toString())
-
-    if (nextEndTime !== undefined) {
-      url.searchParams.set('end', nextEndTime.toString())
-    }
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        Accept: 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Unable to load data (status ${response.status})`)
-    }
-
-    const payload = (await response.json()) as BybitKlineResponse
-
-    if (payload.retCode !== 0 || !payload.result?.list) {
-      throw new Error(payload.retMsg || 'Bybit API returned an error')
-    }
-
-    const candles = payload.result.list.map((entry) => ({
-      openTime: Number(entry[0]),
-      open: Number(entry[1]),
-      high: Number(entry[2]),
-      low: Number(entry[3]),
-      close: Number(entry[4]),
-      volume: Number(entry[5]),
-      turnover: Number(entry[6] ?? 0),
-      closeTime: Number(entry[0]) + 1,
-    }))
-
-    if (candles.length === 0) {
-      break
-    }
-
-    collected.push(...candles)
-
-    if (candles.length < batchLimit) {
-      break
-    }
-
-    const oldestCandle = candles.reduce((oldest, candle) =>
-      candle.openTime < oldest.openTime ? candle : oldest,
-    candles[0])
-
-    nextEndTime = oldestCandle.openTime - 1
-  }
-
-  const deduped = Array.from(
-    collected
-      .reduce((acc, candle) => acc.set(candle.openTime, candle), new Map<number, Candle>())
-      .values(),
-  )
-
-  return deduped.sort((a, b) => a.openTime - b.openTime).slice(-sanitizedLimit)
-}
 
 function resolveRefreshInterval(selection: string, customValue: string): number | false {
   if (selection === 'custom') {
@@ -529,10 +374,22 @@ function App() {
     const stored = readLocalStorage(STORAGE_KEYS.marketSummaryCollapsed)
     return stored === 'true' ? true : stored === 'false' ? false : false
   })
-  const supportsNotifications = isNotificationSupported()
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
-    supportsNotifications ? Notification.permission : 'denied',
+
+  // Use the new hook for Push Notifications
+  const {
+    supportsNotifications,
+    notificationPermission,
+    pushServerConnected,
+    requestPermission: requestNotificationPermission,
+    pushNotificationsEnabled
+  } = usePushNotifications(
+    symbol,
+    [...MOMENTUM_SIGNAL_TIMEFRAMES],
+    MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES,
+    [...MOVING_AVERAGE_PAIR_TAGS]
   )
+
+
   const [rsiLowerBoundInput, setRsiLowerBoundInput] = useState(
     () =>
       readLocalStorage(STORAGE_KEYS.rsiLowerBound) ??
@@ -566,7 +423,6 @@ function App() {
   const [combinedSignalNotifications, setCombinedSignalNotifications] =
     useState<CombinedSignalNotification[]>([])
   const [quantumPhaseNotifications, setQuantumPhaseNotifications] = useState<QuantumPhaseNotification[]>([])
-  const [pushServerConnected, setPushServerConnected] = useState<boolean | null>(null)
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol])
   const symbolQueryEnabled = normalizedSymbol.length > 0
@@ -618,13 +474,6 @@ function App() {
     writeLocalStorage(STORAGE_KEYS.stochasticUpperBound, stochasticUpperBoundInput)
   }, [stochasticUpperBoundInput])
 
-  const fetchPushServerStatus = useCallback(async () => checkPushServerConnection(), [])
-
-  const updatePushServerStatus = useCallback(async () => {
-    const connected = await fetchPushServerStatus()
-    setPushServerConnected(connected)
-    return connected
-  }, [fetchPushServerStatus])
 
   const refreshInterval = useMemo(
     () => resolveRefreshInterval(refreshSelection, customRefresh),
@@ -645,34 +494,14 @@ function App() {
     },
   })
 
-  useEffect(() => {
-    if (!supportsNotifications) {
-      setNotificationPermission('denied')
-      return
-    }
-
-    setNotificationPermission(Notification.permission)
-  }, [supportsNotifications])
-
-  const pushNotificationsEnabled = supportsNotifications && notificationPermission === 'granted'
-
-  useEffect(() => {
-    let cancelled = false
-
-    const checkStatus = async () => {
-      const connected = await fetchPushServerStatus()
-
-      if (!cancelled) {
-        setPushServerConnected(connected)
-      }
-    }
-
-    void checkStatus()
-
-    return () => {
-      cancelled = true
-    }
-  }, [fetchPushServerStatus])
+  // Use new Hook for Market Data
+  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useMarketData(
+    normalizedSymbol,
+    timeframe,
+    resolvedBarLimit,
+    refreshInterval,
+    symbolQueryEnabled
+  )
 
   useEffect(() => {
     const handler = (event: BeforeInstallPromptEvent) => {
@@ -684,16 +513,6 @@ function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
-  const { data, isError, error, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<Candle[]>({
-    queryKey: ['bybit-kline', normalizedSymbol, timeframe, resolvedBarLimit],
-    queryFn: () => fetchBybitOHLCV(normalizedSymbol, timeframe, resolvedBarLimit),
-    refetchInterval: refreshInterval,
-    refetchIntervalInBackground: true,
-    retry: 1,
-    enabled: symbolQueryEnabled,
-    placeholderData: (previousData) => previousData,
-  })
-
   const symbolErrorMessage = isError && error instanceof Error ? error.message : ''
   const normalizedErrorMessage = symbolErrorMessage.toLowerCase()
   const isSymbolRejected =
@@ -703,71 +522,23 @@ function App() {
       normalizedErrorMessage.includes('not found'))
   const canStreamSymbol = symbolQueryEnabled && !isSymbolRejected
 
-  const notificationQueries = useQueries({
-    queries: notificationTimeframes.map((value) => ({
-      queryKey: ['bybit-kline', normalizedSymbol, value, resolvedBarLimit],
-      queryFn: () => fetchBybitOHLCV(normalizedSymbol, value, resolvedBarLimit),
-      refetchInterval: refreshInterval,
-      refetchIntervalInBackground: true,
-      retry: 1,
-      enabled: canStreamSymbol,
-      placeholderData: (previousData: Candle[] | undefined) => previousData,
-    })),
-  })
+  // Use MultiFrame Market Data Hook for Notifications
+  const notificationQueries = useMultiFrameMarketData(
+    normalizedSymbol,
+    [...notificationTimeframes],
+    resolvedBarLimit,
+    refreshInterval,
+    canStreamSymbol
+  )
 
   const movingAverageNotificationTimeframes = MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES
-  const movingAverageNotificationQueries = useQueries({
-    queries: movingAverageNotificationTimeframes.map((value) => ({
-      queryKey: ['bybit-kline', normalizedSymbol, value, resolvedBarLimit],
-      queryFn: () => fetchBybitOHLCV(normalizedSymbol, value, resolvedBarLimit),
-      refetchInterval: refreshInterval,
-      refetchIntervalInBackground: true,
-      retry: 1,
-      enabled: canStreamSymbol,
-      placeholderData: (previousData: Candle[] | undefined) => previousData,
-    })),
-  })
-
-  const subscriptionFilters = useMemo<PushSubscriptionFilters | undefined>(() => {
-    if (!canStreamSymbol) {
-      return undefined
-    }
-
-    return {
-      symbols: [normalizedSymbol],
-      momentumTimeframes: [...MOMENTUM_SIGNAL_TIMEFRAMES],
-      movingAverageTimeframes: [...MOVING_AVERAGE_NOTIFICATION_TIMEFRAMES],
-      movingAveragePairs: [...MOVING_AVERAGE_PAIR_TAGS],
-    }
-  }, [canStreamSymbol, normalizedSymbol])
-
-  useEffect(() => {
-    if (!pushNotificationsEnabled) {
-      return
-    }
-
-    let cancelled = false
-
-    const initializeSubscription = async () => {
-      const subscriptionEstablished = await ensurePushSubscription(subscriptionFilters)
-
-      if (cancelled) {
-        return
-      }
-
-      setPushServerConnected(subscriptionEstablished)
-
-      if (subscriptionEstablished) {
-        await updatePushServerStatus()
-      }
-    }
-
-    void initializeSubscription()
-
-    return () => {
-      cancelled = true
-    }
-  }, [pushNotificationsEnabled, subscriptionFilters, updatePushServerStatus])
+  const movingAverageNotificationQueries = useMultiFrameMarketData(
+    normalizedSymbol,
+    [...movingAverageNotificationTimeframes],
+    resolvedBarLimit,
+    refreshInterval,
+    canStreamSymbol
+  )
 
   const handleEnableNotifications = async () => {
     if (!supportsNotifications) {
@@ -791,47 +562,8 @@ function App() {
       }
     }
 
-    const permission = await requestNotificationPermission()
-    setNotificationPermission(permission)
-
-    if (permission === 'granted') {
-      const subscriptionEstablished = await ensurePushSubscription(subscriptionFilters)
-      setPushServerConnected(subscriptionEstablished)
-
-      if (!subscriptionEstablished) {
-        void updatePushServerStatus()
-        return
-      }
-    }
-
-    void updatePushServerStatus()
+    await requestNotificationPermission()
   }
-
-  useEffect(() => {
-    if (!pushNotificationsEnabled) {
-      return
-    }
-
-    let cancelled = false
-
-    const syncSubscription = async () => {
-      const established = await ensurePushSubscription(subscriptionFilters)
-
-      if (cancelled) {
-        return
-      }
-
-      if (!established) {
-        void updatePushServerStatus()
-      }
-    }
-
-    void syncSubscription()
-
-    return () => {
-      cancelled = true
-    }
-  }, [pushNotificationsEnabled, subscriptionFilters, updatePushServerStatus])
 
   const lastUpdatedLabel = useMemo(() => {
     if (!dataUpdatedAt) {
@@ -917,6 +649,40 @@ function App() {
   const rsiSetting = useMemo(
     () => RSI_SETTINGS[timeframe] ?? DEFAULT_RSI_SETTING,
     [timeframe],
+  )
+
+  const momentumThresholds = useMemo(
+    () => ({
+      longRsi: Math.max(0, Math.min(100, Number(rsiUpperBoundInput) || DEFAULT_MOMENTUM_BOUNDS.rsiUpper)),
+      shortRsi: Math.max(0, Math.min(100, Number(rsiLowerBoundInput) || DEFAULT_MOMENTUM_BOUNDS.rsiLower)),
+      longStochastic: Math.max(
+        0,
+        Math.min(100, Number(stochasticUpperBoundInput) || DEFAULT_MOMENTUM_BOUNDS.stochasticUpper),
+      ),
+      shortStochastic: Math.max(
+        0,
+        Math.min(100, Number(stochasticLowerBoundInput) || DEFAULT_MOMENTUM_BOUNDS.stochasticLower),
+      ),
+    }),
+    [rsiLowerBoundInput, rsiUpperBoundInput, stochasticLowerBoundInput, stochasticUpperBoundInput],
+  )
+
+  const rsiGuideLines = useMemo(
+    () => [
+      { value: momentumThresholds.shortRsi, label: 'Short', color: '#f87171' },
+      { value: 50, label: 'Neutral', color: '#94a3b8' },
+      { value: momentumThresholds.longRsi, label: 'Long', color: '#34d399' },
+    ],
+    [momentumThresholds.longRsi, momentumThresholds.shortRsi],
+  )
+
+  const stochasticGuideLines = useMemo(
+    () => [
+      { value: momentumThresholds.shortStochastic, label: 'Short', color: '#f87171' },
+      { value: 50, label: 'Neutral', color: '#94a3b8' },
+      { value: momentumThresholds.longStochastic, label: 'Long', color: '#34d399' },
+    ],
+    [momentumThresholds.longStochastic, momentumThresholds.shortStochastic],
   )
 
   const stochasticSetting = useMemo(
@@ -1040,752 +806,140 @@ function App() {
     [ema10Values, ema50Values, sma200Values, movingAverageMarkers],
   )
 
-  const heatmapQuery = useQuery<HeatmapResult[]>({
-    queryKey: ['heatmap-results', normalizedSymbol, resolvedBarLimit],
-    queryFn: () => fetchHeatmapResults(normalizedSymbol, resolvedBarLimit),
-    enabled: canStreamSymbol,
-    refetchInterval: refreshInterval,
-    refetchIntervalInBackground: true,
-    retry: 1,
-    placeholderData: (previousData) => previousData,
-  })
-
-  const heatmapResults = useMemo<HeatmapResult[]>(() => {
-    if (!canStreamSymbol) {
-      return []
-    }
-    return heatmapQuery.data ?? []
-  }, [canStreamSymbol, heatmapQuery.data])
-
-  const latestHeatmapSnapshot = useMemo<HeatmapResult | null>(
-    () => {
-      if (heatmapResults.length === 0) {
-        return null
-      }
-
-      const matching = heatmapResults.find((result) => result.entryTimeframe === timeframe)
-      return matching ?? heatmapResults[0] ?? null
-    },
-    [heatmapResults, timeframe],
-  )
-
-  const tradingSignals = useMemo<TradingSignal[]>(() => deriveSignalsFromHeatmap(heatmapResults), [
-    heatmapResults,
-  ])
-
-  const timeframeSnapshots = useMemo<TimeframeSignalSnapshot[]>(
-    () => deriveTimeframeSnapshots(heatmapResults),
-    [heatmapResults],
-  )
-
-  const compositeQuantumSignal = useMemo(
-    () => deriveQuantumCompositeSignal(timeframeSnapshots),
-    [timeframeSnapshots],
-  )
-
-  const areSignalsLoading = heatmapQuery.isLoading || heatmapQuery.isFetching
-
-  const momentumThresholds = useMemo(() => {
-    const clamp = (value: string, fallback: number) => {
-      const parsed = Number(value)
-      if (!Number.isFinite(parsed)) {
-        return fallback
-      }
-      return Math.min(Math.max(parsed, 0), 100)
-    }
-
-    const rsiLower = clamp(rsiLowerBoundInput, DEFAULT_MOMENTUM_BOUNDS.rsiLower)
-    const rsiUpper = clamp(rsiUpperBoundInput, DEFAULT_MOMENTUM_BOUNDS.rsiUpper)
-    const stochasticLower = clamp(
-      stochasticLowerBoundInput,
-      DEFAULT_MOMENTUM_BOUNDS.stochasticLower,
-    )
-    const stochasticUpper = clamp(
-      stochasticUpperBoundInput,
-      DEFAULT_MOMENTUM_BOUNDS.stochasticUpper,
-    )
-
-    return {
-      rsiLower,
-      rsiUpper,
-      stochasticLower,
-      stochasticUpper,
-      longRsi: Math.min(rsiLower, rsiUpper),
-      shortRsi: Math.max(rsiLower, rsiUpper),
-      longStochastic: Math.min(stochasticLower, stochasticUpper),
-      shortStochastic: Math.max(stochasticLower, stochasticUpper),
-    }
-  }, [
-    rsiLowerBoundInput,
-    rsiUpperBoundInput,
-    stochasticLowerBoundInput,
-    stochasticUpperBoundInput,
-  ])
-
-  const rsiGuideLines = useMemo(
-    () => [
-      {
-        value: momentumThresholds.shortRsi,
-        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.shortRsi),
-        color: 'rgba(239, 68, 68, 0.7)',
-      },
-      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
-      {
-        value: momentumThresholds.longRsi,
-        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.longRsi),
-        color: 'rgba(16, 185, 129, 0.7)',
-      },
-    ],
-    [momentumThresholds.longRsi, momentumThresholds.shortRsi],
-  )
-
-  const stochasticGuideLines = useMemo(
-    () => [
-      {
-        value: momentumThresholds.shortStochastic,
-        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.shortStochastic),
-        color: 'rgba(239, 68, 68, 0.7)',
-      },
-      { value: 50, label: '50', color: 'rgba(148, 163, 184, 0.5)' },
-      {
-        value: momentumThresholds.longStochastic,
-        label: GUIDE_VALUE_FORMATTER.format(momentumThresholds.longStochastic),
-        color: 'rgba(16, 185, 129, 0.7)',
-      },
-    ],
-    [momentumThresholds.longStochastic, momentumThresholds.shortStochastic],
-  )
-
-  useEffect(() => {
-    const sanitized = momentumThresholds.rsiLower.toString()
-    if (sanitized !== rsiLowerBoundInput) {
-      setRsiLowerBoundInput(sanitized)
-    }
-  }, [momentumThresholds.rsiLower, rsiLowerBoundInput])
-
-  useEffect(() => {
-    const sanitized = momentumThresholds.rsiUpper.toString()
-    if (sanitized !== rsiUpperBoundInput) {
-      setRsiUpperBoundInput(sanitized)
-    }
-  }, [momentumThresholds.rsiUpper, rsiUpperBoundInput])
-
-  useEffect(() => {
-    const sanitized = momentumThresholds.stochasticLower.toString()
-    if (sanitized !== stochasticLowerBoundInput) {
-      setStochasticLowerBoundInput(sanitized)
-    }
-  }, [momentumThresholds.stochasticLower, stochasticLowerBoundInput])
-
-  useEffect(() => {
-    const sanitized = momentumThresholds.stochasticUpper.toString()
-    if (sanitized !== stochasticUpperBoundInput) {
-      setStochasticUpperBoundInput(sanitized)
-    }
-  }, [momentumThresholds.stochasticUpper, stochasticUpperBoundInput])
-
-  useEffect(() => {
-    lastMomentumTriggerRef.current = null
-  }, [
-    momentumThresholds.longRsi,
-    momentumThresholds.shortRsi,
-    momentumThresholds.longStochastic,
-    momentumThresholds.shortStochastic,
-  ])
-
-  useEffect(() => {
-    lastSignalTriggersRef.current = {}
-  }, [normalizedSymbol])
-
-  const visibleMomentumNotifications = useMemo(() => momentumNotifications, [momentumNotifications])
-  const visibleMovingAverageNotifications = useMemo(
-    () => movingAverageNotifications,
-    [movingAverageNotifications],
-  )
-  const visibleSignalNotifications = useMemo(
-    () => signalNotifications,
-    [signalNotifications],
-  )
-  const visibleCombinedSignalNotifications = useMemo(
-    () => combinedSignalNotifications,
-    [combinedSignalNotifications],
-  )
-  const visibleQuantumPhaseNotifications = useMemo(
-    () => quantumPhaseNotifications,
-    [quantumPhaseNotifications],
-  )
-  const handleClearNotifications = useCallback(() => {
-    setMomentumNotifications([])
-    setMovingAverageNotifications([])
-    setSignalNotifications([])
-    setCombinedSignalNotifications([])
-    setQuantumPhaseNotifications([])
-  }, [])
-
-  useEffect(() => {
-    movingAverageNotificationTimeframes.forEach((timeframeValue, index) => {
-      const query = movingAverageNotificationQueries[index]
-      const candles = query?.data
-
-      if (!candles || candles.length < 2) {
-        return
-      }
-
-      const closesForTimeframe = candles.map((candle) => candle.close)
-      const ema10Series = calculateEMA(closesForTimeframe, 10)
-      const ema50Series = calculateEMA(closesForTimeframe, 50)
-      const sma200Series = calculateSMA(closesForTimeframe, 200)
-
-      const pairs = [
-        {
-          fast: ema10Series,
-          slow: ema50Series,
-          pairLabel: 'EMA 10 / EMA 50',
-          intensity: 'green' as const,
-          tag: 'ema10-ema50',
-        },
-        {
-          fast: ema10Series,
-          slow: sma200Series,
-          pairLabel: 'EMA 10 / MA 200',
-          intensity: 'yellow' as const,
-          tag: 'ema10-ma200',
-        },
-        {
-          fast: ema50Series,
-          slow: sma200Series,
-          pairLabel: 'EMA 50 / MA 200',
-          intensity: 'orange' as const,
-          tag: 'ema50-ma200',
-        },
-      ]
-
-      pairs.forEach((config) => {
-        const cross = detectLatestCross(config.fast, config.slow)
-
-        if (!cross || cross.index !== candles.length - 1) {
-          return
-        }
-
-        const candle = candles[cross.index]
-
-        if (!candle) {
-          return
-        }
-
-        const price = candle.close
-
-        if (!Number.isFinite(price)) {
-          return
-        }
-
-        const timeframeLabel = formatIntervalLabel(timeframeValue)
-        const directionLabel = cross.direction === 'golden' ? 'Golden cross' : 'Death cross'
-        const signatureKey = `${normalizedSymbol}-${timeframeValue}-${config.tag}`
-        const signature = `${signatureKey}-${cross.direction}-${candle.openTime}`
-
-        if (lastMovingAverageTriggersRef.current[signatureKey] === signature) {
-          return
-        }
-
-        lastMovingAverageTriggersRef.current[signatureKey] = signature
-
-        const entry: MovingAverageCrossNotification = {
-          id: signature,
-          symbol: normalizedSymbol,
-          timeframe: timeframeValue,
-          timeframeLabel,
-          pairLabel: config.pairLabel,
-          direction: cross.direction,
-          intensity: config.intensity,
-          price,
-          triggeredAt: candle.openTime ?? Date.now(),
-        }
-
-        setMovingAverageNotifications((previous) => {
-          const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-          return next.slice(0, MAX_MOVING_AVERAGE_NOTIFICATIONS)
-        })
-
-        const emoji = MOMENTUM_EMOJI_BY_INTENSITY[config.intensity]
-        const priceLabel = price.toFixed(5)
-        const bodyDirection = directionLabel.toLowerCase()
-
-        void showAppNotification({
-          title: `${emoji} ${normalizedSymbol} ${timeframeLabel} ${directionLabel}`,
-          body: `${config.pairLabel} ${bodyDirection} at ${priceLabel}`,
-          tag: signature,
-          data: {
-            symbol: normalizedSymbol,
-            timeframe: timeframeValue,
-            pair: config.tag,
-            direction: cross.direction,
-          },
-        })
-      })
-    })
-  }, [
-    lastMovingAverageTriggersRef,
-    movingAverageNotificationQueries,
-    movingAverageNotificationTimeframes,
+  // Heatmap and Signal Derivations
+  const { data: heatmapData, isLoading: heatmapLoading } = useHeatmapData(
     normalizedSymbol,
-  ])
-
-  useEffect(() => {
-    if (tradingSignals.length === 0) {
-      return
-    }
-
-    tradingSignals.forEach((signal) => {
-      if (signal.confluenceScore < SIGNAL_NOTIFICATION_MIN_SCORE) {
-        return
-      }
-
-      const signatureKey = signal.dedupeKey
-      const signature = `${signatureKey}-${signal.createdAt}`
-
-      if (lastSignalTriggersRef.current[signatureKey] === signature) {
-        return
-      }
-
-      lastSignalTriggersRef.current[signatureKey] = signature
-
-      const entry: SignalNotification = {
-        id: signature,
-        symbol: signal.symbol,
-        timeframe: signal.tf,
-        timeframeLabel: signal.timeframeLabel,
-        side: signal.side,
-        strength: signal.strength,
-        confluenceScore: signal.confluenceScore,
-        price: signal.price,
-        reasons: signal.reason,
-        triggeredAt: signal.createdAt,
-      }
-
-      setSignalNotifications((previous) => {
-        const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-        return next.slice(0, MAX_SIGNAL_NOTIFICATIONS)
-      })
-    })
-  }, [tradingSignals, lastSignalTriggersRef])
-
-  useEffect(() => {
-    if (timeframeSnapshots.length === 0) {
-      return
-    }
-
-    setCombinedSignalNotifications((previous) => (previous.length === 0 ? previous : []))
-
-    timeframeSnapshots.forEach((snapshot) => {
-      const signatureKey = `${normalizedSymbol}-${snapshot.timeframe}`
-      const { direction, breakdown } = snapshot.combined
-      const signature = `${signatureKey}-${direction}-${breakdown.signalStrength}-${breakdown.label}`
-
-      if (lastCombinedSignalTriggersRef.current[signatureKey] === signature) {
-        return
-      }
-
-      lastCombinedSignalTriggersRef.current[signatureKey] = signature
-
-      if (direction === 'Neutral' || Math.abs(breakdown.signalStrength) < MIN_COMBINED_SIGNAL_SCORE) {
-        return
-      }
-    })
-  }, [
-    timeframeSnapshots,
-    normalizedSymbol,
-    lastCombinedSignalTriggersRef,
-  ])
-
-  useEffect(() => {
-    if (!compositeQuantumSignal) {
-      lastQuantumPhaseTriggerRef.current = null
-      return
-    }
-
-    const { flipThreshold } = compositeQuantumSignal
-    const phaseAngle = flipThreshold.phaseAngle
-
-    if (!Number.isFinite(phaseAngle)) {
-      lastQuantumPhaseTriggerRef.current = null
-      return
-    }
-
-    if (phaseAngle > -45 && phaseAngle < 45) {
-      lastQuantumPhaseTriggerRef.current = null
-      return
-    }
-
-    const direction: 'long' | 'short' | null = phaseAngle >= 45 ? 'long' : phaseAngle <= -45 ? 'short' : null
-
-    if (!direction) {
-      return
-    }
-
-    if (lastQuantumPhaseTriggerRef.current === direction) {
-      return
-    }
-
-    lastQuantumPhaseTriggerRef.current = direction
-
-    const triggeredAt = Date.now()
-    const id = `${normalizedSymbol}-quantum-phase-${direction}-${triggeredAt}`
-    const entry: QuantumPhaseNotification = {
-      id,
-      symbol: normalizedSymbol,
-      direction,
-      phaseAngle,
-      compositeBias: flipThreshold.compositeBias,
-      flipSignal: flipThreshold.signal,
-      flipBias: flipThreshold.bias,
-      triggeredAt,
-    }
-
-    setQuantumPhaseNotifications((previous) => {
-      const next = [entry, ...previous]
-      return next.slice(0, MAX_QUANTUM_PHASE_NOTIFICATIONS)
-    })
-
-    const emoji = direction === 'long' ? '🟢' : '🔴'
-    const angleLabel = formatDegrees(phaseAngle)
-    const compositeBiasLabel = formatSignedPercent(flipThreshold.compositeBias)
-    const bodyParts = [
-      `Phase angle ${angleLabel}`,
-      `Composite bias ${compositeBiasLabel}`,
-      flipThreshold.signal,
-    ]
-
-    void showAppNotification({
-      title: `${emoji} ${normalizedSymbol} quantum phase ${direction === 'long' ? 'upswing' : 'downswing'}`,
-      body: bodyParts.join(' — '),
-      tag: `quantum-phase-${normalizedSymbol}-${direction}`,
-      data: {
-        type: 'quantum-phase',
-        symbol: normalizedSymbol,
-        direction,
-        phaseAngle,
-        signal: flipThreshold.signal,
-      },
-    })
-  }, [compositeQuantumSignal, normalizedSymbol])
-
-  useEffect(() => {
-    const timeframeResults: Array<MomentumComputation | null> = notificationTimeframes.map((timeframeValue, index) => {
-      const query = notificationQueries[index]
-      const candles = query?.data
-
-      if (!candles || candles.length === 0) {
-        return null
-      }
-
-      const latest = candles[candles.length - 1]
-
-      if (!latest) {
-        return null
-      }
-
-      const closesForTimeframe = candles.map((candle) => candle.close)
-      const timeframeRsiSetting = RSI_SETTINGS[timeframeValue] ?? DEFAULT_RSI_SETTING
-      const timeframeStochasticSetting =
-        STOCHASTIC_SETTINGS[timeframeValue] ?? DEFAULT_STOCHASTIC_SETTING
-
-      const timeframeRsiValues = calculateRSI(closesForTimeframe, timeframeRsiSetting.period)
-      const timeframeStochasticRsiValues = calculateRSI(
-        closesForTimeframe,
-        timeframeStochasticSetting.rsiLength,
-      )
-
-      const timeframeStochasticSeries = calculateStochasticRSI(timeframeStochasticRsiValues, {
-        stochLength: timeframeStochasticSetting.stochLength,
-        kSmoothing: timeframeStochasticSetting.kSmoothing,
-        dSmoothing: timeframeStochasticSetting.dSmoothing,
-      })
-
-      const latestRsi = timeframeRsiValues[timeframeRsiValues.length - 1]
-      const latestStochasticD =
-        timeframeStochasticSeries.dValues[timeframeStochasticSeries.dValues.length - 1]
-      const timeframeLabel = formatIntervalLabel(timeframeValue)
-
-      if (typeof latestRsi !== 'number' || typeof latestStochasticD !== 'number') {
-        return null
-      }
-
-      const isLongTrigger =
-        latestRsi < momentumThresholds.longRsi &&
-        latestStochasticD < momentumThresholds.longStochastic
-      const isShortTrigger =
-        latestRsi > momentumThresholds.shortRsi &&
-        latestStochasticD > momentumThresholds.shortStochastic
-
-      let direction: 'long' | 'short' | null = null
-
-      if (isLongTrigger) {
-        direction = 'long'
-      } else if (isShortTrigger) {
-        direction = 'short'
-      }
-
-      return {
-        timeframe: timeframeValue,
-        timeframeLabel,
-        rsi: latestRsi,
-        stochasticD: latestStochasticD,
-        openTime: latest.openTime,
-        direction,
-      }
-    })
-
-    const primary = timeframeResults[0]
-
-    if (!primary || !primary.direction) {
-      return
-    }
-
-    const matchingReadings: MomentumComputation[] = []
-
-    for (const result of timeframeResults) {
-      if (!result || result.direction !== primary.direction) {
-        break
-      }
-      matchingReadings.push(result)
-    }
-
-    const intensityLevel = Math.min(matchingReadings.length, 4)
-    const intensity = MOMENTUM_INTENSITY_BY_LEVEL[intensityLevel]
-
-    if (!intensity) {
-      return
-    }
-
-    const signatureParts = matchingReadings.map(
-      (reading) => `${reading.timeframe}:${reading.openTime ?? '0'}`,
-    )
-    const signature = `${normalizedSymbol}-${primary.direction}-${signatureParts.join('|')}`
-
-    if (lastMomentumTriggerRef.current === signature) {
-      return
-    }
-
-    lastMomentumTriggerRef.current = signature
-
-    const readings: MomentumReading[] = matchingReadings.map(
-      ({ timeframe, timeframeLabel, rsi, stochasticD, openTime }) => ({
-        timeframe,
-        timeframeLabel,
-        rsi,
-        stochasticD,
-        openTime,
-      }),
-    )
-
-    const timeframeSummary = readings
-      .map((reading) => reading.timeframeLabel)
-      .join(' • ')
-    const rsiSummary = readings
-      .map((reading) => `${reading.timeframeLabel} ${reading.rsi.toFixed(2)}`)
-      .join(' • ')
-    const stochasticSummary = readings
-      .map((reading) => `${reading.timeframeLabel} ${reading.stochasticD.toFixed(2)}`)
-      .join(' • ')
-    const directionLabel = primary.direction === 'long' ? 'Long' : 'Short'
-    const momentumLabel = `${directionLabel} momentum ${timeframeSummary} Rsi ${rsiSummary} Stoch Rsi (stochastic rsi %d ${stochasticSummary})`
-    const emoji = MOMENTUM_EMOJI_BY_INTENSITY[intensity]
-
-    const entry: MomentumNotification = {
-      id: signature,
-      symbol: normalizedSymbol,
-      direction: primary.direction,
-      intensity,
-      label: momentumLabel,
-      timeframeSummary,
-      rsiSummary,
-      stochasticSummary,
-      readings,
-      triggeredAt: readings[0]?.openTime ?? Date.now(),
-    }
-
-    setMomentumNotifications((previous) => {
-      const next = [entry, ...previous.filter((item) => item.id !== entry.id)]
-      return next.slice(0, MAX_MOMENTUM_NOTIFICATIONS)
-    })
-
-    void showAppNotification({
-      title: `${emoji} ${momentumLabel}`,
-      body: `${normalizedSymbol} — Rsi ${rsiSummary} • Stoch Rsi (stochastic rsi %d ${stochasticSummary})`,
-      tag: signature,
-      data: {
-        symbol: normalizedSymbol,
-        direction: primary.direction,
-        timeframes: readings.map((reading) => reading.timeframe),
-      },
-    })
-  }, [
-    notificationQueries,
-    notificationTimeframes,
-    momentumThresholds,
-    normalizedSymbol,
-  ])
-
-  const canInstall = useMemo(() => !!installPromptEvent, [installPromptEvent])
-
-  const dismissUpdateBanner = useCallback(() => {
-    setShowUpdateBanner(false)
-  }, [])
-
-  const dismissOfflineReadyBanner = useCallback(() => {
-    setShowOfflineReadyBanner(false)
-  }, [])
-
-  const toggleMarketSummary = useCallback(() => {
-    setIsMarketSummaryCollapsed((previous) => !previous)
-  }, [])
-
-  const dismissSignalNotification = useCallback((notificationId: string) => {
-    setSignalNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
-  const dismissMomentumNotification = useCallback((notificationId: string) => {
-    setMomentumNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
-  const dismissMovingAverageNotification = useCallback((notificationId: string) => {
-    setMovingAverageNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
-  const dismissCombinedSignalNotification = useCallback((notificationId: string) => {
-    setCombinedSignalNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
-  const dismissQuantumPhaseNotification = useCallback((notificationId: string) => {
-    setQuantumPhaseNotifications((previous) =>
-      previous.filter((notification) => notification.id !== notificationId),
-    )
-  }, [])
-
-  const formatTriggeredAtLabel = useCallback(formatTriggeredAt, [])
-
-  const handleInstall = async () => {
-    if (!installPromptEvent) {
-      return
-    }
-
-    await installPromptEvent.prompt()
-    await installPromptEvent.userChoice
-    setInstallPromptEvent(null)
-  }
-
-  const handleUpdate = async () => {
-    if (updateServiceWorker) {
-      await updateServiceWorker(true)
-    }
-    setShowUpdateBanner(false)
-  }
-
-  const handleManualRefresh = async () => {
-    if (!canStreamSymbol) {
-      return
-    }
-
-    await refetch()
-
-    await Promise.all([
-      ...notificationQueries.map((query) =>
-        query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
-      ),
-      ...movingAverageNotificationQueries.map((query) =>
-        query.refetch ? query.refetch({ cancelRefetch: false }) : Promise.resolve(null),
-      ),
-    ])
-  }
+    resolvedBarLimit,
+    refreshInterval,
+    symbolQueryEnabled
+  )
+
+  const latestHeatmapSnapshot = useMemo(() => {
+    if (!heatmapData || heatmapData.length === 0) return null
+    return heatmapData.find(h => h.entryTimeframe === timeframe) || null
+  }, [heatmapData, timeframe])
+
+  const timeframeSnapshots = useMemo(() => {
+    if (!heatmapData) return []
+    return deriveTimeframeSnapshots(heatmapData)
+  }, [heatmapData])
+
+  const signals = useMemo(() => {
+    if (!heatmapData) return []
+    return deriveSignalsFromHeatmap(heatmapData)
+  }, [heatmapData])
+
+  const compositeQuantumSignal = useMemo(() => {
+    if (timeframeSnapshots.length === 0) return null
+    return deriveQuantumCompositeSignal(timeframeSnapshots)
+  }, [timeframeSnapshots])
+
+  const quantumFlipThreshold = compositeQuantumSignal?.flipThreshold ?? null
 
   return (
-    <DashboardView
-      canInstall={canInstall}
-      isFetching={isFetching}
-      onManualRefresh={handleManualRefresh}
-      onInstall={handleInstall}
-      showUpdateBanner={showUpdateBanner}
-      onDismissUpdateBanner={dismissUpdateBanner}
-      onUpdate={handleUpdate}
-      showOfflineReadyBanner={showOfflineReadyBanner}
-      onDismissOfflineReadyBanner={dismissOfflineReadyBanner}
-      symbol={symbol}
-      onSymbolChange={setSymbol}
-      timeframe={timeframe}
-      timeframeOptions={TIMEFRAMES}
-      onTimeframeChange={setTimeframe}
-      barSelection={barSelection}
-      barCountOptions={BAR_COUNT_OPTIONS}
-      onBarSelectionChange={setBarSelection}
-      customBarCount={customBarCount}
-      onCustomBarCountChange={setCustomBarCount}
-      maxBarLimit={MAX_BAR_LIMIT}
-      refreshSelection={refreshSelection}
-      refreshOptions={REFRESH_OPTIONS}
-      onRefreshSelectionChange={setRefreshSelection}
-      customRefresh={customRefresh}
-      onCustomRefreshChange={setCustomRefresh}
-      pushServerConnected={pushServerConnected}
-      supportsNotifications={supportsNotifications}
-      notificationPermission={notificationPermission}
-      onEnableNotifications={handleEnableNotifications}
-      isLoading={isLoading}
-      isError={isError}
-      error={error}
-      rsiLowerBoundInput={rsiLowerBoundInput}
-      onRsiLowerBoundInputChange={setRsiLowerBoundInput}
-      rsiUpperBoundInput={rsiUpperBoundInput}
-      onRsiUpperBoundInputChange={setRsiUpperBoundInput}
-      stochasticLowerBoundInput={stochasticLowerBoundInput}
-      onStochasticLowerBoundInputChange={setStochasticLowerBoundInput}
-      stochasticUpperBoundInput={stochasticUpperBoundInput}
-      onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
-      signals={tradingSignals}
-      signalsLoading={areSignalsLoading}
-      timeframeSnapshots={timeframeSnapshots}
-      visibleMomentumNotifications={visibleMomentumNotifications}
-      visibleMovingAverageNotifications={visibleMovingAverageNotifications}
-      visibleSignalNotifications={visibleSignalNotifications}
-      visibleCombinedSignalNotifications={visibleCombinedSignalNotifications}
-      visibleQuantumPhaseNotifications={visibleQuantumPhaseNotifications}
-      quantumFlipThreshold={compositeQuantumSignal?.flipThreshold ?? null}
-      compositeQuantumSignal={compositeQuantumSignal}
-      latestHeatmapSnapshot={latestHeatmapSnapshot}
-      formatTriggeredAt={formatTriggeredAtLabel}
-      onDismissSignalNotification={dismissSignalNotification}
-      onDismissMomentumNotification={dismissMomentumNotification}
-      onDismissMovingAverageNotification={dismissMovingAverageNotification}
-      onDismissCombinedSignalNotification={dismissCombinedSignalNotification}
-      onDismissQuantumPhaseNotification={dismissQuantumPhaseNotification}
-      onClearNotifications={handleClearNotifications}
-      lastUpdatedLabel={lastUpdatedLabel}
-      refreshInterval={refreshInterval}
-      formatIntervalLabel={formatIntervalLabel}
-      resolvedBarLimit={resolvedBarLimit}
-      latestCandle={latestCandle}
-      priceChange={priceChange}
-      isMarketSummaryCollapsed={isMarketSummaryCollapsed}
-      onToggleMarketSummary={toggleMarketSummary}
-      movingAverageSeries={movingAverageSeries}
-      macdSeries={macdSeries}
-      adxSeries={adxSeries}
-      rsiLengthDescription={rsiLengthDescription}
-      rsiValues={rsiValues}
-      labels={labels}
-      rsiGuideLines={rsiGuideLines}
-      stochasticLengthDescription={stochasticLengthDescription}
-      stochasticSeries={stochasticSeries}
-      stochasticGuideLines={stochasticGuideLines}
-    />
+    <MainLayout>
+      <DashboardView
+        onManualRefresh={() => refetch()}
+        isFetching={isFetching}
+        symbol={symbol}
+        onSymbolChange={setSymbol}
+        timeframe={timeframe}
+        timeframeOptions={TIMEFRAMES}
+        onTimeframeChange={setTimeframe}
+        barSelection={barSelection}
+        barCountOptions={BAR_COUNT_OPTIONS}
+        onBarSelectionChange={setBarSelection}
+        customBarCount={customBarCount}
+        onCustomBarCountChange={setCustomBarCount}
+        maxBarLimit={MAX_BAR_LIMIT}
+        refreshSelection={refreshSelection}
+        refreshOptions={REFRESH_OPTIONS}
+        onRefreshSelectionChange={setRefreshSelection}
+        customRefresh={customRefresh}
+        onCustomRefreshChange={setCustomRefresh}
+        pushServerConnected={pushServerConnected}
+        supportsNotifications={supportsNotifications}
+        notificationPermission={notificationPermission}
+        onEnableNotifications={handleEnableNotifications}
+        canInstall={!!installPromptEvent}
+        onInstall={() => {
+          installPromptEvent?.prompt()
+          installPromptEvent?.userChoice.then((choice) => {
+            if (choice.outcome === 'accepted') {
+              setInstallPromptEvent(null)
+            }
+          })
+        }}
+        showUpdateBanner={showUpdateBanner}
+        onDismissUpdateBanner={() => setShowUpdateBanner(false)}
+        onUpdate={() => updateServiceWorker(true)}
+        showOfflineReadyBanner={showOfflineReadyBanner}
+        onDismissOfflineReadyBanner={() => setShowOfflineReadyBanner(false)}
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        rsiLowerBoundInput={rsiLowerBoundInput}
+        onRsiLowerBoundInputChange={setRsiLowerBoundInput}
+        rsiUpperBoundInput={rsiUpperBoundInput}
+        onRsiUpperBoundInputChange={setRsiUpperBoundInput}
+        stochasticLowerBoundInput={stochasticLowerBoundInput}
+        onStochasticLowerBoundInputChange={setStochasticLowerBoundInput}
+        stochasticUpperBoundInput={stochasticUpperBoundInput}
+        onStochasticUpperBoundInputChange={setStochasticUpperBoundInput}
+        signals={signals}
+        signalsLoading={heatmapLoading}
+        timeframeSnapshots={timeframeSnapshots}
+        visibleMovingAverageNotifications={movingAverageNotifications}
+        visibleMomentumNotifications={momentumNotifications}
+        visibleSignalNotifications={signalNotifications}
+        visibleCombinedSignalNotifications={combinedSignalNotifications}
+        visibleQuantumPhaseNotifications={quantumPhaseNotifications}
+        quantumFlipThreshold={quantumFlipThreshold}
+        compositeQuantumSignal={compositeQuantumSignal}
+        latestHeatmapSnapshot={latestHeatmapSnapshot}
+        formatTriggeredAt={formatTriggeredAt}
+        onDismissMovingAverageNotification={(id) =>
+          setMovingAverageNotifications((prev) => prev.filter((n) => n.id !== id))
+        }
+        onDismissMomentumNotification={(id) =>
+          setMomentumNotifications((prev) => prev.filter((n) => n.id !== id))
+        }
+        onDismissSignalNotification={(id) =>
+          setSignalNotifications((prev) => prev.filter((n) => n.id !== id))
+        }
+        onDismissCombinedSignalNotification={(id) =>
+          setCombinedSignalNotifications((prev) => prev.filter((n) => n.id !== id))
+        }
+        onDismissQuantumPhaseNotification={(id) =>
+          setQuantumPhaseNotifications((prev) => prev.filter((n) => n.id !== id))
+        }
+        onClearNotifications={() => {
+          setMomentumNotifications([])
+          setMovingAverageNotifications([])
+          setSignalNotifications([])
+          setCombinedSignalNotifications([])
+          setQuantumPhaseNotifications([])
+        }}
+        lastUpdatedLabel={lastUpdatedLabel}
+        refreshInterval={refreshInterval}
+        formatIntervalLabel={formatIntervalLabel}
+        resolvedBarLimit={resolvedBarLimit}
+        latestCandle={latestCandle}
+        priceChange={priceChange}
+        isMarketSummaryCollapsed={isMarketSummaryCollapsed}
+        onToggleMarketSummary={() => setIsMarketSummaryCollapsed(!isMarketSummaryCollapsed)}
+        movingAverageSeries={movingAverageSeries}
+        macdSeries={macdSeries}
+        adxSeries={adxSeries}
+        rsiLengthDescription={rsiLengthDescription}
+        rsiValues={rsiValues}
+        labels={labels}
+        rsiGuideLines={rsiGuideLines}
+        stochasticLengthDescription={stochasticLengthDescription}
+        stochasticSeries={stochasticSeries}
+        stochasticGuideLines={stochasticGuideLines}
+      />
+    </MainLayout>
   )
 }
 
