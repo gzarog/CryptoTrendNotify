@@ -1,6 +1,8 @@
 
 import React from 'react'
 
+import { AuthPanel } from '../components/AuthPanel'
+
 interface MainLayoutProps {
     children: React.ReactNode
 }
@@ -15,7 +17,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             </div>
 
             {/* Glass Header */}
-            <header className="fixed top-0 left-0 right-0 h-16 z-50 border-b border-white/5 bg-slate-950/70 backdrop-blur-md flex items-center px-4 sm:px-6 lg:px-8 shadow-2xl shadow-black/20">
+            <header className="fixed top-0 left-0 right-0 h-16 z-50 border-b border-white/5 bg-slate-950/70 backdrop-blur-md flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 shadow-2xl shadow-black/20">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
                         <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -26,6 +28,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                         CryptoTrend<span className="font-extrabold text-cyan-400">Notify</span>
                     </h1>
                 </div>
+                <AuthPanel />
             </header>
 
             {/* Main Content */}
