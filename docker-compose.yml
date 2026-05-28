@@ -11,6 +11,7 @@ services:
       PUSH_ALLOWED_ORIGIN: http://localhost:5173
       PUSH_ENABLE_MARKET_WATCH: 'true'
       VAPID_SUBJECT: mailto:dev@example.com
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-in-production}
     ports:
       - "4000:4000"
     restart: unless-stopped
